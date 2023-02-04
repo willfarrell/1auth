@@ -1,0 +1,52 @@
+{
+  "name": "@1auth/store-dynamodb",
+  "version": "0.0.0-alpha.0",
+  "description": "",
+  "type": "module",
+  "engines": {
+    "node": ">=16"
+  },
+  "engineStrict": true,
+  "publishConfig": {
+    "access": "public"
+  },
+  "main": "./index.js",
+  "module": "./index.js",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./index.d.ts",
+        "default": "./index.js"
+      }
+    }
+  },
+  "types": "index.d.ts",
+  "files": [
+    "index.js",
+    "index.d.ts"
+  ],
+  "scripts": {
+    "test": "npm run test:unit",
+    "test:unit": "ava"
+  },
+  "license": "MIT",
+  "keywords": [],
+  "author": {
+    "name": "1auth contributors",
+    "url": "https://github.com/willfarrell/1auth/graphs/contributors"
+  },
+  "repository": {
+    "type": "git",
+    "url": "github:willfarrell/1auth",
+    "directory": "packages/store-dynamodb"
+  },
+  "bugs": {
+    "url": "https://github.com/willfarrell/1auth/issues"
+  },
+  "homepage": "https://github.com/willfarrell/1auth",
+  "gitHead": "7a6c0fbb8ab71d6a2171e678697de9f237568431",
+  "devDependencies": {
+    "@aws-sdk/client-dynamodb": "^3.264.0",
+    "@aws-sdk/util-dynamodb": "^3.264.0"
+  }
+}

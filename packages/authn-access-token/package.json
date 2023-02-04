@@ -1,0 +1,53 @@
+{
+  "name": "@1auth/authn-access-token",
+  "version": "0.0.0-alpha.0",
+  "description": "",
+  "type": "module",
+  "engines": {
+    "node": ">=16"
+  },
+  "engineStrict": true,
+  "publishConfig": {
+    "access": "public"
+  },
+  "main": "./index.js",
+  "module": "./index.js",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./index.d.ts",
+        "default": "./index.js"
+      }
+    }
+  },
+  "types": "index.d.ts",
+  "files": [
+    "index.js",
+    "index.d.ts"
+  ],
+  "scripts": {
+    "test": "npm run test:unit",
+    "test:unit": "ava"
+  },
+  "license": "MIT",
+  "keywords": [],
+  "author": {
+    "name": "1auth contributors",
+    "url": "https://github.com/willfarrell/1auth/graphs/contributors"
+  },
+  "repository": {
+    "type": "git",
+    "url": "github:willfarrell/1auth",
+    "directory": "packages/authn-access-token"
+  },
+  "bugs": {
+    "url": "https://github.com/willfarrell/1auth/issues"
+  },
+  "homepage": "https://github.com/willfarrell/1auth",
+  "gitHead": "7a6c0fbb8ab71d6a2171e678697de9f237568431",
+  "dependencies": {
+    "@1auth/common": "0.0.0-alpha.0",
+    "@1auth/crypto": "0.0.0-alpha.0",
+    "@1auth/authn": "0.0.0-alpha.0"
+  }
+}
