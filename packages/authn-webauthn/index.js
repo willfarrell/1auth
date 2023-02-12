@@ -19,8 +19,8 @@ import {
 const options = {
   id: 'webAuthn',
   origin: undefined, // with https://
-  rpID: undefined,
-  rpName: undefined, // rp name
+  name: undefined,
+  //minimumAuthenticateAllowCredentials: 3, // Add fake auth ids
   secret: {
     type: 'secret',
     // entropy: 64, // ASVS 2.9.2
