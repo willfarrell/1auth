@@ -91,6 +91,10 @@ export const create = async (sub, emailAddress) => {
   return id
 }
 
+export const list = async (sub) => {
+  return options.store.selectList(options.table, { sub, type: options.id })
+}
+
 export const remove = async (sub, id) => {
   const item = await options.store.select(options.table, { id })
   const verifyTimestamp = item?.verify

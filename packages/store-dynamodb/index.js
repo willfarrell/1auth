@@ -9,7 +9,7 @@ import {
 } from '@aws-sdk/client-dynamodb'
 import { marshall, unmarshall } from '@aws-sdk/util-dynamodb'
 
-const marshallOptions = {removeUndefinedValues:true}
+const marshallOptions = { removeUndefinedValues: true }
 
 let client = new DynamoDBClient()
 export const setClient = (ddbClient) => {
@@ -24,13 +24,13 @@ export const exists = async (table, filters) => {
 
 export const selectList = async (table, filters = {}) => {
   let indexName
-  if (filters.username) indexName = 'username'
-  if (filters.digest) indexName = 'digest'
+  if (filters.username) indexName ??= 'username'
+  if (filters.digest) indexName ??= 'digest'
   // Allow type to be undefined
-  if (filters.sub && Object.keys(filters).includes('type')) indexName = 'sub'
-  
+  if (filters.sub && Object.keys(filters).includes('type')) indexName ??= 'sub'
+
   if (!filters.type) delete filters.type // removeUndefinedValues seems to fail
-  
+
   console.log('QueryCommand', {
     TableName: table,
     IndexName: indexName,
@@ -48,7 +48,10 @@ export const selectList = async (table, filters = {}) => {
 }
 // TODO add in attributes to select
 export const select = async (table, filters = {}) => {
-  console.log('GetItemCommand', { TableName: table, Key: marshall(filters, marshallOptions) })
+  console.log('GetItemCommand', {
+    TableName: table,
+    Key: marshall(filters, marshallOptions)
+  })
   try {
     return await client
       .send(
@@ -71,9 +74,15 @@ export const select = async (table, filters = {}) => {
 }
 
 export const insert = async (table, params = {}) => {
-  console.log('PutItemCommand', { TableName: table, Item: marshall(params, marshallOptions) })
+  console.log('PutItemCommand', {
+    TableName: table,
+    Item: marshall(params, marshallOptions)
+  })
   await client.send(
-    new PutItemCommand({ TableName: table, Item: marshall(params, marshallOptions) })
+    new PutItemCommand({
+      TableName: table,
+      Item: marshall(params, marshallOptions)
+    })
   )
   return params.id
 }
@@ -161,7 +170,10 @@ const makeQueryParams = (filters = {}, select = []) => {
       filters[key] = new Set(filters[key])
     }
     expressionAttributeNames[`#${key}`] = key
-    expressionAttributeValues[`:${key}`] = marshall(filters[key], marshallOptions)
+    expressionAttributeValues[`:${key}`] = marshall(
+      filters[key],
+      marshallOptions
+    )
     keyConditionExpression.push(`#${key} = :${key}`)
   }
   keyConditionExpression = keyConditionExpression.join(' and ')

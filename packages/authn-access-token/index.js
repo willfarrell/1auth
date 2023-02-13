@@ -35,6 +35,10 @@ export const create = async (sub, name, expire = options.secret.expire) => {
   return secret
 }
 
+export const list = async (sub) => {
+  return options.store.selectList(options.table, { sub, type: options.id })
+}
+
 export const remove = async (sub, id) => {
   await authnExpire(sub, id, options)
   await options.notify('account-access-token-remove', sub)

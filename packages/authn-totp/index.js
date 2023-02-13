@@ -61,6 +61,10 @@ export const create = async (sub, onboard = false) => {
   return value
 }
 
+export const list = async (sub) => {
+  return options.store.selectList(options.table, { sub, type: options.id })
+}
+
 export const remove = async (sub, id) => {
   await authnExpire(sub, id, options)
   await options.notify('account-totp-removed', sub)

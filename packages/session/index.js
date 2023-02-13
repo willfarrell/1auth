@@ -50,18 +50,14 @@ export const update = async (sub, id) => {
   await options.store.update(options.table, { id }, { sub })
 }
 
-export const remove = async (id) => {
-  await options.store.remove(options.table, { id })
-}
-
 export const lookup = async (id, meta) => {
   const now = nowInSeconds()
   let session
   if (id) {
     session = cache[id]
     session ??= await options.store.select(options.table, { id })
-    if (session?.expire < now) {
-      return remove(session.sub, id)
+    if (session.expire < now) {
+      return
     }
   }
   // session ??= await options.id.create(null, meta)
@@ -77,6 +73,32 @@ export const lookup = async (id, meta) => {
   }
   return authToken */
   return session
+}
+
+export const list = async (sub) => {
+  const now = nowInSeconds()
+  return options.store
+    .selectList(options.table, { sub, type: undefined })
+    .then((items) =>
+      items
+        .filter((item) => item.expire < now)
+        .map((item) => {
+          item.value = JSON.parse(item.value)
+          return item
+        })
+    )
+}
+
+export const expire = async (id) => {
+  await options.store.update(
+    options.table,
+    { id },
+    { expire: nowInSeconds() - 1 }
+  )
+}
+
+export const remove = async (id) => {
+  await options.store.remove(options.table, { id })
 }
 
 // guest or onboard session to authenticated

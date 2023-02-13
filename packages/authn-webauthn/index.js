@@ -253,6 +253,10 @@ export const create = async (sub, value, onboard = false) => {
   }
 }
 
+export const list = async (sub) => {
+  return options.store.selectList(options.table, { sub, type: options.id })
+}
+
 export const remove = async (sub, id) => {
   await authnExpire(sub, id, options)
   await options.notify('account-webauthn-remove', sub)

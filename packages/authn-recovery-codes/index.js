@@ -64,3 +64,7 @@ const createSecrets = async (sub) => {
 
   return secrets
 }
+
+export const list = async (sub) => {
+  return options.store.selectList(options.table, { sub, type: options.id })
+}
