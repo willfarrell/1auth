@@ -35,8 +35,11 @@ export const create = async (sub, name, expire = options.secret.expire) => {
   return secret
 }
 
-export const list = async (sub) => {
-  return options.store.selectList(options.table, { sub, type: options.id })
+export const list = async (sub, type = options.id + '-secret') => {
+  return options.store.selectList(options.table, {
+    sub,
+    type
+  })
 }
 
 export const remove = async (sub, id) => {

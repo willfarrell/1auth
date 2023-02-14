@@ -36,6 +36,7 @@ export const create = async (
     sub
   )
   return parentOptions.store.insert(options.table, {
+    expire,
     ...rest,
     id,
     sub,
@@ -44,8 +45,7 @@ export const create = async (
     encryptionKey: encryptedKey,
     value: encryptedData,
     create: now,
-    update: now,
-    expire
+    update: now
   })
 }
 
@@ -157,8 +157,8 @@ export const verify = async (credentialType, sub, token, parentOptions) => {
   return { sub, id, ...valid }
 }
 
-export const expire = async (sub, id, parentOptions) => {
-  await parentOptions.store.remove(options.table, { id })
+export const expire = async (sub, id, parentOptions = options) => {
+  await parentOptions.store.remove(options.table, { id, sub })
 }
 
 // TODO manage onboard state

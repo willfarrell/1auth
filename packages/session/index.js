@@ -81,7 +81,7 @@ export const list = async (sub) => {
     .selectList(options.table, { sub, type: undefined })
     .then((items) =>
       items
-        .filter((item) => item.expire < now)
+        .filter((item) => item.expire > now)
         .map((item) => {
           item.value = JSON.parse(item.value)
           return item

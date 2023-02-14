@@ -1,5 +1,5 @@
 import { setOptions, nowInSeconds } from '@1auth/common'
-import { encrypt, decrypt } from '@1auth/crypto'
+import { encrypt, decrypt, randomAlphaNumeric } from '@1auth/crypto'
 import {
   options as authnOptions,
   authenticate as authnAuthenticate,
@@ -114,6 +114,16 @@ export const authenticateOptions = async (sub) => {
       type: 'public-key'
     })
   }
+  /*while (
+    allowCredentials.length < options.minimumAuthenticateAllowCredentials
+  ) {
+    const id = randomAlphaNumeric(256) // 43 char - make hash from username to make static
+    allowCredentials.push({
+      id,
+      type: 'public-key'
+    })
+  }*/
+
   const clientOptions = generateAuthenticationOptions({
     allowCredentials,
     userVerification: 'preferred'
@@ -253,8 +263,8 @@ export const create = async (sub, value, onboard = false) => {
   }
 }
 
-export const list = async (sub) => {
-  return options.store.selectList(options.table, { sub, type: options.id })
+export const list = async (sub, type = options.id + '-secret') => {
+  return options.store.selectList(options.table, { sub, type })
 }
 
 export const remove = async (sub, id) => {
