@@ -102,7 +102,7 @@ export const authenticate = async (username, secret, parentOptions) => {
   }
 
   if (valid && parentOptions.secret.otp) {
-    await parentOptions.store.remove(options.table, { id })
+    await parentOptions.store.remove(options.table, { id, sub })
   }
   await timeout
   if (!valid) throw new Error('401 Unauthorized')
@@ -150,7 +150,7 @@ export const verify = async (credentialType, sub, token, parentOptions) => {
     }
   }
   if (valid && parentOptions[credentialType].otp) {
-    await parentOptions.store.remove(options.table, { id })
+    await parentOptions.store.remove(options.table, { id, sub })
   }
   if (!valid) throw new Error('401 Unauthorized')
   await timeout

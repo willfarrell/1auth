@@ -60,7 +60,7 @@ export const create = async (sub, phoneNumber, onboard = false) => {
 }
 
 export const remove = async (sub, id) => {
-  await options.store.remove(options.table, { sub, id })
+  await options.store.remove(options.table, { id, sub })
   await authnExpire(sub, id, options)
   await options.notify('account-phone-number-removed', sub)
 }

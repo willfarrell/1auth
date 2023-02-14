@@ -64,7 +64,7 @@ export const create = async (sub, password) => {
 
 export const update = async (sub, password) => {
   const id = await create(sub, password)
-  await options.store.remove(options.table, { id })
+  await options.store.remove(options.table, { id, sub })
   await options.notify('authn-password-change', sub)
 }
 

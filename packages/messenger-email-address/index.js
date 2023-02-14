@@ -103,7 +103,7 @@ export const remove = async (sub, id) => {
     throw new Error('403 Unauthorized')
   }
   await authnExpire(sub, id, options)
-  await options.store.remove(options.table, { id })
+  await options.store.remove(options.table, { id, sub })
 
   if (verifyTimestamp) {
     await options.notify('messenger-emailAddress-removed', sub)
@@ -121,7 +121,11 @@ export const createToken = async (sub, id) => {
 export const verifyToken = async (sub, token) => {
   const { id } = await authnVerify(options.token.type, sub, token, options)
   await authnExpire(sub, id, options)
-  await options.store.update(options.table, { id }, { verify: nowInSeconds() })
+  await options.store.update(
+    options.table,
+    { id, sub },
+    { verify: nowInSeconds() }
+  )
   await options.notify('messenger-emailAddress-create', sub) // make sure message not sent when part of onboard
 }
 
