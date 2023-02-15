@@ -45,7 +45,7 @@
   },
   "homepage": "https://github.com/willfarrell/1auth",
   "gitHead": "7a6c0fbb8ab71d6a2171e678697de9f237568431",
-  "devDependencies": {
+  "peerDependencies": {
     "@aws-sdk/client-dynamodb": "^3.264.0",
     "@aws-sdk/util-dynamodb": "^3.264.0",
     "uuid": "9.0.0"
