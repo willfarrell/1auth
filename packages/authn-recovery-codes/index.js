@@ -59,7 +59,7 @@ const createSecrets = async (sub) => {
   }
 
   for (const item of existingSecrets) {
-    options.store.remove(options.table, { id: item.id })
+    options.store.remove(options.table, { id: item.id, sub })
   }
 
   return secrets

@@ -81,7 +81,7 @@ export const remove = async (sub, id) => {
     throw new Error('403 Unauthorized')
   }
   await authnExpire(sub, id, options)
-  await options.store.remove(options.table, { id })
+  await options.store.remove(options.table, { id, sub })
 
   if (verifyTimestamp) {
     await options.notify('messenger-emailAddress-removed', sub)
