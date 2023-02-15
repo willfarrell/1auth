@@ -4,7 +4,8 @@ import {
   options as authnOptions,
   create as authnCreate,
   authenticate as authnVerifyAuthentication,
-  verifySecret as authnVerifySecret
+  verifySecret as authnVerifySecret,
+  expire as authnExpire
 } from '@1auth/authn'
 
 const options = {

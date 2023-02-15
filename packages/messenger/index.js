@@ -8,6 +8,12 @@ import {
   decrypt
 } from '@1auth/crypto'
 
+import {
+  create as authnCreate,
+  verify as authnVerify,
+  expire as authnExpire
+} from '@1auth/authn'
+
 export const options = {
   table: 'messengers',
   store: undefined,

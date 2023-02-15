@@ -131,7 +131,7 @@ export const authenticateOptions = async (sub) => {
   // TODO find a better way, not efficient
   await options.store.update(
     options.table,
-    { id },
+    { id, sub },
     {
       challenge: clientOptions.challenge, // TODO not encrypted!!
       update: nowInSeconds()

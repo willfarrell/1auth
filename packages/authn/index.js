@@ -62,7 +62,7 @@ export const update = async (
   )
   return parentOptions.store.update(
     options.table,
-    { id },
+    { id, sub },
     {
       ...rest,
       value: encryptedData,
@@ -110,10 +110,10 @@ export const authenticate = async (username, secret, parentOptions) => {
 }
 
 export const verifySecret = async (sub, id, parentOptions) => {
-  const type = parentOptions.id + '-' + parentOptions.secret.type
+  //const type = parentOptions.id + '-' + parentOptions.secret.type
   await parentOptions.store.update(
     options.table,
-    { sub, id, type },
+    { id, sub },
     { verify: nowInSeconds() }
   )
 }

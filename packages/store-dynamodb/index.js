@@ -90,7 +90,7 @@ export const insert = async (table, params = {}) => {
 export const update = async (table, filters = {}, params = {}) => {
   if (Array.isArray(filters.id)) {
     return Promise.allSettled(
-      filters.id.map((id) => update(table, { id }, params))
+      filters.id.map((id) => update(table, { ...filters, id }, params))
     )
   }
   const {
@@ -125,7 +125,7 @@ export const update = async (table, filters = {}, params = {}) => {
   } = makeQueryParams(params)
   console.log('BatchWriteItemCommand', {
     TableName: table,
-    Key: marshall(filters),
+    Key: marshall(filters, marshallOptions),
     ExpressionAttributeNames,
     ExpressionAttributeValues,
     UpdateExpression: `SET ` + KeyConditionExpression.replace(' and ', ', ')
@@ -140,7 +140,7 @@ export const update = async (table, filters = {}, params = {}) => {
           }))
       }
       TableName: table,
-      Key: marshall(filters),
+      Key: marshall(filters, marshallOptions),
       ExpressionAttributeNames,
       ExpressionAttributeValues,
       UpdateExpression: `SET ` + KeyConditionExpression.replace(' and ', ', ')
