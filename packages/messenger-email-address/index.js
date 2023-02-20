@@ -51,7 +51,7 @@ export const exists = async (emailAddress) => {
 
 export const lookup = async (emailAddress) => {
   const res = options.store.select(options.table, {
-    digest: __digest(__sanitize(emailAddress))
+    digest: await __digest(__sanitize(emailAddress))
   }) // TODO verify > 0
   if (!res.verify) return
   return res

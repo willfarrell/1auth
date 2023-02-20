@@ -45,6 +45,10 @@
     "url": "https://github.com/willfarrell/1auth/graphs/contributors"
   },
   "license": "MIT",
+  "funding": {
+    "type": "github",
+    "url": "https://github.com/sponsors/willfarrell"
+  },
   "bugs": {
     "url": "https://github.com/willfarrell/1auth/issues"
   },

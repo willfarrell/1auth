@@ -50,7 +50,7 @@ export const selectList = async (table, filters = {}) => {
 export const select = async (table, filters = {}) => {
   console.log('GetItemCommand', {
     TableName: table,
-    Key: marshall(filters, marshallOptions)
+    Key: filters
   })
   try {
     return await client
@@ -76,7 +76,7 @@ export const select = async (table, filters = {}) => {
 export const insert = async (table, params = {}) => {
   console.log('PutItemCommand', {
     TableName: table,
-    Item: marshall(params, marshallOptions)
+    Item: params
   })
   await client.send(
     new PutItemCommand({
@@ -100,7 +100,7 @@ export const update = async (table, filters = {}, params = {}) => {
   } = makeQueryParams(params)
   console.log('UpdateItemCommand', {
     TableName: table,
-    Key: marshall(filters, marshallOptions),
+    Key: filters,
     ExpressionAttributeNames,
     ExpressionAttributeValues,
     UpdateExpression: 'SET ' + KeyConditionExpression.replaceAll(' and ', ', ')
@@ -151,7 +151,7 @@ export const update = async (table, filters = {}, params = {}) => {
 export const remove = async (table, filters = {}) => {
   console.log('DeleteItemCommand', {
     TableName: table,
-    Key: marshall(filters, marshallOptions)
+    Key: filters
   })
   await client.send(
     new DeleteItemCommand({

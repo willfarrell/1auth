@@ -30,6 +30,10 @@
     "test:unit": "ava"
   },
   "license": "MIT",
+  "funding": {
+    "type": "github",
+    "url": "https://github.com/sponsors/willfarrell"
+  },
   "keywords": [],
   "author": {
     "name": "1auth contributors",

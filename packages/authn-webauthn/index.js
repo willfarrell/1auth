@@ -146,7 +146,6 @@ export const authenticate = async (username, secret) => {
     secret,
     options
   )
-  // Update `counter`
   await authnUpdate(
     options.secret.type,
     { sub, id, encryptionKey, value },
@@ -176,7 +175,7 @@ export const createToken = async (sub) => {
   }
 
   const { username } = await options.store.select('accounts', { sub })
-  console.log(username, userAuthenticators, {
+  /*console.log(username, userAuthenticators, {
     rpName: options.name,
     rpID: new URL(options.origin).hostname,
     userID: sub,
@@ -202,7 +201,7 @@ export const createToken = async (sub) => {
     //     alg: -257 // RS256
     //   }
     // ]
-  })
+  })*/
 
   const clientOptions = generateRegistrationOptions({
     rpName: options.name,
@@ -251,10 +250,10 @@ export const verifyToken = async (sub, credential) => {
   return value
 }
 
-export const create = async (sub, value, onboard = false) => {
+export const create = async (sub, name, value, onboard = false) => {
   await authnCreate(
     options.secret.type,
-    { sub, value, verify: nowInSeconds() },
+    { sub, name, value, verify: nowInSeconds() },
     options
   )
 

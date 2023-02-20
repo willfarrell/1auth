@@ -1,5 +1,10 @@
 import { setOptions, nowInSeconds } from '@1auth/common'
-import { options as accountOptions } from '@1auth/account'
+import {
+  options as accountOptions,
+  update as accountUpdate
+} from '@1auth/account'
+
+import { createDigest } from '@1auth/crypto'
 
 export const regexp = /^[a-z0-9-]*$/
 export const jsonSchema = {
@@ -21,16 +26,18 @@ export default (params) => {
 }
 
 export const exists = async (username) => {
+  const usernameSanitized = __sanitize(username)
   return options.store.exists(options.table, {
-    username: __sanitize(username)
+    digest: await createDigest(usernameSanitized)
   })
 }
 
 export const lookup = async (username) => {
   if (!username) return {}
+  const usernameSanitized = __sanitize(username)
   return (
     (await options.store.select(options.table, {
-      username: __sanitize(username)
+      digest: await createDigest(usernameSanitized)
     })) ?? {}
   )
 }
@@ -42,11 +49,11 @@ export const create = async (sub, username) => {
   if (!__blacklist(username) || (await exists(username))) {
     throw new Error('409 Conflict')
   }
-  await options.store.update(
-    options.table,
-    { sub },
-    { username: __sanitize(username), update: nowInSeconds() }
-  )
+  const usernameSanitized = __sanitize(username)
+  await accountUpdate(sub, {
+    username: usernameSanitized,
+    digest: await createDigest(usernameSanitized)
+  })
 }
 
 export const update = async (sub, username) => {
@@ -60,10 +67,7 @@ export const recover = async (sub) => {
 }
 
 export const __sanitize = (value) => {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/^[^a-z0-9-]+$/, '')
+  return value.trim()
 }
 
 export const __validate = (value) => {
