@@ -1,17 +1,15 @@
-import { setOptions, nowInSeconds } from '@1auth/common'
 import {
   passwordSecret,
   passwordToken,
-  entropyToCharacterLength,
-  createDigest
+  entropyToCharacterLength
+  // createDigest
 } from '@1auth/crypto'
 import {
   options as authnOptions,
   create as authnCreate,
   verify as authnVerify,
   expire as authnExpire,
-  authenticate as authnAuthenticate,
-  verifySecret as authnVerifySecret
+  authenticate as authnAuthenticate
 } from '@1auth/authn'
 
 import { zxcvbn, zxcvbnOptions } from '@zxcvbn-ts/core'
@@ -35,12 +33,12 @@ const options = {
   id: 'password'
 }
 export default (params) => {
-  options.store = authnOptions.store
-  options.notify = authnOptions.notify
-  options.table = authnOptions.table
-  options.secret = passwordSecret
-  options.token = passwordToken
-  setOptions(options, ['id'], params)
+  Object.assign(
+    options,
+    authnOptions,
+    { secret: passwordSecret, token: passwordToken },
+    params
+  )
 }
 
 export const authenticate = async (username, secret) => {
@@ -65,7 +63,7 @@ export const create = async (sub, password) => {
 export const update = async (sub, password) => {
   const id = await create(sub, password)
   await options.store.remove(options.table, { id, sub })
-  await options.notify('authn-password-change', sub)
+  await options.notify.trigger('authn-password-change', sub)
 }
 
 export const verifySecret = async (sub, password) => {
@@ -78,7 +76,10 @@ export const sendToken = async (sub, id) => {
   }
   const token = await options.token.create()
   await authnCreate(options.token.type, { id, sub, value: token }, options)
-  await options.notify('authn-password-recovery-token', sub, { id, token })
+  await options.notify.trigger('authn-password-recovery-token', sub, {
+    id,
+    token
+  })
 }
 
 export const verifyToken = async (sub, token, password) => {
@@ -87,16 +88,17 @@ export const verifyToken = async (sub, token, password) => {
 }
 
 export const validate = async (value) => {
-  validateLength(value)
-  await validateStrength(value)
-  await validateBreach(value)
-  return true
+  let valid = false
+  valid ||= validateLength(value)
+  valid ||= await validateStrength(value)
+  valid ||= await validateBreach(value)
+  return valid
 }
 
 export const validateLength = (value) => {
   const minLength = entropyToCharacterLength(
     options.secret.entropy,
-    otpions.secret.charPool
+    options.secret.charPool
   )
   const maxLength = 128
   if (minLength <= value || value <= maxLength) {
@@ -117,7 +119,7 @@ export const validateStrength = async (value) => {
 }
 
 export const validateBreach = async (value) => {
-  const hash = createDigest(value, 'sha1') // .toUpperCase()
+  // const hash = createDigest(value, {algorithm:'sha1', salt: ''}) // .toUpperCase()
   // TODO check if used in previous breach
   // https://haveibeenpwned.com/API/v3
   // const hashes = fetch(`https://api.pwnedpasswords.com/range/${hash.substring(0,5)}`,{ headers: {'hibp-api-key':''}}).then((res) => res.text())

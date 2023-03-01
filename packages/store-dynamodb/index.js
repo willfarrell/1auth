@@ -11,13 +11,16 @@ import { marshall, unmarshall } from '@aws-sdk/util-dynamodb'
 
 const marshallOptions = { removeUndefinedValues: true }
 
-let client = new DynamoDBClient()
-export const setClient = (ddbClient) => {
-  client = ddbClient
+const options = {
+  log: false,
+  client: new DynamoDBClient()
+}
+
+export default (params) => {
+  Object.assign(options, params)
 }
 
 export const exists = async (table, filters) => {
-  console.log('exists', { table })
   const item = await select(table, filters)
   return item?.sub
 }
@@ -31,35 +34,30 @@ export const selectList = async (table, filters = {}) => {
 
   if (!filters.type) delete filters.type // removeUndefinedValues seems to fail
 
-  console.log('QueryCommand', {
+  const commandParams = {
     TableName: table,
     IndexName: indexName,
     ...makeQueryParams(filters)
-  })
-  return client
-    .send(
-      new QueryCommand({
-        TableName: table,
-        IndexName: indexName,
-        ...makeQueryParams(filters)
-      })
-    )
+  }
+  if (options.log) {
+    console.log('QueryCommand', commandParams)
+  }
+  return options.client
+    .send(new QueryCommand(commandParams))
     .then((res) => res.Items.map(unmarshall))
 }
 // TODO add in attributes to select
 export const select = async (table, filters = {}) => {
-  console.log('GetItemCommand', {
+  const commandParams = {
     TableName: table,
-    Key: filters
-  })
+    Key: marshall(filters, marshallOptions)
+  }
+  if (options.log) {
+    console.log('GetItemCommand', commandParams)
+  }
   try {
-    return await client
-      .send(
-        new GetItemCommand({
-          TableName: table,
-          Key: marshall(filters, marshallOptions)
-        })
-      )
+    return await options.client
+      .send(new GetItemCommand(commandParams))
       .then((res) => unmarshall(res.Item))
   } catch (e) {
     if (e.message === 'The provided key element does not match the schema') {
@@ -74,16 +72,14 @@ export const select = async (table, filters = {}) => {
 }
 
 export const insert = async (table, params = {}) => {
-  console.log('PutItemCommand', {
+  const commandParams = {
     TableName: table,
-    Item: params
-  })
-  await client.send(
-    new PutItemCommand({
-      TableName: table,
-      Item: marshall(params, marshallOptions)
-    })
-  )
+    Item: marshall(params, marshallOptions)
+  }
+  if (options.log) {
+    console.log('PutItemCommand', commandParams)
+  }
+  await options.client.send(new PutItemCommand(commandParams))
   return params.id
 }
 
@@ -98,23 +94,17 @@ export const update = async (table, filters = {}, params = {}) => {
     ExpressionAttributeValues,
     KeyConditionExpression
   } = makeQueryParams(params)
-  console.log('UpdateItemCommand', {
+  const commandParams = {
     TableName: table,
-    Key: filters,
+    Key: marshall(filters, marshallOptions),
     ExpressionAttributeNames,
     ExpressionAttributeValues,
     UpdateExpression: 'SET ' + KeyConditionExpression.replaceAll(' and ', ', ')
-  })
-  await client.send(
-    new UpdateItemCommand({
-      TableName: table,
-      Key: marshall(filters, marshallOptions),
-      ExpressionAttributeNames,
-      ExpressionAttributeValues,
-      UpdateExpression:
-        'SET ' + KeyConditionExpression.replaceAll(' and ', ', ')
-    })
-  )
+  }
+  if (options.log) {
+    console.log('UpdateItemCommand', commandParams)
+  }
+  await options.client.send(new UpdateItemCommand(commandParams))
 }
 
 /* export const updateList = async (table, filters = {}, params = {}) => {
@@ -153,7 +143,7 @@ export const remove = async (table, filters = {}) => {
     TableName: table,
     Key: filters
   })
-  await client.send(
+  await options.client.send(
     new DeleteItemCommand({
       TableName: table,
       Key: marshall(filters, marshallOptions)
@@ -217,5 +207,3 @@ const makeQueryParams = (filters = {}, select = []) => {
 //     }
 //   }
 // }
-
-export default { exists, select, selectList, insert, update, remove }

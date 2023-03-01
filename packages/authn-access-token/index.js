@@ -1,10 +1,8 @@
-import { setOptions, nowInSeconds } from '@1auth/common'
 import { accessToken } from '@1auth/crypto'
 import {
   options as authnOptions,
   create as authnCreate,
   authenticate as authnVerifyAuthentication,
-  verifySecret as authnVerifySecret,
   expire as authnExpire
 } from '@1auth/authn'
 
@@ -13,11 +11,7 @@ const options = {
   prefix: 'pat' // Personal Access Token
 }
 export default (params) => {
-  options.store = authnOptions.store
-  options.notify = authnOptions.notify
-  options.table = authnOptions.table
-  options.secret = accessToken
-  setOptions(options, ['id', 'prefix'], params)
+  Object.assign(options, authnOptions, { secret: accessToken }, params)
 }
 
 export const authenticate = async (username, secret) => {
@@ -27,12 +21,12 @@ export const authenticate = async (username, secret) => {
 
 export const create = async (sub, name, expire = options.secret.expire) => {
   const secret = options.prefix + '-' + (await options.secret.create())
-  const id = await authnCreate(
+  await authnCreate(
     options.secret.type,
     { sub, name, value: secret, expire: nowInSeconds() + expire },
     options
   )
-  await options.notify('account-access-token-create', sub)
+  await options.notify.trigger('account-access-token-create', sub)
   return secret
 }
 
@@ -45,5 +39,7 @@ export const list = async (sub, type = options.id + '-secret') => {
 
 export const remove = async (sub, id) => {
   await authnExpire(sub, id, options)
-  await options.notify('account-access-token-remove', sub)
+  await options.notify.trigger('account-access-token-remove', sub)
 }
+
+const nowInSeconds = () => Math.floor(Date.now() / 1000)

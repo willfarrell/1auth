@@ -1,28 +1,23 @@
-import { setOptions, nowInSeconds } from '@1auth/common'
 import {
-  randomId,
-  outOfBandToken,
-  createDigest,
-  makeSymetricKey,
-  encrypt
+  // randomId,
+  outOfBandToken
+  // createDigest,
+  // makeSymetricKey,
+  // encrypt
 } from '@1auth/crypto'
 import { options as messengerOptions } from '@1auth/messenger'
-import {
-  create as authnCreate,
-  verify as authnVerify,
-  expire as authnExpire
-} from '@1auth/authn'
+// import {
+//   create as authnCreate,
+//   verify as authnVerify,
+//   expire as authnExpire
+// } from '@1auth/authn'
 
 const options = {
-  id: 'webSocket'
+  id: 'webPush'
 }
 
 export default (params) => {
-  options.store = messengerOptions.store
-  options.notify = messengerOptions.notify
-  options.table = messengerOptions.table
-  options.token = outOfBandToken
-  setOptions(options, ['id'], params)
+  Object.assign(options, messengerOptions, { token: outOfBandToken }, params)
 }
 /*
 export const exists = async (emailAddress) => {
@@ -49,7 +44,7 @@ export const create = async (sub, emailAddress) => {
     digest: emailAddressDigest
   })
   if (emailAddressExists?.sub === sub && emailAddressExists?.verify) {
-    await options.notify('messenger-emailAddress-exists', sub)
+    await options.notify.trigger('messenger-emailAddress-exists', sub)
     return
   } else if (emailAddressExists?.verify) {
     await createToken(sub, emailAddressExists.id)
@@ -84,7 +79,7 @@ export const remove = async (sub, id) => {
   await options.store.remove(options.table, { id, sub })
 
   if (verifyTimestamp) {
-    await options.notify('messenger-emailAddress-removed', sub)
+    await options.notify.trigger('messenger-emailAddress-removed', sub)
   }
 }
 
@@ -92,7 +87,7 @@ export const createToken = async (sub, id) => {
   await authnExpire(sub, id, options)
   const token = await options.token.create()
   id = await authnCreate(options.token.type, { id, sub, value: token }, options)
-  await options.notify('messenger-emailAddress-verify', sub, { token })
+  await options.notify.trigger('messenger-emailAddress-verify', sub, { token })
   return id
 }
 
@@ -100,7 +95,9 @@ export const verifyToken = async (sub, token) => {
   const { id } = await authnVerify(options.token.type, sub, token, options)
   await authnExpire(sub, id, options)
   await options.store.update(options.table, { id, sub }, { verify: nowInSeconds() })
-  await options.notify('messenger-emailAddress-create', sub) // make sure message not sent when part of onboard
+  await options.notify.trigger('messenger-emailAddress-create', sub) // make sure message not sent when part of onboard
 }
 
 */
+
+// const nowInSeconds = () => Math.floor(Date.now() / 1000)

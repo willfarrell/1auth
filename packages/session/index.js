@@ -1,4 +1,3 @@
-import { setOptions, nowInSeconds } from '@1auth/common'
 import { session, makeSymetricKey, encrypt } from '@1auth/crypto'
 
 const options = {
@@ -11,8 +10,7 @@ const options = {
 const cache = {}
 
 export default (params) => {
-  options.id = session
-  setOptions(options, ['store', 'notify', 'table', 'cache', 'expire'], params)
+  Object.assign(options, { id: session }, params)
 }
 
 /**
@@ -106,3 +104,4 @@ export const remove = async (id) => {
 //   await remove()
 //   return create()
 // }
+const nowInSeconds = () => Math.floor(Date.now() / 1000)

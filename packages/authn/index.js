@@ -1,5 +1,4 @@
 import { setTimeout } from 'node:timers/promises'
-import { setOptions, nowInSeconds } from '@1auth/common'
 import { randomId, makeSymetricKey } from '@1auth/crypto'
 
 export const options = {
@@ -9,12 +8,9 @@ export const options = {
   authenticationDuration: 500, // min duration authentication should take (ms)
   usernameExists: [] // hooks to allow what to be used as a username
 }
-export default (params) =>
-  setOptions(
-    options,
-    ['store', 'notify', 'table', 'authenticationDuration', 'usernameExists'],
-    params
-  )
+export default (params) => {
+  Object.assign(options, params)
+}
 
 export const create = async (
   credentialType,
@@ -110,7 +106,7 @@ export const authenticate = async (username, secret, parentOptions) => {
 }
 
 export const verifySecret = async (sub, id, parentOptions) => {
-  //const type = parentOptions.id + '-' + parentOptions.secret.type
+  // const type = parentOptions.id + '-' + parentOptions.secret.type
   await parentOptions.store.update(
     options.table,
     { id, sub },
@@ -166,3 +162,5 @@ export const expire = async (sub, id, parentOptions = options) => {
 // TODO save notification settings
 
 // TODO authorize management?
+
+const nowInSeconds = () => Math.floor(Date.now() / 1000)

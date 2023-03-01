@@ -1,3 +1,11 @@
-export default (id, sub, params) => {
-  console.log({ id, sub, params })
+const options = {
+  client: console.log
+}
+
+export default (params) => {
+  Object.assign(options, params)
+}
+
+export const trigger = (id, sub, params) => {
+  options.client({ id, sub, params })
 }

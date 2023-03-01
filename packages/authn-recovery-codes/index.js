@@ -1,10 +1,8 @@
-import { setOptions } from '@1auth/common'
 import { recoveryCode } from '@1auth/crypto'
 import {
   options as authnOptions,
   create as authnCreate,
-  authenticate as authnVerifyAuthentication,
-  verifySecret as authnVerifySecret
+  authenticate as authnVerifyAuthentication
 } from '@1auth/authn'
 
 const options = {
@@ -12,11 +10,7 @@ const options = {
   count: 5
 }
 export default (params) => {
-  options.store = authnOptions.store
-  options.notify = authnOptions.notify
-  options.table = authnOptions.table
-  options.secret = recoveryCode
-  setOptions(options, ['id', 'count'], params)
+  Object.assign(options, authnOptions, { secret: recoveryCode }, params)
 }
 
 export const authenticate = async (username, secret) => {
@@ -31,7 +25,7 @@ export const create = async (sub) => {
 
 export const update = async (sub) => {
   const secrets = await createSecrets(sub)
-  await options.notify('authn-recovery-codes-update', sub)
+  await options.notify.trigger('authn-recovery-codes-update', sub)
   return secrets
 }
 
@@ -48,7 +42,7 @@ const createSecrets = async (sub) => {
     type: options.id + '-' + options.secret.type
   })
   const secrets = []
-  for (let i = options.count; i--; ) {
+  for (let i = options.count; i--;) {
     const secret = await options.secret.create()
     const id = await authnCreate(
       options.secret.type,

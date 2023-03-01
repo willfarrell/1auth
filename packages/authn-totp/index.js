@@ -1,4 +1,3 @@
-import { setOptions, nowInSeconds } from '@1auth/common'
 import {
   oneTimeSecret,
   oneTimeToken,
@@ -8,7 +7,7 @@ import {
 import {
   options as authnOptions,
   create as authnCreate,
-  verifySecret as authnVerifySecret,
+  // verifySecret as authnVerifySecret,
   verify as authnVerify,
   expire as authnExpire
 } from '@1auth/authn'
@@ -22,18 +21,21 @@ const options = {
   serviceName: '1Auth'
 }
 export default (params) => {
-  options.store = authnOptions.store
-  options.notify = authnOptions.notify
-  options.table = authnOptions.table
-  ;(options.secret = {
-    ...oneTimeSecret,
-    encoding: 'base64'
-  }),
-    (options.token = {
-      ...oneTimeToken,
-      algorithm: 'sha512'
-    })
-  setOptions(options, ['id', 'serviceName'], params)
+  Object.assign(
+    options,
+    authnOptions,
+    {
+      secret: {
+        ...oneTimeSecret,
+        encoding: 'base64'
+      },
+      token: {
+        ...oneTimeToken,
+        algorithm: 'sha512'
+      }
+    },
+    params
+  )
 }
 
 export const authenticate = async (sub, token) => {
@@ -54,9 +56,9 @@ export const create = async (sub, onboard = false) => {
           options.token.charPool
         )}`
     )
-  const id = await authnCreate(options.secret.type, { sub, value }, options)
+  await authnCreate(options.secret.type, { sub, value }, options)
   if (!onboard) {
-    await options.notify('account-totp-create', sub)
+    await options.notify.trigger('account-totp-create', sub)
   }
   return value
 }
@@ -67,7 +69,7 @@ export const list = async (sub) => {
 
 export const remove = async (sub, id) => {
   await authnExpire(sub, id, options)
-  await options.notify('account-totp-removed', sub)
+  await options.notify.trigger('account-totp-removed', sub)
 }
 
 export const __totp = () => {
@@ -88,7 +90,7 @@ export const urlToQRCode = async (value) => {
 }
 
 export const verifySecret = async (sub, token) => {
-  const { id } = await verifyToken(sub, token)
+  await verifyToken(sub, token)
   // TODO update db
   // await authnVerifySecret(sub, id, options)
 }

@@ -6,28 +6,29 @@ import {
 
 const options = {
   client: new SQSClient(),
-  queueName:
-    process.env.QUEUE_NAME ?? process.env.VITE_QUEUE_NAME ?? 'notify-queue'
+  queueName: 'notify-queue',
+  log: false
 }
 
-export const setClient = (SQSClient) => {
-  options.client = SQSClient
+export default (params) => {
+  Object.assign(options, params)
 }
-// export default (params) => setOptions(options, ['client', 'topicArn'], params)
 
-export default async (id, sub, data = {}) => {
-  console.log({ id, sub, data })
+export const trigger = async (id, sub, data = {}) => {
   const queueUrl = await options.client
     .send(new GetQueueUrlCommand({ QueueName: options.queueName }))
     .then((res) => res.QueueUrl)
-  await options.client.send(
-    new SendMessageCommand({
-      QueueUrl: queueUrl,
-      // MessageGroupId: suffix,
-      // MessageDeduplicationId: `${suffix}_${new Date()
-      //   .toISOString()
-      //   .substring(0, 10)}_update`,
-      MessageBody: JSON.stringify({ id, sub, data })
-    })
-  )
+
+  const commandParams = {
+    QueueUrl: queueUrl,
+    // MessageGroupId: suffix,
+    // MessageDeduplicationId: `${suffix}_${new Date()
+    //   .toISOString()
+    //   .substring(0, 10)}_update`,
+    MessageBody: JSON.stringify({ id, sub, data })
+  }
+  if (options.log) {
+    console.log('SendMessage', commandParams)
+  }
+  await options.client.send(new SendMessageCommand(commandParams))
 }

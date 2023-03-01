@@ -1,4 +1,3 @@
-import { setOptions, nowInSeconds } from '@1auth/common'
 import {
   options as accountOptions,
   update as accountUpdate
@@ -19,10 +18,7 @@ const options = {
   blacklist: ['admin', 'security']
 }
 export default (params) => {
-  options.store = accountOptions.store
-  options.notify = accountOptions.notify
-  options.table = accountOptions.table
-  setOptions(options, ['id', 'blacklist'], params)
+  Object.assign(options, accountOptions, params)
 }
 
 export const exists = async (username) => {
@@ -58,12 +54,12 @@ export const create = async (sub, username) => {
 
 export const update = async (sub, username) => {
   await create(sub, username)
-  await options.notify('account-username-change')
+  await options.notify.trigger('account-username-change')
 }
 
 export const recover = async (sub) => {
   const { username } = await options.store.select(options.table, { sub })
-  await options.notify('account-username-recover', { username })
+  await options.notify.trigger('account-username-recover', { username })
 }
 
 export const __sanitize = (value) => {

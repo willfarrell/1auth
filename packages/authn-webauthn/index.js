@@ -1,5 +1,4 @@
-import { setOptions, nowInSeconds } from '@1auth/common'
-import { encrypt, decrypt, randomAlphaNumeric } from '@1auth/crypto'
+import { encrypt, decrypt } from '@1auth/crypto'
 import {
   options as authnOptions,
   authenticate as authnAuthenticate,
@@ -20,7 +19,7 @@ const options = {
   id: 'webAuthn',
   origin: undefined, // with https://
   name: undefined,
-  //minimumAuthenticateAllowCredentials: 3, // Add fake auth ids
+  // minimumAuthenticateAllowCredentials: 3, // Add fake auth ids
   secret: {
     type: 'secret',
     // entropy: 64, // ASVS 2.9.2
@@ -87,10 +86,7 @@ const options = {
 }
 
 export default (params) => {
-  options.store = authnOptions.store
-  options.notify = authnOptions.notify
-  options.table = authnOptions.table
-  setOptions(options, ['id', 'origin', 'name'], params)
+  Object.assign(options, authnOptions, params)
 }
 
 // to be sent to client
@@ -114,7 +110,7 @@ export const authenticateOptions = async (sub) => {
       type: 'public-key'
     })
   }
-  /*while (
+  /* while (
     allowCredentials.length < options.minimumAuthenticateAllowCredentials
   ) {
     const id = randomAlphaNumeric(256) // 43 char - make hash from username to make static
@@ -122,7 +118,7 @@ export const authenticateOptions = async (sub) => {
       id,
       type: 'public-key'
     })
-  }*/
+  } */
 
   const clientOptions = generateAuthenticationOptions({
     allowCredentials,
@@ -175,7 +171,7 @@ export const createToken = async (sub) => {
   }
 
   const { username } = await options.store.select('accounts', { sub })
-  /*console.log(username, userAuthenticators, {
+  /* console.log(username, userAuthenticators, {
     rpName: options.name,
     rpID: new URL(options.origin).hostname,
     userID: sub,
@@ -201,7 +197,7 @@ export const createToken = async (sub) => {
     //     alg: -257 // RS256
     //   }
     // ]
-  })*/
+  }) */
 
   const clientOptions = generateRegistrationOptions({
     rpName: options.name,
@@ -258,7 +254,7 @@ export const create = async (sub, name, value, onboard = false) => {
   )
 
   if (!onboard) {
-    await options.notify('account-webauthn-create', sub) // TODO add in user.name
+    await options.notify.trigger('account-webauthn-create', sub) // TODO add in user.name
   }
 }
 
@@ -268,7 +264,7 @@ export const list = async (sub, type = options.id + '-secret') => {
 
 export const remove = async (sub, id) => {
   await authnExpire(sub, id, options)
-  await options.notify('account-webauthn-remove', sub)
+  await options.notify.trigger('account-webauthn-remove', sub)
 }
 
 const jsonParseSecret = (value) => {
@@ -278,3 +274,5 @@ const jsonParseSecret = (value) => {
   value.attestationObject = Buffer.from(value.attestationObject.data)
   return value
 }
+
+const nowInSeconds = () => Math.floor(Date.now() / 1000)

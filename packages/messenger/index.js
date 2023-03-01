@@ -1,11 +1,10 @@
-import { setOptions, nowInSeconds } from '@1auth/common'
 import {
   randomId,
   outOfBandToken,
   createDigest,
   makeSymetricKey,
-  encrypt,
-  decrypt
+  encrypt
+  // decrypt
 } from '@1auth/crypto'
 
 import {
@@ -20,8 +19,7 @@ export const options = {
   notify: undefined
 }
 export default (params) => {
-  options.token = outOfBandToken
-  setOptions(options, ['store', 'notify', 'table'], params)
+  Object.assign(options, { token: outOfBandToken }, params)
 }
 
 export const exists = async (value) => {
@@ -41,7 +39,7 @@ export const create = async (sub, type, value) => {
     digest: valueDigest
   })
   if (valueExists?.sub === sub && valueExists?.verify) {
-    await options.notify(`messenger-${type}-exists`, sub)
+    await options.notify.trigger(`messenger-${type}-exists`, sub)
     return
   } else if (valueExists?.verify) {
     await createToken(sub, valueExists.id)
@@ -57,7 +55,7 @@ export const create = async (sub, type, value) => {
     type: options.id,
     encryptionKey: encryptedKey,
     value: encryptedData,
-    digest: emailAddressDigest,
+    digest: valueDigest,
     create: now,
     update: now // in case new digests need to be created
   })
@@ -76,15 +74,19 @@ export const remove = async (sub, id) => {
   await options.store.remove(options.table, { id, sub })
 
   if (verifyTimestamp) {
-    await options.notify(`messenger-${item.type}-removed`, sub)
+    await options.notify.trigger(`messenger-${item.type}-removed`, sub)
   }
 }
 
 export const createToken = async (sub, id) => {
   await authnExpire(sub, id, options)
   const token = await options.token.create()
-  id = await authnCreate(options.token.type, { id, sub, value: token }, options)
-  await options.notify('messenger-TYPE-verify', sub, { token })
+  id = await authnCreate(
+    options.token.type,
+    { id, sub, value: token },
+    options
+  )
+  await options.notify.trigger('messenger-TYPE-verify', sub, { token })
   return id
 }
 
@@ -96,5 +98,7 @@ export const verifyToken = async (sub, token) => {
     { id, sub },
     { verify: nowInSeconds() }
   )
-  await options.notify('messenger-TYPE-create', sub) // make sure message not sent when part of onboard
+  await options.notify.trigger('messenger-TYPE-create', sub) // make sure message not sent when part of onboard
 }
+
+const nowInSeconds = () => Math.floor(Date.now() / 1000)

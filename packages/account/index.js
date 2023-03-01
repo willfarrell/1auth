@@ -1,4 +1,3 @@
-import { setOptions, nowInSeconds } from '@1auth/common'
 import {
   subject,
   makeSymetricKey,
@@ -14,8 +13,7 @@ export const options = {
   encryptedKeys: []
 }
 export default (params) => {
-  options.id = subject
-  setOptions(options, ['store', 'notify', 'table', 'encryptedKeys'], params)
+  Object.assign(options, { id: subject }, params)
 }
 export const exists = async (sub) => {
   return options.store.exists(options.table, { sub })
@@ -75,20 +73,20 @@ export const update = async (sub, values = {}) => {
 }
 
 export const remove = async (sub) => {
-  await options.store.delete(options.table, { sub }) // Should trigger removal of credentials and messengers
-  await options.notify('account-remove', sub)
+  await options.store.remove(options.table, { sub }) // Should trigger removal of credentials and messengers
+  await options.notify.trigger('account-remove', sub)
 }
 
 /* export const expire = async (sub) => {
   const expire = nowInSeconds() + 90 * 24 * 60 * 60
   await options.store.update(options.table, { sub }, { expire })
-  await options.notify('account-expire', sub)
+  await options.notify.trigger('account-expire', sub)
   // TODO clear sessions
 }
 
 export const recover = async (sub) => {
   await options.store.update(options.table, { sub }, { expire: null })
-  await options.notify('account-recover', sub)
+  await options.notify.trigger('account-recover', sub)
 } */
 
 // TODO manage onboard state
@@ -96,3 +94,5 @@ export const recover = async (sub) => {
 // TODO save notification settings
 
 // TODO authorize management?
+
+const nowInSeconds = () => Math.floor(Date.now() / 1000)

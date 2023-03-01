@@ -9,7 +9,20 @@ import {
   verify
 } from 'node:crypto'
 // https://github.com/napi-rs/node-rs/tree/main/packages/argon2
-import { hash as secretHash, verify as secretVerify } from '@node-rs/argon2' // TODO check if argon2id from hash-wasm is better
+import { hash as secretHash, verify as secretVerify } from '@node-rs/argon2'
+
+const options = {
+  // randomBytes(32).toString('hex') // 256 bits
+  encryptionSharedKey: '',
+  encryptionMethod: 'chacha20-poly1305', // AES-256 GCM (aes-256-gcm) or ChaCha20-Poly1305 (chacha20-poly1305)
+
+  digestAlgorithm: 'sha3-256',
+  digestSalt: ''
+}
+
+export default (params) => {
+  Object.assign(options, params)
+}
 
 const generateKeyPair = promisify(generateKeyPairCallback)
 
@@ -29,9 +42,6 @@ const generateKeyPair = promisify(generateKeyPairCallback)
 //   return max - min
 // }
 
-// TODO add salt to digests
-// TODO update out of band to use short codes? - https://security.stackexchange.com/questions/213944/account-verification-emails-with-links-vs-codes
-
 // *** Random generators *** //
 export const characterPoolSize = {
   keyboard: 94, // (26 + 10 + 11) * 2
@@ -40,7 +50,7 @@ export const characterPoolSize = {
   hex: 16,
   numeric: 10
 }
-// TODO update using pattern in https://github.com/sindresorhus/crypto-random-string/blob/main/core.js
+// Alt: https://github.com/sindresorhus/crypto-random-string/blob/main/core.js
 export const randomAlphaNumeric = (bits) => {
   const characterLength = entropyToCharacterLength(
     bits,
@@ -203,11 +213,9 @@ export const entropyToCharacterLength = (bits, characterPoolSize) => {
 }
 
 // *** Digests *** //
-export const createDigest = async (
-  value,
-  algorithm = 'sha3-256',
-  salt = ''
-) => {
+export const createDigest = async (value, { algorithm, salt } = {}) => {
+  algorithm ??= options.digestAlgorithm
+  salt ??= options.digestSalt
   const hash = checksum(algorithm)
     .update(value + salt)
     .digest('hex')
@@ -234,17 +242,16 @@ export const verifySecretHash = async (hash, value) => {
 }
 
 // *** Encryption *** //
-// randomBytes(32).toString('hex') // 256 bits - AWS SSM?
-const sharedKey = process.env.VITE_SHARED_SECRET ?? ''
-const encryptionMethod = 'chacha20-poly1305' // AES-256 GCM (aes-256-gcm) or ChaCha20-Poly1305 (chacha20-poly1305)
 const authTagLength = 16
 
 export const makeSymetricKey = (assocData) => {
-  if (!sharedKey) return { encryptionKey: '', encryptedKey: '' }
+  if (!options.encryptionSharedKey) {
+    return { encryptionKey: '', encryptedKey: '' }
+  }
   const encryptionKey = randomBytes(32)
   const encryptedKey = __encrypt(
     encryptionKey,
-    Buffer.from(sharedKey, 'hex'),
+    Buffer.from(options.encryptionSharedKey, 'hex'),
     assocData,
     'hex',
     'hex'
@@ -257,7 +264,7 @@ export const encrypt = (data, encryptedKey, assocData) => {
 
   const encryptionKey = __decrypt(
     encryptedKey,
-    Buffer.from(sharedKey, 'hex'),
+    Buffer.from(options.encryptionSharedKey, 'hex'),
     assocData,
     'hex',
     'hex'
@@ -279,7 +286,7 @@ const __encrypt = (
   encoding = 'hex'
 ) => {
   const iv = randomBytes(12) // 96 bits
-  const cipher = createCipheriv(encryptionMethod, encryptionKey, iv, {
+  const cipher = createCipheriv(options.encryptionMethod, encryptionKey, iv, {
     authTagLength
   })
   cipher.setAAD(Buffer.from(assocData, 'utf8'))
@@ -294,10 +301,10 @@ const __encrypt = (
 }
 
 export const decrypt = (encryptedData, encryptedKey, assocData) => {
-  if (!sharedKey || !encryptedKey) return encryptedData
+  if (!options.encryptionSharedKey || !encryptedKey) return encryptedData
   const encryptionKey = __decrypt(
     encryptedKey,
-    Buffer.from(sharedKey, 'hex'),
+    Buffer.from(options.encryptionSharedKey, 'hex'),
     assocData,
     'hex',
     'hex'
@@ -323,9 +330,14 @@ const __decrypt = (
   const authTag = Buffer.from(data.substring(24, 56), decoding)
   const encryptedData = Buffer.from(data.substring(56), decoding)
 
-  const decipher = createDecipheriv(encryptionMethod, encryptionKey, iv, {
-    authTagLength
-  })
+  const decipher = createDecipheriv(
+    options.encryptionMethod,
+    encryptionKey,
+    iv,
+    {
+      authTagLength
+    }
+  )
   decipher.setAAD(Buffer.from(assocData, 'utf8'))
   decipher.setAuthTag(authTag)
   return (
@@ -347,7 +359,7 @@ export const makeAsymmetricKeys = async (encryptionKey) => {
       type: 'sec1',
       format: 'pem',
       // TODO remove encryption for other with sub check?
-      cipher: encryptionMethod,
+      cipher: options.encryptionMethod,
       passphrase: encryptionKey
     }
   })

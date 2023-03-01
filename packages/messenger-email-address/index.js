@@ -1,6 +1,5 @@
 // import { assign } from 'xstate'
 
-import { setOptions, nowInSeconds } from '@1auth/common'
 import {
   randomId,
   outOfBandToken,
@@ -16,7 +15,7 @@ import {
 } from '@1auth/authn'
 
 import { toASCII } from 'tr46'
-//import { fullFormats } from 'ajv-formats/dist/formats.js'
+// import { fullFormats } from 'ajv-formats/dist/formats.js'
 
 const options = {
   id: 'emailAddress',
@@ -32,15 +31,7 @@ const options = {
 }
 
 export default (params) => {
-  options.store = messengerOptions.store
-  options.notify = messengerOptions.notify
-  options.table = messengerOptions.table
-  options.token = outOfBandToken
-  setOptions(
-    options,
-    ['id', 'usernameBlacklist', 'optionalDotDomains', 'aliasDomains'],
-    params
-  )
+  Object.assign(options, messengerOptions, { token: outOfBandToken }, params)
 }
 
 export const exists = async (emailAddress) => {
@@ -60,14 +51,14 @@ export const lookup = async (emailAddress) => {
 export const create = async (sub, emailAddress) => {
   const emailAddressSanitized = __sanitize(emailAddress)
   const emailAddressDigest = await __digest(emailAddressSanitized)
-  //if (!__validate(emailAddressSanitized)) {
+  // if (!__validate(emailAddressSanitized)) {
   //  throw new Error('400 invalid emailAddress')
-  //}
+  // }
   const emailAddressExists = await options.store.select(options.table, {
     digest: emailAddressDigest
   })
   if (emailAddressExists?.sub === sub && emailAddressExists?.verify) {
-    await options.notify('messenger-emailAddress-exists', sub)
+    await options.notify.trigger('messenger-emailAddress-exists', sub)
     return
   } else if (emailAddressExists?.verify) {
     await createToken(sub, emailAddressExists.id)
@@ -106,15 +97,19 @@ export const remove = async (sub, id) => {
   await options.store.remove(options.table, { id, sub })
 
   if (verifyTimestamp) {
-    await options.notify('messenger-emailAddress-removed', sub)
+    await options.notify.trigger('messenger-emailAddress-removed', sub)
   }
 }
 
 export const createToken = async (sub, id) => {
   await authnExpire(sub, id, options)
   const token = await options.token.create()
-  id = await authnCreate(options.token.type, { id, sub, value: token }, options)
-  await options.notify('messenger-emailAddress-verify', sub, { token })
+  id = await authnCreate(
+    options.token.type,
+    { id, sub, value: token },
+    options
+  )
+  await options.notify.trigger('messenger-emailAddress-verify', sub, { token })
   return id
 }
 
@@ -126,7 +121,7 @@ export const verifyToken = async (sub, token) => {
     { id, sub },
     { verify: nowInSeconds() }
   )
-  await options.notify('messenger-emailAddress-create', sub) // make sure message not sent when part of onboard
+  await options.notify.trigger('messenger-emailAddress-create', sub) // make sure message not sent when part of onboard
 }
 
 export const __digest = async (emailAddress) => {
@@ -135,6 +130,9 @@ export const __digest = async (emailAddress) => {
 
 export const __sanitize = (emailAddress) => {
   let [username, domain] = emailAddress.split('@')
+
+  // not a valid email
+  if (!domain) return emailAddress
 
   username = username.trimStart().split('+')[0].toLowerCase() // TODO puntycode
   domain = toASCII(domain).trimEnd().toLowerCase()
@@ -149,7 +147,9 @@ export const __sanitize = (emailAddress) => {
   return `${username}@${domain}`
 }
 
-/*const regexp = fullFormats.email
+const nowInSeconds = () => Math.floor(Date.now() / 1000)
+
+/* const regexp = fullFormats.email
 export const __validate = (emailAddress) => {
   const [, domain] = emailAddress.split('@')
   if (!regexp.test(emailAddress)) {
@@ -165,7 +165,7 @@ export const __validate = (emailAddress) => {
     return false
   }
   return true
-}*/
+} */
 
 // export const jsonSchema = {
 //   type: 'string',

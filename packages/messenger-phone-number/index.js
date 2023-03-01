@@ -1,5 +1,5 @@
-import { setOptions, nowInSeconds } from '@1auth/common'
 import { outOfBandToken, createDigest, randomId } from '@1auth/crypto'
+import { options as messengerOptions } from '@1auth/messenger'
 import {
   create as authnCreate,
   verify as authnVerify,
@@ -25,8 +25,9 @@ const options = {
   notify: undefined,
   token: { ...outOfBandToken }
 }
-export default (params) =>
-  setOptions(options, ['store', 'notify', 'blacklist'], params)
+export default (params) => {
+  Object.assign(options, messengerOptions, params)
+}
 
 export const exists = async (phoneNumber) => {
   return options.store.exists(options.table, {
@@ -40,7 +41,7 @@ export const create = async (sub, phoneNumber, onboard = false) => {
   }
 
   if (await exists(phoneNumber)) {
-    await options.notify('account-phone-number-exists', sub)
+    await options.notify.trigger('account-phone-number-exists', sub)
     return
   }
 
@@ -54,7 +55,7 @@ export const create = async (sub, phoneNumber, onboard = false) => {
     create: nowInSeconds()
   })
   if (!onboard) {
-    await options.notify('account-phone-number-create', sub)
+    await options.notify.trigger('account-phone-number-create', sub)
   }
   return sendToken(sub)
 }
@@ -62,7 +63,7 @@ export const create = async (sub, phoneNumber, onboard = false) => {
 export const remove = async (sub, id) => {
   await options.store.remove(options.table, { id, sub })
   await authnExpire(sub, id, options)
-  await options.notify('account-phone-number-removed', sub)
+  await options.notify.trigger('account-phone-number-removed', sub)
 }
 
 export const sendToken = async (sub, id) => {
@@ -70,8 +71,15 @@ export const sendToken = async (sub, id) => {
     await authnExpire(sub, id, options)
   }
   const token = await options.token.create()
-  id = await authnCreate(options.token.type, { id, sub, value: token }, options)
-  await options.notify('account-phone-number-verify', sub, { id, token })
+  id = await authnCreate(
+    options.token.type,
+    { id, sub, value: token },
+    options
+  )
+  await options.notify.trigger('account-phone-number-verify', sub, {
+    id,
+    token
+  })
   return id
 }
 
@@ -128,3 +136,5 @@ export const validate = (phoneNumber, countryCode) => {
   }
   return true
 }
+
+const nowInSeconds = () => Math.floor(Date.now() / 1000)

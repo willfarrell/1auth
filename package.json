@@ -1,6 +1,6 @@
 {
   "name": "@1auth/monorepo",
-  "version": "0.0.0-alpha.0",
+  "version": "0.0.0-alpha.1",
   "description": "",
   "private": true,
   "type": "module",
@@ -11,14 +11,10 @@
   "scripts": {
     "prepare": "husky install",
     "commit-msg": "commitlint --config commitlint.config.cjs --edit",
-    "pre-commit": "npm run test:lint",
+    "pre-commit": "lint-staged",
     "install": "lerna bootstrap",
-    "test": "npm run test:lint && npm run test:packages",
-    "test:lint": "lint-staged",
-    "test:lint:ci": "ts-standard",
-    "test:unit": "cd packages/$PACKAGE && c8 npm run test:unit",
-    "test:packages": " npm run test:packages:unit",
-    "test:packages:unit": "c8 lerna exec --bail --concurrency 5 npm run test:unit",
+    "test": "c8 node --test packages",
+    "lint": "prettier --write packages/*/*.js && standard --fix packages/*/*.js",
     "lerna:rm": "npm run lerna:rm:node_modules && npm run lerna:rm:lock",
     "lerna:rm:lock": "lerna exec -- rm -rf package-lock.json",
     "lerna:rm:node_modules": "lerna exec -- rm -rf node_modules",
@@ -56,7 +52,6 @@
   "devDependencies": {
     "@commitlint/cli": "^17.0.0",
     "@commitlint/config-conventional": "^17.0.0",
-    "ava": "^5.0.0",
     "aws-sdk-client-mock": "^2.0.0",
     "benchmark": "^2.1.4",
     "c8": "^7.0.0",
@@ -64,6 +59,7 @@
     "lerna": "^6.0.0",
     "lint-staged": "^13.0.0",
     "prettier": "^2.0.0",
-    "sinon": "^15.0.0"
+    "sinon": "^15.0.0",
+    "standard": "^17.0.0"
   }
 }
