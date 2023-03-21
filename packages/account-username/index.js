@@ -1,5 +1,5 @@
 import {
-  options as accountOptions,
+  getOptions as accountOptions,
   update as accountUpdate
 } from '@1auth/account'
 
@@ -18,11 +18,14 @@ const options = {
   blacklist: ['admin', 'security']
 }
 export default (params) => {
-  Object.assign(options, accountOptions, params)
+  console.log(accountOptions())
+  Object.assign(options, accountOptions(), params)
+  console.log(options)
 }
 
 export const exists = async (username) => {
   const usernameSanitized = __sanitize(username)
+  console.log(options)
   return options.store.exists(options.table, {
     digest: await createDigest(usernameSanitized)
   })

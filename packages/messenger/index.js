@@ -21,6 +21,7 @@ export const options = {
 export default (params) => {
   Object.assign(options, { token: outOfBandToken }, params)
 }
+export const getOptions = () => options
 
 export const exists = async (value) => {
   return options.store.exists(options.table, {

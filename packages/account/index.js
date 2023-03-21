@@ -6,15 +6,18 @@ import {
   decrypt
 } from '@1auth/crypto'
 
-export const options = {
+const options = {
   store: undefined,
   notify: undefined,
   table: 'accounts',
   encryptedKeys: []
 }
+
 export default (params) => {
   Object.assign(options, { id: subject }, params)
 }
+export const getOptions = () => options
+
 export const exists = async (sub) => {
   return options.store.exists(options.table, { sub })
 }
@@ -60,7 +63,9 @@ export const create = async (values = {}) => {
 
 // for in the clear user metadata
 export const update = async (sub, values = {}) => {
-  const { encryptionKey } = await options.store.select(options.table, { sub })
+  const { encryptionKey } = await options.store.select(options.table, {
+    sub
+  })
 
   for (const key of options.encryptedKeys) {
     values[key] &&= await encrypt(values[key], encryptionKey, sub)

@@ -5,7 +5,7 @@ import {
   // makeSymetricKey,
   // encrypt
 } from '@1auth/crypto'
-import { options as messengerOptions } from '@1auth/messenger'
+import { getOptions as messengerOptions } from '@1auth/messenger'
 // import {
 //   create as authnCreate,
 //   verify as authnVerify,
@@ -17,7 +17,7 @@ const options = {
 }
 
 export default (params) => {
-  Object.assign(options, messengerOptions, { token: outOfBandToken }, params)
+  Object.assign(options, messengerOptions(), { token: outOfBandToken }, params)
 }
 /*
 export const exists = async (emailAddress) => {

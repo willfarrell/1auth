@@ -11,6 +11,7 @@ export const options = {
 export default (params) => {
   Object.assign(options, params)
 }
+export const getOptions = () => options
 
 export const create = async (
   credentialType,
