@@ -18,14 +18,11 @@ const options = {
   blacklist: ['admin', 'security']
 }
 export default (params) => {
-  console.log(accountOptions())
   Object.assign(options, accountOptions(), params)
-  console.log(options)
 }
 
 export const exists = async (username) => {
   const usernameSanitized = __sanitize(username)
-  console.log(options)
   return options.store.exists(options.table, {
     digest: await createDigest(usernameSanitized)
   })

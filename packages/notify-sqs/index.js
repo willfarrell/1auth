@@ -13,12 +13,17 @@ const options = {
 
 export default (params) => {
   Object.assign(options, params)
-  options.queueUrl = options.client
-    .send(new GetQueueUrlCommand({ QueueName: options.queueName }))
-    .then((res) => res.QueueUrl)
+  // requires need for AWS access
+  //   options.queueUrl = options.client
+  //     .send(new GetQueueUrlCommand({ QueueName: options.queueName }))
+  //     .then((res) => res.QueueUrl)
 }
 
 export const trigger = async (id, sub, data = {}) => {
+  options.queueUrl ??= options.client
+    .send(new GetQueueUrlCommand({ QueueName: options.queueName }))
+    .then((res) => res.QueueUrl)
+
   const queueUrl = await options.queueUrl
 
   const commandParams = {
