@@ -31,11 +31,9 @@ export const exists = async (username) => {
 export const lookup = async (username) => {
   if (!username) return {}
   const usernameSanitized = __sanitize(username)
-  return (
-    (await options.store.select(options.table, {
-      digest: await createDigest(usernameSanitized)
-    })) ?? {}
-  )
+  return await options.store.select(options.table, {
+    digest: await createDigest(usernameSanitized)
+  })
 }
 
 export const create = async (sub, username) => {
