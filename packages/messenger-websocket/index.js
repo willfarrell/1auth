@@ -13,7 +13,7 @@ import { getOptions as messengerOptions } from '@1auth/messenger'
 // } from '@1auth/authn'
 
 const options = {
-  id: 'webSocket'
+  id: 'WebSocket'
 }
 
 export default (params) => {

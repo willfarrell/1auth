@@ -62,9 +62,7 @@ export const lookup = async (id, meta) => {
 
   /* let authToken // TODO return JWT or IAM to be passed around
   if (session.sub) {
-    const account = await options.store.select('accounts', {
-      sub: session.sub
-    })
+    const account = await accountLookup(session.sub)
     authToken = account
   } else {
     authToken = session

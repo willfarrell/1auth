@@ -7,6 +7,7 @@ import {
   verify as authnVerify,
   expire as authnExpire
 } from '@1auth/authn'
+import { lookup as accountLookup } from '@1auth/account'
 
 import {
   generateRegistrationOptions,
@@ -16,7 +17,7 @@ import {
 } from '@simplewebauthn/server'
 
 const options = {
-  id: 'webAuthn',
+  id: 'WebAuthn',
   origin: undefined, // with https://
   name: undefined,
   // minimumAuthenticateAllowCredentials: 3, // Add fake auth ids
@@ -31,11 +32,11 @@ const options = {
       encrypt(JSON.stringify(data), encryptedKey, sub),
     decode: async (encryptedData, encryptedKey, sub) =>
       jsonParseSecret(await decrypt(encryptedData, encryptedKey, sub)),
-    verify: async (credential, authenticator, rest) => {
+    verify: async (response, authenticator, rest) => {
       try {
         const { verified, authenticationInfo } =
           await verifyAuthenticationResponse({
-            credential,
+            response,
             expectedChallenge: rest.challenge, // TODO not encrypted!!
             expectedOrigin: options.origin,
             expectedRPID: new URL(options.origin).hostname,
@@ -63,11 +64,11 @@ const options = {
       encrypt(value, encryptedKey, sub),
     decode: async (value, encryptedKey, sub) =>
       decrypt(value, encryptedKey, sub),
-    verify: async (credential, expectedChallenge) => {
+    verify: async (response, expectedChallenge) => {
       try {
         const { verified, registrationInfo } = await verifyRegistrationResponse(
           {
-            credential,
+            response,
             expectedChallenge,
             expectedOrigin: options.origin,
             expectedRPID: new URL(options.origin).hostname,
@@ -170,7 +171,7 @@ export const createToken = async (sub) => {
     })
   }
 
-  const { username } = await options.store.select('accounts', { sub })
+  const { username } = await accountLookup(sub)
   /* console.log(username, userAuthenticators, {
     rpName: options.name,
     rpID: new URL(options.origin).hostname,
