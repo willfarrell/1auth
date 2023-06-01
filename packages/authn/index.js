@@ -32,7 +32,7 @@ export const create = async (
     encryptedKey,
     sub
   )
-  return parentOptions.store.insert(options.table, {
+  await options.store.insert(options.table, {
     expire,
     ...rest,
     id,
@@ -44,6 +44,7 @@ export const create = async (
     create: now,
     update: now
   })
+  return id
 }
 
 export const update = async (
@@ -57,7 +58,7 @@ export const update = async (
     encryptionKey,
     sub
   )
-  return parentOptions.store.update(
+  return options.store.update(
     options.table,
     { id, sub },
     {
@@ -82,7 +83,7 @@ export const authenticate = async (username, secret, parentOptions) => {
 
   const sub = await subject(username)
 
-  const credentials = await parentOptions.store.selectList(options.table, {
+  const credentials = await options.store.selectList(options.table, {
     sub,
     type
   }) // TODO and verify is not null
@@ -99,7 +100,7 @@ export const authenticate = async (username, secret, parentOptions) => {
   }
 
   if (valid && parentOptions.secret.otp) {
-    await parentOptions.store.remove(options.table, { id, sub })
+    await options.store.remove(options.table, { id, sub })
   }
   await timeout
   if (!valid) throw new Error('401 Unauthorized')
@@ -108,7 +109,7 @@ export const authenticate = async (username, secret, parentOptions) => {
 
 export const verifySecret = async (sub, id, parentOptions) => {
   // const type = parentOptions.id + '-' + parentOptions.secret.type
-  await parentOptions.store.update(
+  await options.store.update(
     options.table,
     { id, sub },
     { verify: nowInSeconds() }
@@ -119,7 +120,7 @@ export const verify = async (credentialType, sub, token, parentOptions) => {
   const timeout = setTimeout(() => {}, options.authenticationDuration)
   const type = parentOptions.id + '-' + parentOptions[credentialType].type
   let id
-  const credentials = await parentOptions.store.selectList(options.table, {
+  const credentials = await options.store.selectList(options.table, {
     sub,
     type
   })
@@ -129,7 +130,7 @@ export const verify = async (credentialType, sub, token, parentOptions) => {
   //     return rows
   //   }
   //
-  //   return parentOptions.store.select(options.table, { id: sub, type })
+  //   return options.store.select(options.table, { id: sub, type })
   // })
 
   let valid
@@ -147,7 +148,7 @@ export const verify = async (credentialType, sub, token, parentOptions) => {
     }
   }
   if (valid && parentOptions[credentialType].otp) {
-    await parentOptions.store.remove(options.table, { id, sub })
+    await options.store.remove(options.table, { id, sub })
   }
   if (!valid) throw new Error('401 Unauthorized')
   await timeout
@@ -155,7 +156,7 @@ export const verify = async (credentialType, sub, token, parentOptions) => {
 }
 
 export const expire = async (sub, id, parentOptions = options) => {
-  await parentOptions.store.remove(options.table, { id, sub })
+  await options.store.remove(options.table, { id, sub })
 }
 
 // TODO manage onboard state

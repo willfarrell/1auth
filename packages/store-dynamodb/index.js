@@ -80,7 +80,6 @@ export const insert = async (table, params = {}) => {
     console.log('PutItemCommand', commandParams)
   }
   await options.client.send(new PutItemCommand(commandParams))
-  return params.id
 }
 
 export const update = async (table, filters = {}, params = {}) => {

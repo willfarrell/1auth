@@ -1,5 +1,5 @@
 {
-  "name": "@1auth/authn-webauthn",
+  "name": "@1auth/store-sql",
   "version": "0.0.0-alpha.4",
   "description": "",
   "type": "module",
@@ -42,16 +42,16 @@
   "repository": {
     "type": "git",
     "url": "github:willfarrell/1auth",
-    "directory": "packages/authn-webauthn"
+    "directory": "packages/store-dynamodb"
   },
   "bugs": {
     "url": "https://github.com/willfarrell/1auth/issues"
   },
   "homepage": "https://github.com/willfarrell/1auth",
   "gitHead": "7a6c0fbb8ab71d6a2171e678697de9f237568431",
-  "dependencies": {
-    "@1auth/authn": "0.0.0-alpha.4",
-    "@1auth/crypto": "0.0.0-alpha.4",
-    "@simplewebauthn/server": "7.2.0"
+  "peerDependencies": {
+    "@aws-sdk/client-dynamodb": "^3.0.0",
+    "@aws-sdk/util-dynamodb": "^3.0.0",
+    "uuid": "9.0.0"
   }
 }
