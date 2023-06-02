@@ -171,7 +171,8 @@ export const createToken = async (sub) => {
     })
   }
 
-  const { username } = await accountLookup(sub)
+  let { username } = await accountLookup(sub)
+  username ??= 'username'
   /* console.log(username, userAuthenticators, {
     rpName: options.name,
     rpID: new URL(options.origin).hostname,
@@ -270,9 +271,11 @@ export const remove = async (sub, id) => {
 
 const jsonParseSecret = (value) => {
   value = JSON.parse(value)
-  value.credentialID = Buffer.from(value.credentialID.data)
-  value.credentialPublicKey = Buffer.from(value.credentialPublicKey.data)
-  value.attestationObject = Buffer.from(value.attestationObject.data)
+  value.credentialID = Buffer.from(Object.values(value.credentialID))
+  value.credentialPublicKey = Buffer.from(
+    Object.values(value.credentialPublicKey)
+  )
+  value.attestationObject = Buffer.from(Object.values(value.attestationObject))
   return value
 }
 

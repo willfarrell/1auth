@@ -27,7 +27,6 @@ export const exists = async (table, filters) => {
 
 export const selectList = async (table, filters = {}) => {
   let indexName
-  if (filters.username) indexName ??= 'username'
   if (filters.digest) indexName ??= 'digest'
   // Allow type to be undefined
   if (filters.sub && Object.keys(filters).includes('type')) indexName ??= 'sub'
@@ -48,6 +47,11 @@ export const selectList = async (table, filters = {}) => {
 }
 // TODO add in attributes to select
 export const select = async (table, filters = {}) => {
+  if (filters.digest) {
+    // GetItemCommand doesn't support IndexName
+    return selectList(table, filters).then((res) => res[0])
+  }
+
   const commandParams = {
     TableName: table,
     Key: marshall(filters, marshallOptions)
