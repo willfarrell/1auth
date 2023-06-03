@@ -31,7 +31,7 @@ export const insert = async (table, values = {}) => {
   normalizeValues(values)
   const { insert, parameters } = makeSqlParts({}, values)
   const sql = `INSERT INTO ${table} ${insert}`
-  return await options.query(sql, parameters).then((res) => res.id)
+  return await options.query(sql, parameters)
 }
 
 export const update = async (table, filters = {}, values = {}) => {

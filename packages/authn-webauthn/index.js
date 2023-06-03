@@ -271,11 +271,13 @@ export const remove = async (sub, id) => {
 
 const jsonParseSecret = (value) => {
   value = JSON.parse(value)
-  value.credentialID = Buffer.from(Object.values(value.credentialID))
+  value.credentialID = Buffer.from(Object.values(value.credentialID.data))
   value.credentialPublicKey = Buffer.from(
-    Object.values(value.credentialPublicKey)
+    Object.values(value.credentialPublicKey.data)
   )
-  value.attestationObject = Buffer.from(Object.values(value.attestationObject))
+  value.attestationObject = Buffer.from(
+    Object.values(value.attestationObject.data)
+  )
   return value
 }
 
