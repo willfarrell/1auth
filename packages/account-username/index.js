@@ -5,17 +5,21 @@ import {
 
 import { createDigest } from '@1auth/crypto'
 
-export const regexp = /^[a-z0-9-]*$/
+// Only allow characters that are safe to encode
+// . not allowed because it can be used to declare and extension
+export const regexp = /^[a-z0-9_-]*$/
 export const jsonSchema = {
   type: 'string',
-  pattern: '^[a-z0-9-]*$',
+  pattern: '^[a-z0-9_-]*$',
   minLength: 1,
   maxLength: 32
 }
 
 const options = {
   id: 'username',
-  blacklist: ['admin', 'security']
+  blacklist: []
+  // minLength: 1,
+  // maxLength: 32
 }
 export default (params) => {
   Object.assign(options, accountOptions(), params)
@@ -37,15 +41,15 @@ export const lookup = async (username) => {
 }
 
 export const create = async (sub, username) => {
-  if (!__validate(username)) {
+  const usernameSanitized = __sanitize(username)
+  if (!__validate(usernameSanitized)) {
     throw new Error('400 invalid characters')
   }
-  if (!__blacklist(username) || (await exists(username))) {
+  if (!__blacklist(usernameSanitized) || (await exists(usernameSanitized))) {
     throw new Error('409 Conflict')
   }
-  const usernameSanitized = __sanitize(username)
   await accountUpdate(sub, {
-    username: usernameSanitized,
+    username,
     digest: await createDigest(usernameSanitized)
   })
 }
@@ -61,7 +65,7 @@ export const recover = async (sub) => {
 }
 
 export const __sanitize = (value) => {
-  return value.trim()
+  return value.trim().toLocaleLowerCase()
 }
 
 export const __validate = (value) => {

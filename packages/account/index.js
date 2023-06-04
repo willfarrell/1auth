@@ -46,13 +46,14 @@ export const create = async (values = {}) => {
   }
 
   await options.store.insert(options.table, {
+    create: now, // allow use for import
     ...values,
     sub,
     encryptionKey: encryptedKey,
     publicKey,
     privateKey,
-    create: now,
     update: now
+
     // notifications,
     // authorization
   })
