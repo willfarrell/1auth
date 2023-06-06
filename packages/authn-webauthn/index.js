@@ -271,14 +271,19 @@ export const remove = async (sub, id) => {
 
 const jsonParseSecret = (value) => {
   value = JSON.parse(value)
-  value.credentialID = Buffer.from(Object.values(value.credentialID.data))
-  value.credentialPublicKey = Buffer.from(
-    Object.values(value.credentialPublicKey.data)
-  )
-  value.attestationObject = Buffer.from(
-    Object.values(value.attestationObject.data)
-  )
+
+  value.credentialID = credentialBuffer(value.credentialID)
+  value.credentialPublicKey = credentialBuffer(value.credentialPublicKey)
+  value.attestationObject = credentialBuffer(value.attestationObject)
   return value
+}
+
+const credentialBuffer = (value) => {
+  let arr = value.data
+  if (!arr) {
+    arr = Object.values(value)
+  }
+  return Buffer.from(arr)
 }
 
 const nowInSeconds = () => Math.floor(Date.now() / 1000)

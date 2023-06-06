@@ -113,7 +113,7 @@ export const createToken = async (sub, id) => {
   return id
 }
 
-export const verifyToken = async (sub, token) => {
+export const verifyToken = async (sub, token, onboard = false) => {
   const { id } = await authnVerify(options.token.type, sub, token, options)
   await authnExpire(sub, id, options)
   await options.store.update(
@@ -121,7 +121,9 @@ export const verifyToken = async (sub, token) => {
     { id, sub },
     { verify: nowInSeconds() }
   )
-  await options.notify.trigger('messenger-emailAddress-create', sub) // make sure message not sent when part of onboard
+  if (!onboard) {
+    await options.notify.trigger('messenger-emailAddress-create', sub)
+  }
 }
 
 export const __digest = async (emailAddress) => {
