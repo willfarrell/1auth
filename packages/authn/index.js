@@ -86,9 +86,10 @@ export const authenticate = async (username, secret, parentOptions) => {
   const credentials = await options.store.selectList(options.table, {
     sub,
     type
-  }) // TODO and verify is not null
+  })
   let valid, id, encryptionKey
   for (const credential of credentials) {
+    if (!credential.verify) continue
     let { value, encryptionKey: encryptedKey, ...rest } = credential
     value = await parentOptions.secret.decode(value, encryptedKey, sub)
     valid = await parentOptions.secret.verify(secret, value, rest)
@@ -99,9 +100,19 @@ export const authenticate = async (username, secret, parentOptions) => {
     }
   }
 
-  if (valid && parentOptions.secret.otp) {
+  // delete OTP to prevent re-use
+  if (parentOptions.secret.otp) {
     await options.store.remove(options.table, { id, sub })
+  } else {
+    // TODO enable lastused?
+    // const now = nowInSeconds()
+    // await options.store.update(
+    //   options.table,
+    //   { id, sub },
+    //   { update: now, lastused: now }
+    // )
   }
+
   await timeout
   if (!valid) throw new Error('401 Unauthorized')
   return { sub, id, encryptionKey, ...valid }
@@ -109,10 +120,11 @@ export const authenticate = async (username, secret, parentOptions) => {
 
 export const verifySecret = async (sub, id, parentOptions) => {
   // const type = parentOptions.id + '-' + parentOptions.secret.type
+  const now = nowInSeconds()
   await options.store.update(
     options.table,
     { id, sub },
-    { verify: nowInSeconds() }
+    { update: now, verify: now }
   )
 }
 

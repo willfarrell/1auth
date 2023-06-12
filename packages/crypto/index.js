@@ -259,16 +259,19 @@ export const makeSymetricKey = (assocData) => {
   return { encryptionKey, encryptedKey }
 }
 
+// assocData = sub or id
+export const encryptFields = (values, encryptedKey, assocData, fields = []) => {
+  // TODO optimize: don't decrypt encryptedKey more than once
+  for (const key of fields) {
+    values[key] &&= encrypt(values[key], encryptedKey, assocData)
+  }
+  return values
+}
+
 export const encrypt = (data, encryptedKey, assocData) => {
   if (!encryptedKey) return data
 
-  const encryptionKey = __decrypt(
-    encryptedKey,
-    Buffer.from(options.encryptionSharedKey, 'hex'),
-    assocData,
-    'hex',
-    'hex'
-  )
+  const encryptionKey = __decryptKey(encryptedKey, assocData)
   return __encrypt(
     data,
     Buffer.from(encryptionKey, 'hex'),
@@ -300,15 +303,17 @@ const __encrypt = (
   )
 }
 
+export const decryptFields = (values, encryptedKey, assocData, fields = []) => {
+  // TODO optimize: don't decrypt encryptedKey more than once
+  for (const key of fields) {
+    values[key] &&= decrypt(values[key], encryptedKey, assocData)
+  }
+  return values
+}
+
 export const decrypt = (encryptedData, encryptedKey, assocData) => {
   if (!options.encryptionSharedKey || !encryptedKey) return encryptedData
-  const encryptionKey = __decrypt(
-    encryptedKey,
-    Buffer.from(options.encryptionSharedKey, 'hex'),
-    assocData,
-    'hex',
-    'hex'
-  )
+  const encryptionKey = __decryptKey(encryptedKey, assocData)
   const data = __decrypt(
     encryptedData,
     Buffer.from(encryptionKey, 'hex'),
@@ -318,6 +323,15 @@ export const decrypt = (encryptedData, encryptedKey, assocData) => {
   )
   return data
 }
+
+const __decryptKey = (encryptedKey, assocData) =>
+  __decrypt(
+    encryptedKey,
+    Buffer.from(options.encryptionSharedKey, 'hex'),
+    assocData,
+    'hex',
+    'hex'
+  )
 
 const __decrypt = (
   data,

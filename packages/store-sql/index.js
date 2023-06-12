@@ -55,6 +55,7 @@ const normalizeValues = (values) => {
   values.create &&= new Date(values.create * 1000).toISOString()
   values.update &&= new Date(values.update * 1000).toISOString()
   values.verify &&= new Date(values.verify * 1000).toISOString()
+  // values.lastused &&= new Date(values.lastused * 1000).toISOString()
   values.expire &&= new Date(values.expire * 1000).toISOString()
 }
 

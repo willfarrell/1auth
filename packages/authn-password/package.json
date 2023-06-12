@@ -1,6 +1,6 @@
 {
   "name": "@1auth/authn-password",
-  "version": "0.0.0-alpha.10",
+  "version": "0.0.0-alpha.11",
   "description": "",
   "type": "module",
   "engines": {
@@ -50,8 +50,8 @@
   "homepage": "https://github.com/willfarrell/1auth",
   "gitHead": "7a6c0fbb8ab71d6a2171e678697de9f237568431",
   "dependencies": {
-    "@1auth/authn": "0.0.0-alpha.10",
-    "@1auth/crypto": "0.0.0-alpha.10",
+    "@1auth/authn": "0.0.0-alpha.11",
+    "@1auth/crypto": "0.0.0-alpha.11",
     "@zxcvbn-ts/core": "3.0.1",
     "@zxcvbn-ts/language-common": "3.0.2",
     "@zxcvbn-ts/language-en": "3.0.1",

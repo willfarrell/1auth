@@ -2,8 +2,8 @@ import {
   subject,
   makeSymetricKey,
   makeAsymmetricKeys,
-  encrypt,
-  decrypt
+  encryptFields,
+  decryptFields
 } from '@1auth/crypto'
 
 const options = {
@@ -24,9 +24,7 @@ export const exists = async (sub) => {
 
 export const lookup = async (sub) => {
   const item = options.store.select(options.table, { sub })
-  for (const key of options.encryptedKeys) {
-    item[key] = await decrypt(item[key], item.encryptionKey, sub)
-  }
+  decryptFields(item, item.encryptionKey, sub, options.encryptedKeys)
   delete item.encryptionKey
   delete item.privateKey
   return item
@@ -41,9 +39,8 @@ export const create = async (values = {}) => {
   const { encryptionKey, encryptedKey } = makeSymetricKey(sub)
   const { publicKey, privateKey } = await makeAsymmetricKeys(encryptionKey)
 
-  for (const key of options.encryptedKeys) {
-    values[key] &&= await encrypt(values[key], encryptionKey, sub)
-  }
+  // TODO optimize: don't decrypt encryptionKey
+  encryptFields(values, encryptedKey, sub, options.encryptedKeys)
 
   await options.store.insert(options.table, {
     create: now, // allow use for import
@@ -68,9 +65,8 @@ export const update = async (sub, values = {}) => {
     sub
   })
 
-  for (const key of options.encryptedKeys) {
-    values[key] &&= await encrypt(values[key], encryptionKey, sub)
-  }
+  encryptFields(values, encryptionKey, sub, options.encryptedKeys)
+
   await options.store.update(
     options.table,
     { sub },
