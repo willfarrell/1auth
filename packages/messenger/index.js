@@ -30,7 +30,11 @@ export const exists = async (value) => {
 }
 
 export const lookup = async (sub, type) => {
-  return options.store.selectList(options.table, { sub, type }) // { sub, type }
+  const filters = { sub }
+  if (type) {
+    filters.type = type
+  }
+  return options.store.selectList(options.table, filters) // { sub, type }
 }
 
 // TODO everything below, update email to build on top of
