@@ -57,10 +57,10 @@ export const create = async (sub, emailAddress) => {
   const emailAddressExists = await options.store.select(options.table, {
     digest: emailAddressDigest
   })
-  if (emailAddressExists?.sub === sub && emailAddressExists?.verify) {
+  if (emailAddressExists?.verify) {
     await options.notify.trigger('messenger-emailAddress-exists', sub)
     return
-  } else if (emailAddressExists?.verify) {
+  } else if (emailAddressExists?.sub === sub) {
     await createToken(sub, emailAddressExists.id)
     return emailAddressExists.id
   }

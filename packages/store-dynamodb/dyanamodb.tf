@@ -122,7 +122,7 @@ resource "aws_dynamodb_table" "credentials" {
 	  range_key        = "type"
 	  projection_type = "INCLUDE"
 	  non_key_attributes = [
-	    "encryptionKey", "value", "name", "create", "expire", 
+	    "encryptionKey", "value", "name", "create", "expire", "verify",
       "challenge" # For WebAuthn
 	  ]
   }

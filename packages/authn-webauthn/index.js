@@ -125,7 +125,7 @@ export const authenticateOptions = async (sub) => {
     allowCredentials,
     userVerification: 'preferred'
   })
-  // TODO find a better way, not efficient
+  // TODO find a better way, not efficient or save as it's own OTP
   await options.store.update(
     options.table,
     { id, sub },
