@@ -5,7 +5,9 @@ const options = {
   notify: undefined,
   table: 'sessions',
   cache: true,
-  expire: session.expire
+  expire: session.expire,
+  checkMetadata: (oldSession, newSession) =>
+    JSON.stringify(oldSession) === JSON.stringify(newSession)
 }
 const cache = {}
 
@@ -32,6 +34,7 @@ export const create = async (sub, value = {}) => {
   if (options.cache) {
     cache[id] = { sub, expire: params.expire }
   }
+
   if (value) {
     const { encryptedKey } = makeSymetricKey(sub)
     params.encryptionKey = encryptedKey
@@ -43,9 +46,15 @@ export const create = async (sub, value = {}) => {
   return params
 }
 
-// to promote when on boarding
-export const update = async (sub, id) => {
-  await options.store.update(options.table, { id }, { sub })
+// Before creating a new session, check if metadata is new
+export const check = async (sub, value) => {
+  const sessions = await list(sub)
+  for (const session of sessions) {
+    if (options.checkMetadata(session, value)) {
+      return
+    }
+  }
+  options.notify.trigger('authn-session-new-device', sub)
 }
 
 export const lookup = async (id, meta) => {
