@@ -50,7 +50,7 @@ export const create = async (sub, value = {}) => {
 export const check = async (sub, value) => {
   const sessions = await list(sub)
   for (const session of sessions) {
-    if (options.checkMetadata(session, value)) {
+    if (options.checkMetadata(session.value, value)) {
       return
     }
   }
