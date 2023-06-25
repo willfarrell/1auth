@@ -100,17 +100,17 @@ export const authenticate = async (username, secret, parentOptions) => {
     }
   }
 
-  // delete OTP to prevent re-use
   if (parentOptions.secret.otp) {
+    // delete OTP to prevent re-use
     await options.store.remove(options.table, { id, sub })
-  } else {
-    // TODO enable lastused?
-    // const now = nowInSeconds()
-    // await options.store.update(
-    //   options.table,
-    //   { id, sub },
-    //   { update: now, lastused: now }
-    // )
+  } else if (valid && parentOptions.id !== 'WebAuthn') {
+    // WebAuthn has to update, skip here
+    const now = nowInSeconds()
+    await options.store.update(
+      options.table,
+      { id, sub },
+      { update: now, lastused: now }
+    )
   }
 
   await timeout

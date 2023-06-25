@@ -145,7 +145,7 @@ export const authenticate = async (username, secret) => {
   )
   await authnUpdate(
     options.secret.type,
-    { sub, id, encryptionKey, value },
+    { sub, id, encryptionKey, value, lastused: nowInSeconds() },
     options
   )
   return sub
