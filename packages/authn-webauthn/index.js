@@ -273,9 +273,11 @@ const jsonEncodeSecret = (value) => {
   value.credentialID = credentialNormalize(value.credentialID)
   value.credentialPublicKey = credentialNormalize(value.credentialPublicKey)
   value.attestationObject = credentialNormalize(value.attestationObject)
+  return value
 }
 
 const jsonParseSecret = (value) => {
+  if (typeof value !== 'string') value = JSON.stringify(value)
   value = JSON.parse(value)
 
   value.credentialID = credentialBuffer(value.credentialID)
