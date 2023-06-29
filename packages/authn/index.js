@@ -4,12 +4,14 @@ import { randomId, makeSymetricKey } from '@1auth/crypto'
 export const options = {
   store: undefined,
   notify: undefined,
-  table: 'credentials',
+  table: 'authentications',
+  idGenerate: true,
+  idPrefix: 'authn',
   authenticationDuration: 500, // min duration authentication should take (ms)
   usernameExists: [] // hooks to allow what to be used as a username
 }
 export default (params) => {
-  Object.assign(options, params)
+  Object.assign(options, { id: randomId }, params)
 }
 export const getOptions = () => options
 
@@ -19,7 +21,6 @@ export const create = async (
   parentOptions
 ) => {
   const now = nowInSeconds()
-  id ??= await randomId.create()
   const type = parentOptions.id + '-' + parentOptions[credentialType].type
   const otp = parentOptions[credentialType].otp
   const expire = parentOptions[credentialType].expire
@@ -32,10 +33,9 @@ export const create = async (
     encryptedKey,
     sub
   )
-  await options.store.insert(options.table, {
+  const params = {
     expire,
     ...rest,
-    id,
     sub,
     type,
     otp,
@@ -43,7 +43,13 @@ export const create = async (
     value: encryptedData,
     create: now,
     update: now
-  })
+  }
+  if (options.idGenerate) {
+    id ??= await options.id.create(options.idPrefix)
+    params.id = id
+  }
+  // TODO returning id
+  await options.store.insert(options.table, params)
   return id
 }
 

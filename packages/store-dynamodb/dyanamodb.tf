@@ -79,10 +79,10 @@ resource "aws_dynamodb_table" "sessions" {
 	  type = "S"
   }
   
-  #ttl {
-	#  attribute_name = "remove"
-	#  enabled = true
-  #}
+  ttl {
+	  attribute_name = "ttl"
+	  enabled = true
+  }
   
   server_side_encryption {
 	 enabled = true
@@ -137,10 +137,10 @@ resource "aws_dynamodb_table" "credentials" {
 	  type = "S"
   }
   
-  #ttl {
-	#  attribute_name = "remove"
-	#  enabled = true
-  #}
+  ttl {
+	  attribute_name = "ttl"
+	  enabled = true
+  }
   
   server_side_encryption {
 	enabled = true

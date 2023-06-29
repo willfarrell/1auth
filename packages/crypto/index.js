@@ -46,7 +46,7 @@ const generateKeyPair = promisify(generateKeyPairCallback)
 export const characterPoolSize = {
   keyboard: 94, // (26 + 10 + 11) * 2
   alphaNumeric: 62, // (26 + 10) * 2
-  base64: 64, // (26 + 10) * 2 + 2
+  base64: 64, // (26 * 2 + 10 + 2
   hex: 16,
   numeric: 10
 }
@@ -96,14 +96,17 @@ export const randomId = {
   type: 'id',
   entropy: 64,
   charPool: characterPoolSize.alphaNumeric,
-  create: async () => randomAlphaNumeric(randomId.entropy)
+  // TODO update to use https://github.com/jetpack-io/typeid
+  create: async (prefix) =>
+    (prefix ? prefix + '_' : '') + randomAlphaNumeric(randomId.entropy)
 }
 
 export const subject = {
   type: 'id',
   entropy: 64,
   charPool: characterPoolSize.alphaNumeric,
-  create: async () => randomAlphaNumeric(subject.entropy)
+  create: async (prefix) =>
+    (prefix ? prefix + '_' : '') + randomAlphaNumeric(subject.entropy)
 }
 
 export const session = {
@@ -111,7 +114,8 @@ export const session = {
   entropy: 128, // ASVS 3.2.2
   charPool: characterPoolSize.alphaNumeric,
   expire: 15 * 60,
-  create: async () => randomAlphaNumeric(session.entropy)
+  create: async (prefix) =>
+    (prefix ? prefix + '_' : '') + randomAlphaNumeric(session.entropy)
 }
 
 export const passwordSecret = {

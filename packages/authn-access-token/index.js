@@ -7,7 +7,7 @@ import {
 } from '@1auth/authn'
 
 const options = {
-  id: 'access-token',
+  id: 'accessToken',
   prefix: 'pat' // Personal Access Token
 }
 export default (params) => {

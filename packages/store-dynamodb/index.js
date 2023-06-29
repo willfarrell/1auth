@@ -13,7 +13,11 @@ const marshallOptions = { removeUndefinedValues: true }
 
 const options = {
   log: false,
-  client: new DynamoDBClient()
+  client: new DynamoDBClient(),
+  // number of seconds after expire before removal
+  // 10d chosen based on EFF DNT Policy
+  timeToLiveExpireOffset: 10 * 24 * 60 * 60,
+  timeToLiveKey: undefined
 }
 
 export default (params) => {
@@ -76,6 +80,10 @@ export const select = async (table, filters = {}) => {
 }
 
 export const insert = async (table, params = {}) => {
+  if (params.expire && options.timeToLiveKey) {
+    params[options.timeToLiveKey] =
+      params.expire + options.timeToLiveExpireOffset
+  }
   const commandParams = {
     TableName: table,
     Item: marshall(params, marshallOptions)
@@ -84,6 +92,7 @@ export const insert = async (table, params = {}) => {
     console.log('PutItemCommand', commandParams)
   }
   await options.client.send(new PutItemCommand(commandParams))
+  return params.id
 }
 
 export const update = async (table, filters = {}, params = {}) => {
@@ -91,6 +100,10 @@ export const update = async (table, filters = {}, params = {}) => {
     return Promise.allSettled(
       filters.id.map((id) => update(table, { ...filters, id }, params))
     )
+  }
+  if (params.expire && options.timeToLiveKey) {
+    params[options.timeToLiveKey] =
+      params.expire + options.timeToLiveExpireOffset
   }
   const {
     ExpressionAttributeNames,
@@ -183,30 +196,3 @@ const makeQueryParams = (filters = {}, select = []) => {
     ExpressionAttributeValues: expressionAttributeValues
   }
 }
-
-// const makeQueryParams = (
-//   mediaName,
-//   ecosystem,
-//   characteristicName,
-//   methodSpeciation,
-//   sampleFraction,
-//   unit,
-//   region
-// ) => {
-//   return {
-//     TableName: 'guidelines',
-//     IndexName: 'parameter',
-//     ProjectionExpression:
-//       'ecosystem, mediaName, publisher, #status, protectionLevel, #value', // return keys
-//     KeyConditionExpression: 'parameterKey = :parameterKey',
-//     FilterExpression: 'contains(regionsKey, :region)',
-//     ExpressionAttributeNames: {
-//       '#status': 'status',
-//       '#value': 'value'
-//     },
-//     ExpressionAttributeValues: {
-//       ':parameterKey': `${mediaName}#${ecosystem}#${characteristicName}#${methodSpeciation}#${sampleFraction}#${unit}`,
-//       ':region': region + '#'
-//     }
-//   }
-// }

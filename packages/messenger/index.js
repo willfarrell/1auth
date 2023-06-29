@@ -15,11 +15,13 @@ import {
 
 export const options = {
   table: 'messengers',
+  idGenerate: true,
+  idPrefix: 'messenger',
   store: undefined,
   notify: undefined
 }
 export default (params) => {
-  Object.assign(options, { token: outOfBandToken }, params)
+  Object.assign(options, { id: randomId, token: outOfBandToken }, params)
 }
 export const getOptions = () => options
 
@@ -51,11 +53,10 @@ export const create = async (sub, type, value) => {
     return valueExists.id
   }
   const now = nowInSeconds()
-  const id = await randomId.create()
+
   const { encryptedKey } = makeSymetricKey(sub)
   const encryptedData = encrypt(value, encryptedKey, sub)
-  await options.store.insert(options.table, {
-    id,
+  const params = {
     sub,
     type: options.id,
     encryptionKey: encryptedKey,
@@ -63,7 +64,11 @@ export const create = async (sub, type, value) => {
     digest: valueDigest,
     create: now,
     update: now // in case new digests need to be created
-  })
+  }
+  if (options.idGenerate) {
+    params.id = await options.id.create(options.idPrefix)
+  }
+  const id = await options.store.insert(options.table, params)
   await createToken(sub, id)
   return id
 }

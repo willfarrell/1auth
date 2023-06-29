@@ -1,5 +1,3 @@
-// import { assign } from 'xstate'
-
 import {
   randomId,
   outOfBandToken,

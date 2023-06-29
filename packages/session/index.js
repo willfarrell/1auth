@@ -1,18 +1,22 @@
-import { session, makeSymetricKey, encrypt } from '@1auth/crypto'
+import {
+  session as randonSession,
+  makeSymetricKey,
+  encrypt
+} from '@1auth/crypto'
 
 const options = {
   store: undefined,
   notify: undefined,
   table: 'sessions',
-  cache: true,
-  expire: session.expire,
+  idGenerate: true, // turn off to allow DB to handle
+  idPrefix: 'session_',
+  expire: randonSession.expire,
   checkMetadata: (oldSession, newSession) =>
     JSON.stringify(oldSession) === JSON.stringify(newSession)
 }
-const cache = {}
 
 export default (params) => {
-  Object.assign(options, { id: session }, params)
+  Object.assign(options, { id: randonSession }, params)
 }
 
 /**
@@ -22,17 +26,15 @@ export default (params) => {
  * @returns {Promise<*&{sub, create: number, update: number, id: *}>}
  */
 export const create = async (sub, value = {}) => {
-  const id = await options.id.create()
   const now = nowInSeconds()
   const params = {
-    id,
     sub,
     create: now,
     update: now,
     expire: now + options.expire
   }
-  if (options.cache) {
-    cache[id] = { sub, expire: params.expire }
+  if (options.idGenerate) {
+    params.id = await options.id.create(options.idPrefix)
   }
 
   if (value) {
@@ -61,7 +63,6 @@ export const lookup = async (id, meta) => {
   const now = nowInSeconds()
   let session
   if (id) {
-    session = cache[id]
     session ??= await options.store.select(options.table, { id })
     if (session.expire < now) {
       return

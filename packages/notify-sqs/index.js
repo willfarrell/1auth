@@ -28,7 +28,7 @@ export const trigger = async (id, sub, data = {}) => {
 
   const commandParams = {
     QueueUrl: queueUrl,
-    // MessageGroupId: suffix,
+    // MessageGroupId: sub ?? '',
     // MessageDeduplicationId: `${suffix}_${new Date()
     //   .toISOString()
     //   .substring(0, 10)}_update`,
