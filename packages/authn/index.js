@@ -48,9 +48,8 @@ export const create = async (
     id ??= await options.id.create(options.idPrefix)
     params.id = id
   }
-  // TODO returning id
-  await options.store.insert(options.table, params)
-  return id
+  const { id: serialId } = await options.store.insert(options.table, params)
+  return serialId
 }
 
 export const update = async (

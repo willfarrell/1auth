@@ -68,7 +68,7 @@ export const create = async (sub, type, value) => {
   if (options.idGenerate) {
     params.id = await options.id.create(options.idPrefix)
   }
-  const id = await options.store.insert(options.table, params)
+  const { id } = await options.store.insert(options.table, params)
   await createToken(sub, id)
   return id
 }

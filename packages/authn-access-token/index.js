@@ -15,11 +15,11 @@ export default (params) => {
 }
 
 export const exists = async (secret) => {
-  return options.store.exists(options.table, {
-    id: await __id(secret)
-  })
+  const digest = await createDigest(secret)
+  return options.store.exists(options.table, { digest })
 }
 
+// authenticate(accessToken, accessToken)
 export const authenticate = async (username, secret) => {
   const { sub } = await authnVerifyAuthentication(username, secret, options)
   return sub
@@ -27,11 +27,11 @@ export const authenticate = async (username, secret) => {
 
 export const create = async (sub, name, expire = options.secret.expire) => {
   const secret = options.prefix + '-' + (await options.secret.create())
-  const id = await __id(secret)
   const now = nowInSeconds()
+  const digest = await createDigest(secret)
   await authnCreate(
     options.secret.type,
-    { id, sub, name, value: secret, verify: now, expire: now + expire },
+    { sub, name, value: secret, digest, verify: now, expire: now + expire },
     options
   )
   await options.notify.trigger('account-access-token-create', sub)
@@ -48,10 +48,6 @@ export const list = async (sub, type = options.id + '-secret') => {
 export const remove = async (sub, id) => {
   await authnExpire(sub, id, options)
   await options.notify.trigger('account-access-token-remove', sub)
-}
-
-const __id = async (secret) => {
-  return createDigest(secret).then((digest) => digest.split(':')[1])
 }
 
 const nowInSeconds = () => Math.floor(Date.now() / 1000)

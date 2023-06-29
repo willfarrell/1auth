@@ -1,9 +1,8 @@
 const options = {
   log: false,
-  useGeneratedIdentityAsId: false, // aka SERIAL
   query: (sql, parameters) => {
     console.log('sql', sql, parameters)
-    return {}
+    return sql.includes('SELECT') ? [] : { id: 'sql' }
   }
 }
 
@@ -29,12 +28,9 @@ export const select = async (table, filters = {}, fields = []) => {
 }
 
 export const insert = async (table, values = {}) => {
-  if (options.useGeneratedIdentityAsId) {
-    delete values.id
-  }
   normalizeValues(values)
   const { insert, parameters } = makeSqlParts({}, values)
-  const sql = `INSERT INTO ${table} ${insert}`
+  const sql = `INSERT INTO ${table} ${insert} RETURNING id`
   return await options.query(sql, parameters)
 }
 
