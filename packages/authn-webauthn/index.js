@@ -45,7 +45,7 @@ const options = {
           })
         if (!verified) throw new Error('Failed verifyAuthenticationResponse')
         authenticator.counter = authenticationInfo.newCounter
-        return authenticator
+        return jsonEncodeSecret(authenticator)
       } catch (e) {
         console.error('webauthn.secret.verify', e)
         return false

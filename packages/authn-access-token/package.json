@@ -1,6 +1,6 @@
 {
   "name": "@1auth/authn-access-token",
-  "version": "0.0.0-alpha.20",
+  "version": "0.0.0-alpha.21",
   "description": "",
   "type": "module",
   "engines": {
@@ -50,7 +50,7 @@
   "homepage": "https://github.com/willfarrell/1auth",
   "gitHead": "7a6c0fbb8ab71d6a2171e678697de9f237568431",
   "dependencies": {
-    "@1auth/authn": "0.0.0-alpha.20",
-    "@1auth/crypto": "0.0.0-alpha.20"
+    "@1auth/authn": "0.0.0-alpha.21",
+    "@1auth/crypto": "0.0.0-alpha.21"
   }
 }
