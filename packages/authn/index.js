@@ -2,16 +2,18 @@ import { setTimeout } from 'node:timers/promises'
 import { randomId, makeSymetricKey } from '@1auth/crypto'
 
 export const options = {
+  id: undefined,
   store: undefined,
   notify: undefined,
   table: 'authentications',
   idGenerate: true,
   idPrefix: 'authn',
+  randomId: undefined,
   authenticationDuration: 500, // min duration authentication should take (ms)
   usernameExists: [] // hooks to allow what to be used as a username
 }
 export default (params) => {
-  Object.assign(options, { id: randomId }, params)
+  Object.assign(options, { randomId }, params)
 }
 export const getOptions = () => options
 
@@ -45,7 +47,7 @@ export const create = async (
     update: now
   }
   if (options.idGenerate) {
-    id ??= await options.id.create(options.idPrefix)
+    id ??= await options.randomId.create(options.idPrefix)
     params.id = id
   }
   const { id: serialId } = await options.store.insert(options.table, params)

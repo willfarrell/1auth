@@ -1,6 +1,6 @@
 {
   "name": "@1auth/store-sql",
-  "version": "0.0.0-alpha.19",
+  "version": "0.0.0-alpha.20",
   "description": "",
   "type": "module",
   "engines": {

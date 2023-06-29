@@ -14,11 +14,13 @@ const options = {
   idGenerate: true,
   idPrefix: 'account',
   subPrefix: 'sub',
+  randomId: undefined,
+  randomSubject: undefined,
   encryptedKeys: []
 }
 
 export default (params) => {
-  Object.assign(options, { id: randomId, sub: randomSubject }, params)
+  Object.assign(options, { randomId, randomSubject }, params)
 }
 export const getOptions = () => options
 
@@ -35,7 +37,7 @@ export const lookup = async (sub) => {
 }
 
 export const create = async (values = {}) => {
-  const sub = await options.sub.create(options.subPrefix)
+  const sub = await options.randomSubject.create(options.subPrefix)
 
   const { encryptionKey, encryptedKey } = makeSymetricKey(sub)
   const { publicKey, privateKey } = await makeAsymmetricKeys(encryptionKey)
@@ -54,7 +56,7 @@ export const create = async (values = {}) => {
     update: now
   }
   if (options.idGenerate) {
-    params.id = await options.id.create(options.idPrefix)
+    params.id = await options.randomId.create(options.idPrefix)
   }
   await options.store.insert(options.table, params)
 

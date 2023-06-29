@@ -10,13 +10,14 @@ const options = {
   table: 'sessions',
   idGenerate: true, // turn off to allow DB to handle
   idPrefix: 'session_',
+  randonId: undefined,
   expire: randonSession.expire,
   checkMetadata: (oldSession, newSession) =>
     JSON.stringify(oldSession) === JSON.stringify(newSession)
 }
 
 export default (params) => {
-  Object.assign(options, { id: randonSession }, params)
+  Object.assign(options, { randonId: randonSession }, params)
 }
 
 /**
@@ -34,7 +35,7 @@ export const create = async (sub, value = {}) => {
     expire: now + options.expire
   }
   if (options.idGenerate) {
-    params.id = await options.id.create(options.idPrefix)
+    params.id = await options.randonId.create(options.idPrefix)
   }
 
   if (value) {

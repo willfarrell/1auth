@@ -14,14 +14,16 @@ import {
 } from '@1auth/authn'
 
 export const options = {
+  store: undefined,
+  notify: undefined,
   table: 'messengers',
   idGenerate: true,
   idPrefix: 'messenger',
-  store: undefined,
-  notify: undefined
+  randomId: undefined,
+  token: undefined
 }
 export default (params) => {
-  Object.assign(options, { id: randomId, token: outOfBandToken }, params)
+  Object.assign(options, { randomId, token: outOfBandToken }, params)
 }
 export const getOptions = () => options
 
@@ -66,7 +68,7 @@ export const create = async (sub, type, value) => {
     update: now // in case new digests need to be created
   }
   if (options.idGenerate) {
-    params.id = await options.id.create(options.idPrefix)
+    params.id = await options.randomId.create(options.idPrefix)
   }
   const { id } = await options.store.insert(options.table, params)
   await createToken(sub, id)

@@ -77,7 +77,7 @@ const options = {
         )
         if (!verified) throw new Error('Failed verifyRegistrationResponse')
         // registrationInfo.challenge = expectedChallenge
-        return registrationInfo
+        return jsonEncodeSecret(registrationInfo)
       } catch (e) {
         console.error('webauthn.token.verify', e)
         return false
@@ -269,6 +269,12 @@ export const remove = async (sub, id) => {
   await options.notify.trigger('account-webauthn-remove', sub)
 }
 
+const jsonEncodeSecret = (value) => {
+  value.credentialID = credentialNormalize(value.credentialID)
+  value.credentialPublicKey = credentialNormalize(value.credentialPublicKey)
+  value.attestationObject = credentialNormalize(value.attestationObject)
+}
+
 const jsonParseSecret = (value) => {
   value = JSON.parse(value)
 
@@ -278,12 +284,16 @@ const jsonParseSecret = (value) => {
   return value
 }
 
-const credentialBuffer = (value) => {
+const credentialNormalize = (value) => {
   let arr = value.data
   if (!arr) {
     arr = Object.values(value)
   }
-  return Buffer.from(arr)
+  return arr
+}
+
+const credentialBuffer = (value) => {
+  return Buffer.from(credentialNormalize(value))
 }
 
 const nowInSeconds = () => Math.floor(Date.now() / 1000)
