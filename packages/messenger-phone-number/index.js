@@ -78,7 +78,8 @@ export const sendToken = async (sub, id) => {
   )
   await options.notify.trigger('account-phone-number-verify', sub, {
     id,
-    token
+    token,
+    expire: options.token.expire
   })
   return id
 }

@@ -2,7 +2,6 @@ import { setTimeout } from 'node:timers/promises'
 import { randomId, makeSymetricKey } from '@1auth/crypto'
 
 export const options = {
-  id: undefined,
   store: undefined,
   notify: undefined,
   table: 'authentications',
