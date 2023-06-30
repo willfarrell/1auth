@@ -41,7 +41,7 @@ export const create = async (sub, phoneNumber, onboard = false) => {
   }
 
   if (await exists(phoneNumber)) {
-    await options.notify.trigger('account-phone-number-exists', sub)
+    await options.notify.trigger('messenger-phone-number-exists', sub)
     return
   }
 
@@ -55,7 +55,7 @@ export const create = async (sub, phoneNumber, onboard = false) => {
     create: nowInSeconds()
   })
   if (!onboard) {
-    await options.notify.trigger('account-phone-number-create', sub)
+    await options.notify.trigger('messenger-phone-number-create', sub)
   }
   return sendToken(sub)
 }
@@ -63,7 +63,7 @@ export const create = async (sub, phoneNumber, onboard = false) => {
 export const remove = async (sub, id) => {
   await options.store.remove(options.table, { id, sub })
   await authnExpire(sub, id, options)
-  await options.notify.trigger('account-phone-number-removed', sub)
+  await options.notify.trigger('messenger-phone-number-removed', sub)
 }
 
 export const sendToken = async (sub, id) => {
@@ -76,7 +76,7 @@ export const sendToken = async (sub, id) => {
     { id, sub, value: token },
     options
   )
-  await options.notify.trigger('account-phone-number-verify', sub, {
+  await options.notify.trigger('messenger-phone-number-verify', sub, {
     id,
     token,
     expire: options.token.expire

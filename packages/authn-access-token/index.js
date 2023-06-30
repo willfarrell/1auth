@@ -34,7 +34,7 @@ export const create = async (sub, name, expire = options.secret.expire) => {
     { sub, name, value: secret, digest, verify: now, expire: now + expire },
     options
   )
-  await options.notify.trigger('account-access-token-create', sub)
+  await options.notify.trigger('authn-access-token-create', sub)
   return secret
 }
 
@@ -47,7 +47,7 @@ export const list = async (sub, type = options.id + '-secret') => {
 
 export const remove = async (sub, id) => {
   await authnExpire(sub, id, options)
-  await options.notify.trigger('account-access-token-remove', sub)
+  await options.notify.trigger('authn-access-token-remove', sub)
 }
 
 const nowInSeconds = () => Math.floor(Date.now() / 1000)

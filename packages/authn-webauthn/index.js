@@ -256,7 +256,7 @@ export const create = async (sub, name, value, onboard = false) => {
   )
 
   if (!onboard) {
-    await options.notify.trigger('account-webauthn-create', sub) // TODO add in user.name
+    await options.notify.trigger('authn-webauthn-create', sub) // TODO add in user.name
   }
 }
 
@@ -266,7 +266,7 @@ export const list = async (sub, type = options.id + '-secret') => {
 
 export const remove = async (sub, id) => {
   await authnExpire(sub, id, options)
-  await options.notify.trigger('account-webauthn-remove', sub)
+  await options.notify.trigger('authn-webauthn-remove', sub)
 }
 
 const jsonEncodeSecret = (value) => {

@@ -58,7 +58,7 @@ export const create = async (sub, onboard = false) => {
     )
   await authnCreate(options.secret.type, { sub, value }, options)
   if (!onboard) {
-    await options.notify.trigger('account-totp-create', sub)
+    await options.notify.trigger('authn-totp-create', sub)
   }
   return value
 }
@@ -69,7 +69,7 @@ export const list = async (sub) => {
 
 export const remove = async (sub, id) => {
   await authnExpire(sub, id, options)
-  await options.notify.trigger('account-totp-removed', sub)
+  await options.notify.trigger('authn-totp-removed', sub)
 }
 
 export const __totp = () => {
