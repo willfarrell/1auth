@@ -67,14 +67,14 @@ export const makeSqlParts = (filters = {}, values = {}, fields = []) => {
   const updateParts = []
   for (const key of keys) {
     insertParts.push('$' + idx)
-    updateParts.push(key + ' = $' + idx)
+    updateParts.push('"' + key + '" = $' + idx)
     idx++
   }
 
   const insert =
     '("' + keys.join('", "') + '") VALUES (' + insertParts.join(', ') + ')'
 
-  const update = '"' + updateParts.join('", "') + '"'
+  const update = updateParts.join(', ')
 
   parameters = parameters.concat(Object.values(values))
 
