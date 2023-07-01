@@ -74,7 +74,7 @@ export const makeSqlParts = (filters = {}, values = {}, fields = []) => {
   const insert =
     '("' + keys.join('", "') + '") VALUES (' + insertParts.join(', ') + ')'
 
-  const update = updateParts.join(', ')
+  const update = '"' + updateParts.join('", "') + '"'
 
   parameters = parameters.concat(Object.values(values))
 
@@ -83,11 +83,11 @@ export const makeSqlParts = (filters = {}, values = {}, fields = []) => {
     .map((key) => {
       if (Array.isArray(filters[key])) {
         let sql = filters[key].map((v, vidx) => '$' + idx++).join(',')
-        sql = key + ' IN (' + sql + ')'
+        sql = '"' + key + '" IN (' + sql + ')'
         parameters = parameters.concat(filters[key])
         return sql
       }
-      const sql = key + ' = $' + idx++
+      const sql = '"' + key + '" = $' + idx++
       parameters.push(filters[key])
       return sql
     })
