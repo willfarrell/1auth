@@ -109,7 +109,7 @@ export const createToken = async (sub, id) => {
   )
   await options.notify.trigger('messenger-emailAddress-verify', sub, {
     token,
-    expire: options.token.expire
+    expire: nowInSeconds() + options.token.expire
   })
   return id
 }

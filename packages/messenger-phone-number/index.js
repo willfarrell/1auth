@@ -79,7 +79,7 @@ export const sendToken = async (sub, id) => {
   await options.notify.trigger('messenger-phone-number-verify', sub, {
     id,
     token,
-    expire: options.token.expire
+    expire: nowInSeconds() + options.token.expire
   })
   return id
 }
