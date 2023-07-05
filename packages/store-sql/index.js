@@ -83,7 +83,7 @@ export const makeSqlParts = (filters = {}, values = {}, fields = []) => {
     .map((key) => {
       if (Array.isArray(filters[key])) {
         let sql = filters[key].map((v, vidx) => '$' + idx++).join(',')
-        sql = '"' + key + '" IN (' + sql + ')'
+        sql &&= '"' + key + '" IN (' + sql + ')'
         parameters = parameters.concat(filters[key])
         return sql
       }
@@ -91,6 +91,7 @@ export const makeSqlParts = (filters = {}, values = {}, fields = []) => {
       parameters.push(filters[key])
       return sql
     })
+    .filter((v) => v)
     .join(' AND ')
   where &&= `WHERE ${where}`
 
