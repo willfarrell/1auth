@@ -84,7 +84,7 @@ export const subject = async (username) => {
 }
 
 export const authenticate = async (username, secret, parentOptions) => {
-  const timeout = setTimeout(() => {}, options.authenticationDuration)
+  const timeout = setTimeout(options.authenticationDuration)
   const type = parentOptions.id + '-' + parentOptions.secret.type
 
   const sub = await subject(username)
@@ -95,7 +95,8 @@ export const authenticate = async (username, secret, parentOptions) => {
   })
   let valid, id, encryptionKey
   for (const credential of credentials) {
-    if (!credential.verify) continue
+    // non-opt credentials must be verified before use
+    if (!credential.otp && !credential.verify) continue
     let { value, encryptionKey: encryptedKey, ...rest } = credential
     value = await parentOptions.secret.decode(value, encryptedKey, sub)
     valid = await parentOptions.secret.verify(secret, value, rest)
@@ -135,7 +136,7 @@ export const verifySecret = async (sub, id, parentOptions) => {
 }
 
 export const verify = async (credentialType, sub, token, parentOptions) => {
-  const timeout = setTimeout(() => {}, options.authenticationDuration)
+  const timeout = setTimeout(options.authenticationDuration)
   const type = parentOptions.id + '-' + parentOptions[credentialType].type
   let id
   const credentials = await options.store.selectList(options.table, {
