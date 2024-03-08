@@ -1,6 +1,6 @@
 {
   "name": "@1auth/monorepo",
-  "version": "0.0.0-alpha.28",
+  "version": "0.0.0-alpha.29",
   "description": "",
   "private": true,
   "type": "module",
@@ -12,15 +12,15 @@
     "prepare": "husky install",
     "commit-msg": "commitlint --config commitlint.config.cjs --edit",
     "pre-commit": "lint-staged",
-    "install": "lerna bootstrap",
     "test": "c8 node --test packages",
     "lint": "prettier --write packages/*/*.js && standard --fix packages/*/*.js",
-    "lerna:rm": "npm run lerna:rm:node_modules && npm run lerna:rm:lock",
-    "lerna:rm:lock": "lerna exec -- rm -rf package-lock.json",
-    "lerna:rm:node_modules": "lerna exec -- rm -rf node_modules",
-    "lerna:update": "lerna exec --bail --concurrency 5 npm update && npm install",
-    "lerna:outdated": "lerna exec --concurrency 5 npm outdated",
-    "lerna:audit": "lerna exec --concurrency 2 npm audit fix",
+    "rm": "npm run lerna:rm:coverage && npm run lerna:rm:node_modules && npm run lerna:rm:lock",
+    "rm:coverage": "rm -rf coverage --workspaces",
+    "rm:lock": "rm -rf package-lock.json --workspaces",
+    "rm:node_modules": "rm -rf node_modules --workspaces",
+    "update": "npm update --workspaces && npm install --workspaces",
+    "outdated": "npm outdated --workspaces",
+    "audit": "npm audit fix --workspaces",
     "lerna:sync": "lerna exec --bail --concurrency 2 npm install && lerna publish --exact --yes --skip-npm --skip-git --repo-version $npm_package_version",
     "lerna:publish": "lerna publish --exact --yes --skip-git --repo-version $npm_package_version",
     "lerna:publish:next": "lerna publish --exact --yes --skip-git --repo-version $npm_package_version --dist-tag next"
@@ -56,10 +56,13 @@
     "benchmark": "^2.1.4",
     "c8": "^7.0.0",
     "husky": "^8.0.0",
-    "lerna": "^6.0.0",
+    "lerna": "^8.0.0",
     "lint-staged": "^13.0.0",
     "prettier": "^2.0.0",
     "sinon": "^15.0.0",
     "standard": "^17.0.0"
-  }
+  },
+  "workspaces": [
+    "packages/*"
+  ]
 }

@@ -121,7 +121,7 @@ export const authenticateOptions = async (sub) => {
     })
   } */
 
-  const clientOptions = generateAuthenticationOptions({
+  const clientOptions = await generateAuthenticationOptions({
     allowCredentials,
     userVerification: 'preferred'
   })
