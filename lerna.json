@@ -1,6 +1,5 @@
 {
-  "version": "0.0.0-alpha.29",
+  "version": "0.0.0-alpha.30",
   "packages": ["packages/*"],
-  "$schema": "node_modules/lerna/schemas/lerna-schema.json",
-  "useWorkspaces": false
+  "$schema": "node_modules/lerna/schemas/lerna-schema.json"
 }
