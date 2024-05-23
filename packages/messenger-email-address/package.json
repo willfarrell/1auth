@@ -53,6 +53,6 @@
     "@1auth/authn": "0.0.0-alpha.30",
     "@1auth/crypto": "0.0.0-alpha.30",
     "@1auth/messenger": "0.0.0-alpha.30",
-    "tr46": "4.1.0"
+    "tr46": "5.0.0"
   }
 }

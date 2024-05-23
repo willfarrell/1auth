@@ -16,7 +16,7 @@ const options = {
   encryptionSharedKey: '',
   encryptionMethod: 'chacha20-poly1305', // AES-256 GCM (aes-256-gcm) or ChaCha20-Poly1305 (chacha20-poly1305)
 
-  digestAlgorithm: 'sha3-256',
+  digestAlgorithm: 'sha3-384',
   digestSalt: ''
 }
 
@@ -384,14 +384,14 @@ export const makeAsymmetricKeys = async (encryptionKey) => {
   return { publicKey, privateKey }
 }
 
-export const makeSignature = (data, privateKey, algorithm = 'SHA3-256') => {
+export const makeSignature = (data, privateKey, algorithm = 'SHA3-384') => {
   return sign(algorithm, Buffer.from(data), privateKey).toString('base64')
 }
 export const verifySignature = (
   data,
   publicKey,
   signature,
-  algorithm = 'SHA3-256'
+  algorithm = 'SHA3-384'
 ) => {
   return verify(
     algorithm,

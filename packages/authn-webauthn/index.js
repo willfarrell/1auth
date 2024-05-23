@@ -15,6 +15,7 @@ import {
   generateAuthenticationOptions,
   verifyAuthenticationResponse
 } from '@simplewebauthn/server'
+import { isoUint8Array } from '@simplewebauthn/server/helpers'
 
 const options = {
   id: 'WebAuthn',
@@ -33,6 +34,7 @@ const options = {
     decode: async (encryptedData, encryptedKey, sub) =>
       jsonParseSecret(await decrypt(encryptedData, encryptedKey, sub)),
     verify: async (response, authenticator, rest) => {
+      console.log('verify', authenticator)
       try {
         const { verified, authenticationInfo } =
           await verifyAuthenticationResponse({
@@ -106,6 +108,7 @@ export const authenticateOptions = async (sub) => {
       sub
     )
     id.push(credential.id)
+    console.log('authenticateOptions', value)
     allowCredentials.push({
       id: value.credentialID,
       type: 'public-key'
@@ -122,6 +125,7 @@ export const authenticateOptions = async (sub) => {
   } */
 
   const clientOptions = await generateAuthenticationOptions({
+    rpID: new URL(options.origin).hostname,
     allowCredentials,
     userVerification: 'preferred'
   })
@@ -165,6 +169,7 @@ export const createToken = async (sub) => {
       credential.encryptionKey,
       sub
     )
+    console.log('createToken', value)
     excludeCredentials.push({
       id: value.credentialID,
       type: 'public-key'
@@ -201,10 +206,10 @@ export const createToken = async (sub) => {
     // ]
   }) */
 
-  const clientOptions = generateRegistrationOptions({
+  const clientOptions = await generateRegistrationOptions({
     rpName: options.name,
     rpID: new URL(options.origin).hostname,
-    userID: sub,
+    userID: isoUint8Array.fromUTF8String(sub),
     userName: username,
     attestationType: 'none',
     excludeCredentials,
@@ -270,7 +275,7 @@ export const remove = async (sub, id) => {
 }
 
 const jsonEncodeSecret = (value) => {
-  value.credentialID = credentialNormalize(value.credentialID)
+  // value.credentialID = credentialNormalize(value.credentialID);
   value.credentialPublicKey = credentialNormalize(value.credentialPublicKey)
   value.attestationObject = credentialNormalize(value.attestationObject)
   return value
@@ -280,7 +285,7 @@ const jsonParseSecret = (value) => {
   if (typeof value !== 'string') value = JSON.stringify(value)
   value = JSON.parse(value)
 
-  value.credentialID = credentialBuffer(value.credentialID)
+  // value.credentialID = credentialBuffer(value.credentialID);
   value.credentialPublicKey = credentialBuffer(value.credentialPublicKey)
   value.attestationObject = credentialBuffer(value.attestationObject)
   return value
