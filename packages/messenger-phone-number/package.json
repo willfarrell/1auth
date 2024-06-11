@@ -1,6 +1,6 @@
 {
   "name": "@1auth/messenger-phone-number",
-  "version": "0.0.0-alpha.31",
+  "version": "0.0.0-alpha.32",
   "description": "",
   "type": "module",
   "engines": {
@@ -47,6 +47,6 @@
   "gitHead": "7a6c0fbb8ab71d6a2171e678697de9f237568431",
   "dependencies": {
     "country-telephone-data": "0.6.3",
-    "imask": "7.6.0"
+    "imask": "7.6.1"
   }
 }

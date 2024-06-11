@@ -13,6 +13,7 @@ import { hash as secretHash, verify as secretVerify } from '@node-rs/argon2'
 
 const options = {
   // randomBytes(32).toString('hex') // 256 bits
+  encryptionContextKey: null,
   encryptionSharedKey: '',
   encryptionMethod: 'chacha20-poly1305', // AES-256 GCM (aes-256-gcm) or ChaCha20-Poly1305 (chacha20-poly1305)
 

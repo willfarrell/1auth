@@ -1,6 +1,6 @@
 {
   "name": "@1auth/store-sql",
-  "version": "0.0.0-alpha.31",
+  "version": "0.0.0-alpha.32",
   "description": "",
   "type": "module",
   "engines": {
@@ -52,6 +52,6 @@
   "peerDependencies": {
     "@aws-sdk/client-dynamodb": "^3.0.0",
     "@aws-sdk/util-dynamodb": "^3.0.0",
-    "uuid": "9.0.1"
+    "uuid": "^10.0.0"
   }
 }

@@ -178,33 +178,6 @@ export const createToken = async (sub) => {
 
   let { username } = await accountLookup(sub)
   username ??= 'username'
-  /* console.log(username, userAuthenticators, {
-    rpName: options.name,
-    rpID: new URL(options.origin).hostname,
-    userID: sub,
-    userName: username,
-    attestationType: 'none',
-    excludeCredentials,
-    // PassKey
-    residentKey: 'required',
-    userVerification: 'preferred'
-    // extras?
-    // timeout
-    // pubKeyCredParams: [
-    //   {
-    //     type: 'public-key',
-    //     alg: -8 // EdDSA
-    //   },
-    //   {
-    //     type: 'public-key',
-    //     alg: -7 // ES256
-    //   },
-    //   {
-    //     type: 'public-key',
-    //     alg: -257 // RS256
-    //   }
-    // ]
-  }) */
 
   const clientOptions = await generateRegistrationOptions({
     rpName: options.name,
@@ -214,7 +187,7 @@ export const createToken = async (sub) => {
     attestationType: 'none',
     excludeCredentials,
     // PassKey
-    residentKey: 'required',
+    residentKey: 'discouraged', // https://fy.blackhats.net.au/blog/2023-02-02-how-hype-will-turn-your-security-key-into-junk/
     userVerification: 'preferred'
     // extras?
     // timeout
