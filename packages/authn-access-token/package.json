@@ -4,7 +4,7 @@
   "description": "",
   "type": "module",
   "engines": {
-    "node": ">=16"
+    "node": ">=20"
   },
   "engineStrict": true,
   "publishConfig": {
@@ -27,7 +27,7 @@
   ],
   "scripts": {
     "test": "npm run test:unit",
-    "test:unit": "ava"
+    "test:unit": "node --test"
   },
   "license": "MIT",
   "funding": {

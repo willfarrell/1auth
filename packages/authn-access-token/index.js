@@ -1,52 +1,89 @@
-import { accessToken, createDigest } from '@1auth/crypto'
 import {
-  options as authnOptions,
+  charactersAlphaNumeric,
+  entropyToCharacterLength,
+  randomAlphaNumeric,
+  createSecretHash,
+  verifySecretHash,
+  createEncryptedDigest
+} from '@1auth/crypto'
+import {
+  getOptions as authnGetOptions,
+  count as authnCount,
+  list as authnList,
   create as authnCreate,
-  authenticate as authnVerifyAuthentication,
-  expire as authnExpire
+  authenticate as authnAuthenticate,
+  remove as authnRemove
 } from '@1auth/authn'
 
-const options = {
-  id: 'accessToken',
-  prefix: 'pat' // Personal Access Token
-}
-export default (params) => {
-  Object.assign(options, authnOptions, { secret: accessToken }, params)
+const id = 'accessToken'
+
+const secret = {
+  id,
+  type: 'secret',
+  minLength: entropyToCharacterLength(112, charactersAlphaNumeric.length),
+  otp: false,
+  expire: 30 * 24 * 60 * 60,
+  create: async () => randomAlphaNumeric(secret.minLength),
+  encode: async (value) => createSecretHash(value),
+  decode: async (value) => value,
+  verify: async (value, hash) => verifySecretHash(hash, value)
 }
 
-export const exists = async (secret) => {
-  const digest = await createDigest(secret)
-  return options.store.exists(options.table, { digest })
+const defaults = {
+  id,
+  prefix: 'pat', // Personal Access Token
+  secret
+}
+const options = {}
+export default (opt = {}) => {
+  Object.assign(options, authnGetOptions(), defaults, opt)
 }
 
 // authenticate(accessToken, accessToken)
 export const authenticate = async (username, secret) => {
-  const { sub } = await authnVerifyAuthentication(username, secret, options)
-  return sub
+  username ??= secret
+  return await authnAuthenticate(options.secret, username, secret)
 }
 
-export const create = async (sub, name, expire = options.secret.expire) => {
-  const secret = options.prefix + '-' + (await options.secret.create())
+export const exists = async (secret) => {
+  const digest = createEncryptedDigest(secret)
+  return options.store.exists(options.table, { digest })
+}
+
+export const lookup = async (secret) => {
+  const digest = createEncryptedDigest(secret)
+  return await options.store.select(options.table, { digest })
+}
+
+export const count = async (sub) => {
+  return await authnCount(options.secret, sub)
+}
+
+export const list = async (sub) => {
+  return await authnList(options.secret, sub)
+}
+
+// expire: expire duration (s)
+export const create = async (sub, values = {}) => {
+  const secretToken = await options.secret.create()
+  const secret = options.prefix + '-' + secretToken
+  const digest = createEncryptedDigest(secret)
   const now = nowInSeconds()
-  const digest = await createDigest(secret)
-  await authnCreate(
-    options.secret.type,
-    { sub, name, value: secret, digest, verify: now, expire: now + expire },
-    options
-  )
-  await options.notify.trigger('authn-access-token-create', sub)
-  return secret
-}
-
-export const list = async (sub, type = options.id + '-secret') => {
-  return options.store.selectList(options.table, {
-    sub,
-    type
+  const { id, expire } = await authnCreate(options.secret, sub, {
+    ...values,
+    value: secret,
+    digest,
+    verify: now
   })
+  await options.notify.trigger('authn-access-token-create', sub, {
+    expire
+  })
+  console.log({ values, expire })
+  return { id, secret }
 }
 
 export const remove = async (sub, id) => {
-  await authnExpire(sub, id, options)
+  await authnRemove(options.secret, sub, id)
   await options.notify.trigger('authn-access-token-remove', sub)
 }
 

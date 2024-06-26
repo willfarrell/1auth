@@ -4,7 +4,7 @@
   "description": "",
   "type": "module",
   "engines": {
-    "node": ">=16"
+    "node": ">=20"
   },
   "engineStrict": true,
   "publishConfig": {
@@ -27,7 +27,7 @@
   ],
   "scripts": {
     "test": "npm run test:unit",
-    "test:unit": "ava"
+    "test:unit": "node --test"
   },
   "license": "MIT",
   "funding": {
@@ -53,5 +53,8 @@
     "@aws-sdk/client-dynamodb": "^3.0.0",
     "@aws-sdk/util-dynamodb": "^3.0.0",
     "uuid": "^10.0.0"
+  },
+  "devDependencies": {
+    "better-sqlite3": "11.0.0"
   }
 }

@@ -1,5 +1,5 @@
 
-CREATE TABLE IF NOT EXISTS app.accounts
+CREATE TABLE IF NOT EXISTS accounts
 (
   sub                VARCHAR(11) PRIMARY KEY,
   state              VARCHAR(17), -- TODO decrease size
@@ -17,6 +17,8 @@ CREATE TABLE IF NOT EXISTS app.accounts
   verify             TIMESTAMP WITH TIME ZONE DEFAULT NULL,
   verifySub          VARCHAR(128),
   expire             TIMESTAMP WITH TIME ZONE DEFAULT NULL,
+  CONSTRAINT accounts_pkey PRIMARY KEY (sub),
+  -- CONSTRAINT accounts_ukey PRIMARY KEY (digest)
 );
 
 DO
@@ -36,7 +38,7 @@ CREATE TABLE IF NOT EXISTS app.credentials
   encryptionKey      VARCHAR(128)                      NOT NULL,
   challenge       VARCHAR(128) DEFAULT NULL,
   name               VARCHAR(128) DEFAULT NULL,
-  otp                BOOL DEFAULT FALSE, 
+  otp                BOOL DEFAULT FALSE,
   value              VARCHAR(128) NOT NULL
   create             TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   update             TIMESTAMP WITH TIME ZONE DEFAULT NULL,
@@ -47,16 +49,16 @@ CREATE TABLE IF NOT EXISTS app.credentials
 DO
 $$
   BEGIN
-  
+
   CREATE INDEX IF NOT EXISTS credentials_sub_idx ON app.credentials (sub);
   IF NOT EXISTS(SELECT 1 FROM pg_constraint WHERE conname = 'credentials_sub_fkey') THEN
     ALTER TABLE app.credentials
       ADD CONSTRAINT credentials_sub_fkey
         FOREIGN KEY (sub) REFERENCES app.accounts (sub);
   END IF;
-  
+
   CREATE INDEX IF NOT EXISTS credentials_type_idx ON app.credentials (type);
-  
+
   END;
 $$;
 
@@ -68,7 +70,7 @@ CREATE TABLE IF NOT EXISTS app.messengers
   type              VARCHAR(17), -- TODO decrease size
 
   encryptionKey      VARCHAR(128)                      NOT NULL,
-  
+
   value              VARCHAR(128) NOT NULL,
   digest           VARCHAR(73) NOT NULL, -- of value
   create             TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -80,17 +82,17 @@ CREATE TABLE IF NOT EXISTS app.messengers
 DO
 $$
   BEGIN
-  
+
   CREATE INDEX IF NOT EXISTS messengers_sub_idx ON app.messengers (sub);
   IF NOT EXISTS(SELECT 1 FROM pg_constraint WHERE conname = 'messengers_sub_fkey') THEN
     ALTER TABLE app.messengers
       ADD CONSTRAINT messengers_sub_fkey
         FOREIGN KEY (sub) REFERENCES app.accounts (sub);
   END IF;
-  
+
   CREATE INDEX IF NOT EXISTS messengers_type_idx ON app.messengers (type);
   CREATE INDEX IF NOT EXISTS messengers_digest_idx ON app.messengers (digest);
-  
+
   END;
 $$;
 
@@ -100,9 +102,9 @@ CREATE TABLE IF NOT EXISTS app.sessions
   sub                VARCHAR(11),
 
   encryptionKey      VARCHAR(128)                      NOT NULL,
-  
+
   value              VARCHAR(256) NOT NULL,
-  
+
   create             TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   update             TIMESTAMP WITH TIME ZONE DEFAULT NULL,
   verify             TIMESTAMP WITH TIME ZONE DEFAULT NULL,
@@ -112,15 +114,14 @@ CREATE TABLE IF NOT EXISTS app.sessions
 DO
 $$
   BEGIN
-  
+
   CREATE INDEX IF NOT EXISTS sessions_sub_idx ON app.sessions (sub);
   IF NOT EXISTS(SELECT 1 FROM pg_constraint WHERE conname = 'sessions_sub_fkey') THEN
     ALTER TABLE app.sessions
       ADD CONSTRAINT sessions_sub_fkey
         FOREIGN KEY (sub) REFERENCES app.accounts (sub);
   END IF;
-  
-  
+
+
   END;
 $$;
-

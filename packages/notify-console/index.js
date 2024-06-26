@@ -1,5 +1,6 @@
 const options = {
-  client: (params) => console.log('console', params)
+  log: console.log,
+  client: (params) => options.log('console', params)
 }
 
 export default (params) => {

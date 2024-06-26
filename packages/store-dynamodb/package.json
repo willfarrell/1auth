@@ -4,7 +4,7 @@
   "description": "",
   "type": "module",
   "engines": {
-    "node": ">=16"
+    "node": ">=20"
   },
   "engineStrict": true,
   "publishConfig": {
@@ -26,8 +26,9 @@
     "index.d.ts"
   ],
   "scripts": {
+    "run": "docker run -p 8000:8000 amazon/dynamodb-local",
     "test": "npm run test:unit",
-    "test:unit": "ava"
+    "test:unit": "node --test"
   },
   "license": "MIT",
   "funding": {

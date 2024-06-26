@@ -1,74 +1,151 @@
 import { setTimeout } from 'node:timers/promises'
-import { randomId, makeSymetricKey } from '@1auth/crypto'
+import {
+  randomId,
+  makeSymetricKey,
+  symetricEncryptFields,
+  symetricDecryptFields
+} from '@1auth/crypto'
 
-export const options = {
+const id = 'authn'
+
+const defaults = {
+  id,
   store: undefined,
   notify: undefined,
   table: 'authentications',
   idGenerate: true,
   idPrefix: 'authn',
-  randomId: undefined,
-  authenticationDuration: 500, // min duration authentication should take (ms)
-  usernameExists: [] // hooks to allow what to be used as a username
+  randomId: { ...randomId },
+  authenticationDuration: 500, // minimum duration authentication should take (ms)
+  usernameExists: [], // hooks to allow what to be used as a username
+  encryptedFields: ['value']
 }
-export default (params) => {
-  Object.assign(options, { randomId }, params)
+const options = {}
+export default (opt = {}) => {
+  Object.assign(options, defaults, opt)
 }
 export const getOptions = () => options
 
+export const exists = async (credentialOptions, sub, params) => {
+  const type = makeType(credentialOptions)
+  const list = await options.store.selectList(options.table, {
+    ...params,
+    sub,
+    type
+  })
+  return list.length > 1
+}
+
+export const count = async (credentialOptions, sub) => {
+  const type = makeType(credentialOptions)
+  const credentials = await options.store.selectList(
+    options.table,
+    { sub, type },
+    ['verify', 'expire']
+  )
+  let count = 0
+  const now = nowInSeconds()
+  for (let i = credentials.length; i--;) {
+    const credential = credentials[i]
+    if (credential.expire && credential.expire < now) {
+      continue
+    }
+    if (!credential.verify) {
+      continue
+    }
+    count += 1
+  }
+  return count
+}
+
+export const list = async (credentialOptions, sub, params, fields) => {
+  const type = makeType(credentialOptions)
+  const credentials = await options.store.selectList(
+    options.table,
+    {
+      ...params,
+      sub,
+      type
+    },
+    fields
+  )
+  // const now = nowInSeconds();
+  const list = []
+  for (let i = credentials.length; i--;) {
+    const credential = credentials[i]
+    // TODO need filter for expire
+    // if (credential.expire < now) {
+    //   continue;
+    // }
+    const { encryptionKey: encryptedKey } = credential
+    delete credential.encryptionKey
+    const decryptedCredential = symetricDecryptFields(
+      credential,
+      { encryptedKey, sub },
+      options.encryptedFields
+    )
+    list.push(decryptedCredential)
+  }
+  return list
+}
+
 export const create = async (
-  credentialType,
-  { id, sub, value, ...rest },
-  parentOptions
+  credentialOptions,
+  sub,
+  { id, value, ...values }
 ) => {
   const now = nowInSeconds()
-  const type = parentOptions.id + '-' + parentOptions[credentialType].type
-  const otp = parentOptions[credentialType].otp
-  const expire = parentOptions[credentialType].expire
-    ? now + parentOptions[credentialType].expire
-    : null
-  const { encryptedKey } = makeSymetricKey(sub)
+  const type = makeType(credentialOptions)
+  let { otp, expire } = credentialOptions
+  expire &&= now + expire
 
-  const encryptedData = await parentOptions[credentialType].encode(
-    value,
-    encryptedKey,
-    sub
+  if (options.idGenerate) {
+    id ??= await options.randomId.create(options.idPrefix)
+  }
+  value ??= credentialOptions.create()
+  const encodedValue = await credentialOptions.encode(value)
+
+  const { encryptionKey, encryptedKey } = makeSymetricKey(sub)
+  const encryptedValues = symetricEncryptFields(
+    { ...values, value: encodedValue },
+    { encryptionKey, sub },
+    options.encryptedFields
   )
   const params = {
-    expire,
-    ...rest,
+    ...encryptedValues,
     sub,
     type,
     otp,
     encryptionKey: encryptedKey,
-    value: encryptedData,
     create: now,
-    update: now
+    update: now,
+    expire
   }
   if (options.idGenerate) {
-    id ??= await options.randomId.create(options.idPrefix)
     params.id = id
   }
-  const { id: serialId } = await options.store.insert(options.table, params)
-  return serialId
+  const row = await options.store.insert(options.table, params)
+  return { type, id: row.id, value, otp, expire }
 }
 
 export const update = async (
-  credentialType,
-  { id, sub, encryptionKey, value, ...rest },
-  parentOptions
+  credentialOptions,
+  { id, sub, encryptionKey, encryptedKey, value, ...values }
 ) => {
   const now = nowInSeconds()
-  const encryptedData = await parentOptions[credentialType].encode(
+  // const type = makeType(credentialOptions);
+
+  const encryptedData = await credentialOptions.encode(
     value,
     encryptionKey,
+    encryptedKey,
     sub
   )
   return options.store.update(
     options.table,
-    { id, sub },
+    { sub, id },
     {
-      ...rest,
+      ...values,
       value: encryptedData,
       update: now
     }
@@ -77,105 +154,120 @@ export const update = async (
 
 export const subject = async (username) => {
   return Promise.all(
-    options.usernameExists.map((exists) => exists(username))
+    options.usernameExists.map((exists) => {
+      return exists(username)
+    })
   ).then((identities) => {
     return identities.filter((lookup) => lookup)?.[0]
   })
 }
 
-export const authenticate = async (username, secret, parentOptions) => {
-  const timeout = setTimeout(options.authenticationDuration)
-  const type = parentOptions.id + '-' + parentOptions.secret.type
-
+export const authenticate = async (credentialOptions, username, secret) => {
   const sub = await subject(username)
+
+  const timeout = setTimeout(options.authenticationDuration)
+  const type = makeType(credentialOptions)
 
   const credentials = await options.store.selectList(options.table, {
     sub,
     type
   })
-  let valid, id, encryptionKey
+  let valid
   for (const credential of credentials) {
     // non-opt credentials must be verified before use
-    if (!credential.otp && !credential.verify) continue
-    let { value, encryptionKey: encryptedKey, ...rest } = credential
-    value = await parentOptions.secret.decode(value, encryptedKey, sub)
-    valid = await parentOptions.secret.verify(secret, value, rest)
+    if (!credential.otp && !credential.verify) {
+      continue
+    }
+    const { encryptionKey: encryptedKey } = credential
+    const decryptedCredential = symetricDecryptFields(
+      credential,
+      { encryptedKey, sub },
+      options.encryptedFields
+    )
+    let { value, ...values } = decryptedCredential
+    value = await credentialOptions.decode(value)
+    valid = await credentialOptions.verify(secret, value, values)
     if (valid) {
-      id ??= credential.id
-      encryptionKey ??= encryptedKey
+      const { id, otp } = credential
+      if (otp) {
+        await options.store.remove(options.table, { id, sub })
+      } else if (credentialOptions.clean) {
+        await credentialOptions.clean(sub, value, values)
+      } else {
+        const now = nowInSeconds()
+        await options.store.update(
+          options.table,
+          { id, sub },
+          { update: now, lastused: now }
+        )
+      }
+
       break
     }
   }
 
-  if (parentOptions.secret.otp) {
-    // delete OTP to prevent re-use
-    await options.store.remove(options.table, { id, sub })
-  } else if (valid && parentOptions.id !== 'WebAuthn') {
-    // WebAuthn has to update, skip here
-    const now = nowInSeconds()
-    await options.store.update(
-      options.table,
-      { id, sub },
-      { update: now, lastused: now }
-    )
-  }
-
   await timeout
   if (!valid) throw new Error('401 Unauthorized')
-  return { sub, id, encryptionKey, ...valid }
+  return sub
 }
 
-export const verifySecret = async (sub, id, parentOptions) => {
-  // const type = parentOptions.id + '-' + parentOptions.secret.type
+export const verifySecret = async (credentialOptions, sub, id) => {
+  // const type = makeType(credentialOptions);
   const now = nowInSeconds()
   await options.store.update(
     options.table,
-    { id, sub },
+    { sub, id },
     { update: now, verify: now }
   )
 }
 
-export const verify = async (credentialType, sub, token, parentOptions) => {
+export const verify = async (credentialOptions, sub, input) => {
   const timeout = setTimeout(options.authenticationDuration)
-  const type = parentOptions.id + '-' + parentOptions[credentialType].type
-  let id
+  const type = makeType(credentialOptions)
+
   const credentials = await options.store.selectList(options.table, {
     sub,
     type
   })
-  // TODO re-confirm when needed
-  // .then((rows) => {
-  //   if (rows.length) {
-  //     return rows
-  //   }
-  //
-  //   return options.store.select(options.table, { id: sub, type })
-  // })
 
-  let valid
-  for (const credential of credentials) {
-    let { value, encryptionKey, ...rest } = credential
-    value = await parentOptions[credentialType].decode(
-      value,
-      encryptionKey,
-      sub
+  let valid, credential
+  for (credential of credentials) {
+    const { encryptionKey: encryptedKey } = credential
+    const decryptedCredential = symetricDecryptFields(
+      credential,
+      { encryptedKey, sub },
+      options.encryptedFields
     )
-    valid = await parentOptions[credentialType].verify(token, value, rest)
+    let { value, ...values } = decryptedCredential
+    value = await credentialOptions.decode(value)
+    valid = await credentialOptions.verify(input, value, values)
     if (valid) {
-      id = credential.id
+      const { id, otp } = credential
+      if (otp) {
+        await options.store.remove(options.table, { id, sub })
+      }
+
       break
     }
   }
-  if (valid && parentOptions[credentialType].otp) {
-    await options.store.remove(options.table, { id, sub })
-  }
-  if (!valid) throw new Error('401 Unauthorized')
+
   await timeout
-  return { sub, id, ...valid }
+  if (!valid) throw new Error('401 Unauthorized')
+  return { ...credential, ...valid }
 }
 
-export const expire = async (sub, id, parentOptions = options) => {
-  await options.store.remove(options.table, { id, sub })
+export const expire = async (credentialOptions, sub, id) => {
+  // const type = makeType(credentialOptions);
+  await options.store.update(
+    options.table,
+    { sub, id },
+    { expire: nowInSeconds() - 1 }
+  )
+}
+
+export const remove = async (credentialOptions, sub, id) => {
+  const type = makeType(credentialOptions)
+  await options.store.remove(options.table, { id, type, sub })
 }
 
 // TODO manage onboard state
@@ -184,4 +276,6 @@ export const expire = async (sub, id, parentOptions = options) => {
 
 // TODO authorize management?
 
+const makeType = (credentialOptions) =>
+  credentialOptions.id + '-' + credentialOptions.type
 const nowInSeconds = () => Math.floor(Date.now() / 1000)

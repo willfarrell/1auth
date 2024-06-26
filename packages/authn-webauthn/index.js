@@ -1,11 +1,13 @@
-import { encrypt, decrypt } from '@1auth/crypto'
 import {
-  options as authnOptions,
+  getOptions as authnGetOptions,
   authenticate as authnAuthenticate,
+  count as authnCount,
+  list as authnList,
   create as authnCreate,
   update as authnUpdate,
   verify as authnVerify,
-  expire as authnExpire
+  expire as authnExpire,
+  remove as authnRemove
 } from '@1auth/authn'
 import { lookup as accountLookup } from '@1auth/account'
 
@@ -17,173 +19,183 @@ import {
 } from '@simplewebauthn/server'
 import { isoUint8Array } from '@simplewebauthn/server/helpers'
 
-const options = {
-  id: 'WebAuthn',
-  origin: undefined, // with https://
-  name: undefined,
-  // minimumAuthenticateAllowCredentials: 3, // Add fake auth ids
-  secret: {
-    type: 'secret',
-    // entropy: 64, // ASVS 2.9.2
-    // charPool: characterPoolSize.base64,
-    otp: false,
-    expire: null,
-    // create: async () => randomBase64(webauthnSecret.entropy), // client side
-    encode: async (data, encryptedKey, sub) =>
-      encrypt(JSON.stringify(data), encryptedKey, sub),
-    decode: async (encryptedData, encryptedKey, sub) =>
-      jsonParseSecret(await decrypt(encryptedData, encryptedKey, sub)),
-    verify: async (response, authenticator, rest) => {
-      console.log('verify', authenticator)
-      try {
-        const { verified, authenticationInfo } =
-          await verifyAuthenticationResponse({
-            response,
-            expectedChallenge: rest.challenge, // TODO not encrypted!!
-            expectedOrigin: options.origin,
-            expectedRPID: new URL(options.origin).hostname,
-            authenticator,
-            requireUserVerification: true // PassKey
-          })
-        if (!verified) throw new Error('Failed verifyAuthenticationResponse')
-        authenticator.counter = authenticationInfo.newCounter
-        return jsonEncodeSecret(authenticator)
-      } catch (e) {
-        console.error('webauthn.secret.verify', e)
-        return false
-      }
+const id = 'WebAuthn'
+// minimumAuthenticateAllowCredentials: 3, // Add fake auth ids
+const token = {
+  id,
+  type: 'token',
+  // entropy: 64, // ASVS 2.9.2
+  // minLength: entropyToCharacterLength(64, charactersAlphaNumeric.length),
+  otp: true,
+  expire: 10 * 60,
+  // create: async () => randomAlphaNumeric(secret.minLength),
+  encode: (value) => JSON.stringify(value),
+  decode: (value) => JSON.parse(value),
+  verify: async (response, value) => {
+    try {
+      const { verified, registrationInfo } = await verifyRegistrationResponse({
+        ...value,
+        response
+      })
+      if (!verified) throw new Error('Failed verifyRegistrationResponse')
+      return { registrationInfo: jsonEncodeSecret(registrationInfo) }
+    } catch (e) {
+      console.error('@1auth/autn-webauthn token.verify()', e)
+      return false
+    }
+  }
+}
+
+const secret = {
+  id,
+  type: 'secret',
+  // entropy: 64, // ASVS 2.9.2
+  // charPool: characterPoolSize.base64,
+  // minLength: entropyToCharacterLength(64, charactersAlphaNumeric.length),
+  otp: false,
+  encode: (value) => JSON.stringify(jsonEncodeSecret(value)),
+  decode: (value) => jsonParseSecret(JSON.parse(value))
+}
+
+const challenge = {
+  id,
+  type: 'challenge',
+  // entropy: 64, // ASVS 2.9.2
+  // minLength: entropyToCharacterLength(112, charactersAlphaNumeric.length),
+  otp: true,
+  expire: 10 * 60,
+  // create: () => randomAlphaNumeric(challenge.minLength),
+  encode: (value) => {
+    value.authenticator = jsonEncodeSecret(value.authenticator)
+    return JSON.stringify(value)
+  },
+  decode: (value) => {
+    value = JSON.parse(value)
+    value.authenticator = jsonParseSecret(value.authenticator)
+    return value
+  },
+  verify: async (response, value) => {
+    try {
+      const { verified, authenticationInfo } =
+        await verifyAuthenticationResponse({
+          ...value,
+          response
+        })
+      if (!verified) throw new Error('Failed verifyAuthenticationResponse')
+      value.authenticator.counter = authenticationInfo.newCounter
+      value.authenticator = jsonEncodeSecret(value.authenticator)
+      return true
+    } catch (e) {
+      console.error('@1auth/autn-webauthn challenge.verify()', e)
+      return false
     }
   },
-  // create challenge
-  token: {
-    type: 'token',
-    // entropy: 64, // ASVS 2.9.2
-    // charPool: characterPoolSize.base64,
-    otp: true, // Not actually an otp, part of the secret
-    expire: 10 * 60,
-    // create: async () => randomChallenge(options.token.entropy),
-    encode: async (value, encryptedKey, sub) =>
-      encrypt(value, encryptedKey, sub),
-    decode: async (value, encryptedKey, sub) =>
-      decrypt(value, encryptedKey, sub),
-    verify: async (response, expectedChallenge) => {
-      try {
-        const { verified, registrationInfo } = await verifyRegistrationResponse(
-          {
-            response,
-            expectedChallenge,
-            expectedOrigin: options.origin,
-            expectedRPID: new URL(options.origin).hostname,
-            requireUserVerification: true // PassKey
-          }
-        )
-        if (!verified) throw new Error('Failed verifyRegistrationResponse')
-        // registrationInfo.challenge = expectedChallenge
-        return jsonEncodeSecret(registrationInfo)
-      } catch (e) {
-        console.error('webauthn.token.verify', e)
-        return false
-      }
-    }
+  cleanup: async (sub, value, { sourceId } = {}) => {
+    const now = nowInSeconds()
+    const { encryptionKey } = await options.store.select(
+      options.table,
+      { id: sourceId, sub },
+      ['encryptionKey']
+    )
+
+    await authnUpdate(options.secret, sub, {
+      id: sourceId,
+      encryptedKey: encryptionKey,
+      value: value.authenticator,
+      update: now,
+      lastused: now
+    })
   }
 }
-
+const defaults = {
+  id,
+  origin: undefined, // with https://
+  name: undefined,
+  secret,
+  token,
+  challenge
+}
+const options = {}
 export default (params) => {
-  Object.assign(options, authnOptions, params)
+  Object.assign(options, authnGetOptions(), defaults, params)
 }
+export const getOptions = () => options
 
-// to be sent to client
-export const authenticateOptions = async (sub) => {
-  const userAuthenticators = await options.store.selectList(
-    options.table,
-    { sub, type: options.id + '-' + options.secret.type }
-    // [ 'value' ]
-  )
-  const allowCredentials = []
-  const id = []
-  for (const credential of userAuthenticators) {
-    const value = await options.secret.decode(
-      credential.value,
-      credential.encryptionKey,
-      sub
-    )
-    id.push(credential.id)
-    console.log('authenticateOptions', value)
-    allowCredentials.push({
-      id: value.credentialID,
-      type: 'public-key'
-    })
+export const count = async (sub) => {
+  if (options.log) {
+    options.log('@1auth/autn-webauthn count(', sub, ')')
   }
-  /* while (
-    allowCredentials.length < options.minimumAuthenticateAllowCredentials
-  ) {
-    const id = randomAlphaNumeric(256) // 43 char - make hash from username to make static
-    allowCredentials.push({
-      id,
-      type: 'public-key'
-    })
-  } */
-
-  const clientOptions = await generateAuthenticationOptions({
-    rpID: new URL(options.origin).hostname,
-    allowCredentials,
-    userVerification: 'preferred'
-  })
-  // TODO find a better way, not efficient or save as it's own OTP
-  await options.store.update(
-    options.table,
-    { id, sub },
-    {
-      challenge: clientOptions.challenge, // TODO not encrypted!!
-      update: nowInSeconds()
-    }
-  )
-  return clientOptions
+  return await authnCount(options.secret, sub)
 }
 
-export const authenticate = async (username, secret) => {
-  const { sub, id, encryptionKey, ...value } = await authnAuthenticate(
-    username,
-    secret,
-    options
-  )
-  await authnUpdate(
-    options.secret.type,
-    { sub, id, encryptionKey, value, lastused: nowInSeconds() },
-    options
-  )
-  return sub
+export const list = async (sub) => {
+  if (options.log) {
+    options.log('@1auth/autn-webauthn list(', sub, ')')
+  }
+  return await authnList(options.secret, sub)
 }
 
-export const createToken = async (sub) => {
-  // const token = await options.token.create()
+export const authenticate = async (username, input) => {
+  if (options.log) {
+    options.log('@1auth/autn-webauthn authenticate(', username, input, ')')
+  }
+  return await authnAuthenticate(options.challenge, username, input)
+}
 
-  const userAuthenticators = await options.store.selectList(options.table, {
-    sub,
-    type: options.id + '-' + options.secret.type
-  })
-  const excludeCredentials = []
-  for (const credential of userAuthenticators) {
-    const value = await options.secret.decode(
-      credential.value,
-      credential.encryptionKey,
-      sub
+export const create = async (sub) => {
+  if (options.log) {
+    options.log('@1auth/autn-webauthn create(', sub, ')')
+  }
+  return await createToken(sub)
+}
+
+export const verify = async (sub, response, { name } = {}, notify = true) => {
+  if (options.log) {
+    options.log(
+      '@1auth/autn-webauthn verify(',
+      sub,
+      response,
+      ({ name } = {}),
+      notify,
+      ')'
     )
-    console.log('createToken', value)
+  }
+  const value = await verifyToken(sub, response)
+  const { id } = await authnCreate(options.secret, sub, {
+    name,
+    value,
+    verify: nowInSeconds()
+  })
+
+  if (notify) {
+    await options.notify.trigger('authn-webauthn-create', sub) // TODO add in user.name
+  }
+  return { id, secret: value }
+}
+
+const createToken = async (sub) => {
+  if (options.log) {
+    options.log('@1auth/autn-webauthn createToken(', sub, ')')
+  }
+  const [credentials, account] = await Promise.all([
+    authnList(options.secret, sub, undefined, ['encryptionKey', 'value']),
+    accountLookup(sub)
+  ])
+  const excludeCredentials = []
+  for (let i = credentials.length; i--;) {
+    const credential = credentials[i]
+    const value = options.secret.decode(credential.value)
     excludeCredentials.push({
       id: value.credentialID,
       type: 'public-key'
     })
   }
 
-  let { username } = await accountLookup(sub)
-  username ??= 'username'
-
-  const clientOptions = await generateRegistrationOptions({
+  const registrationOptions = {
     rpName: options.name,
     rpID: new URL(options.origin).hostname,
     userID: isoUint8Array.fromUTF8String(sub),
-    userName: username,
+    userName: account.username ?? 'username',
     attestationType: 'none',
     excludeCredentials,
     // PassKey
@@ -205,45 +217,109 @@ export const createToken = async (sub) => {
     //     alg: -257 // RS256
     //   }
     // ]
-  })
-  await authnCreate(
-    options.token.type,
-    { sub, value: clientOptions.challenge },
-    options
-  )
-  return clientOptions // needs to be sent to the client
-}
-
-export const verifyToken = async (sub, credential) => {
-  const { id, ...value } = await authnVerify(
-    options.token.type,
-    sub,
-    credential,
-    options
-  )
-  delete value.sub
-  await authnExpire(sub, id, options)
-  return value
-}
-
-export const create = async (sub, name, value, onboard = false) => {
-  await authnCreate(
-    options.secret.type,
-    { sub, name, value, verify: nowInSeconds() },
-    options
-  )
-
-  if (!onboard) {
-    await options.notify.trigger('authn-webauthn-create', sub) // TODO add in user.name
   }
+  if (options.log) {
+    options.log('@1auth/autn-webauthn createToken', { registrationOptions })
+  }
+  const secret = await generateRegistrationOptions(registrationOptions)
+  const { id } = await authnCreate(options.token, sub, {
+    value: {
+      expectedChallenge: secret.challenge,
+      expectedOrigin: options.origin,
+      expectedRPID: new URL(options.origin).hostname,
+      requireUserVerification: true // PassKey
+    }
+  })
+
+  if (options.log) {
+    options.log(
+      '@1auth/autn-webauthn createToken return',
+      JSON.stringify(secret, null, 2)
+    )
+  }
+  return { id, secret }
 }
 
-export const list = async (sub, type = options.id + '-secret') => {
-  return options.store.selectList(options.table, { sub, type })
+const verifyToken = async (sub, credential) => {
+  if (options.log) {
+    options.log('@1auth/autn-webauthn verifyToken(', sub, credential, ')')
+  }
+  const { registrationInfo } = await authnVerify(
+    options.token,
+    sub,
+    credential
+  )
+  return registrationInfo
+}
+
+export const createChallenge = async (sub) => {
+  if (options.log) {
+    options.log('@1auth/autn-webauthn createChallenge(', sub, ')')
+  }
+  // const challenge = options.challenge.create();
+  const now = nowInSeconds()
+
+  const credentials = await authnList(options.secret, sub, undefined, [
+    'id',
+    'encryptionKey',
+    'value'
+  ])
+  const allowCredentials = []
+  for (let i = credentials.length; i--;) {
+    const credential = credentials[i]
+    const authenticator = options.secret.decode(credential.value)
+    allowCredentials.push({
+      id: authenticator.credentialID,
+      type: 'public-key'
+    })
+  }
+
+  const authenticationOptions = {
+    rpID: new URL(options.origin).hostname,
+    allowCredentials,
+    userVerification: 'preferred'
+  }
+  const secret = await generateAuthenticationOptions(authenticationOptions)
+
+  const challenges = []
+  for (let i = credentials.length; i--;) {
+    const credential = credentials[i]
+    const authenticator = options.secret.decode(credential.value)
+    challenges.push(
+      authnCreate(options.challenge, sub, {
+        sourceId: credential.id,
+        value: {
+          authenticator,
+          expectedChallenge: secret.challenge,
+          expectedOrigin: options.origin,
+          expectedRPID: new URL(options.origin).hostname,
+          requireUserVerification: true // PassKey
+        },
+        update: now
+      })
+    )
+  }
+  const id = await Promise.all(challenges)
+
+  if (options.log) {
+    options.log('@1auth/autn-webauthn createChallenge', { secret }, '')
+  }
+  return { id, secret }
+}
+
+export const expire = async (sub, id) => {
+  if (options.log) {
+    options.log('@1auth/autn-webauthn remove(', sub, id, ')')
+  }
+  await authnExpire(options.secret, sub, id)
+  await options.notify.trigger('authn-webauthn-expire', sub)
 }
 
 export const remove = async (sub, id) => {
-  await authnExpire(sub, id, options)
+  if (options.log) {
+    options.log('@1auth/autn-webauthn remove(', sub, id, ')')
+  }
+  await authnRemove(options.secret, sub, id)
   await options.notify.trigger('authn-webauthn-remove', sub)
 }
 
@@ -255,9 +331,6 @@ const jsonEncodeSecret = (value) => {
 }
 
 const jsonParseSecret = (value) => {
-  if (typeof value !== 'string') value = JSON.stringify(value)
-  value = JSON.parse(value)
-
   // value.credentialID = credentialBuffer(value.credentialID);
   value.credentialPublicKey = credentialBuffer(value.credentialPublicKey)
   value.attestationObject = credentialBuffer(value.attestationObject)

@@ -35,7 +35,7 @@ export const trigger = async (id, sub, data = {}) => {
     MessageBody: JSON.stringify({ id, sub, data })
   }
   if (options.log) {
-    console.log('SendMessage', commandParams)
+    options.log('@1auth/notify-sqs SendMessageCommand', commandParams)
   }
   await options.client.send(new SendMessageCommand(commandParams))
 }

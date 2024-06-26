@@ -1,32 +1,80 @@
 import {
-  session as randonSession,
+  charactersAlphaNumeric,
+  entropyToCharacterLength,
+  randomAlphaNumeric,
   makeSymetricKey,
-  encrypt
+  symetricEncrypt,
+  symetricDecrypt
 } from '@1auth/crypto'
 
-const options = {
+const id = 'session'
+const randomId = {
+  id,
+  type: 'id',
+  minLength: entropyToCharacterLength(128, charactersAlphaNumeric.length), // ASVS 3.2.2
+  expire: 15 * 60,
+  create: async (prefix) =>
+    (prefix ? prefix + '_' : '') + randomAlphaNumeric(randomId.minLength)
+}
+
+const defaults = {
+  id,
+  log: false,
   store: undefined,
   notify: undefined,
   table: 'sessions',
   idGenerate: true, // turn off to allow DB to handle
-  idPrefix: 'session_',
-  randonId: undefined,
-  expire: randonSession.expire,
-  checkMetadata: (oldSession, newSession) =>
-    JSON.stringify(oldSession) === JSON.stringify(newSession)
+  idPrefix: 'session',
+  randomId,
+  expire: randomId.expire,
+  // encryptedFields: ["value"],
+  encode: (value) => JSON.stringify(value),
+  decode: (value) => JSON.parse(value),
+  checkMetadata: (oldSession, newSession) => oldSession === newSession
+}
+const options = {}
+export default (opt = {}) => {
+  Object.assign(options, defaults, opt)
+}
+export const getOptions = () => options
+
+export const lookup = async (id) => {
+  const now = nowInSeconds()
+  const session = await options.store.select(options.table, { id })
+  if (session.expire < now) {
+    return
+  }
+  return session
 }
 
-export default (params) => {
-  Object.assign(options, { randonId: randonSession }, params)
+export const list = async (sub) => {
+  const now = nowInSeconds()
+  const items = await options.store.selectList(options.table, { sub })
+
+  const sessions = []
+  for (let i = items.length; i--;) {
+    if (items[i].expire < now) {
+      continue
+    }
+    const decryptedValue = symetricDecrypt(items[i].value, {
+      sub,
+      encryptedKey: items[i].encryptionKey
+    })
+    items[i].value = options.decode(decryptedValue)
+    sessions.push(items[i])
+  }
+  return sessions
 }
 
 /**
  * Session Create
  * @param sub
- * @param value {os, browser, ip}
- * @returns {Promise<*&{sub, create: number, update: number, id: *}>}
+ * @param value {os, browser, ip, ...}
  */
 export const create = async (sub, value = {}) => {
+  if (options.log) {
+    options.log('@1auth/session create(', sub, value, ')')
+  }
   const now = nowInSeconds()
   const params = {
     sub,
@@ -35,15 +83,19 @@ export const create = async (sub, value = {}) => {
     expire: now + options.expire
   }
   if (options.idGenerate) {
-    params.id = await options.randonId.create(options.idPrefix)
+    params.id = await options.randomId.create(options.idPrefix)
   }
 
-  if (value) {
-    const { encryptedKey } = makeSymetricKey(sub)
-    params.encryptionKey = encryptedKey
-    params.value = encrypt(JSON.stringify(value), encryptedKey, sub)
-  }
-
+  const { encryptedKey, encryptionKey } = makeSymetricKey(sub)
+  params.encryptionKey = encryptedKey
+  const encodedValue = options.encode(value)
+  params.value = symetricEncrypt(encodedValue, {
+    encryptionKey,
+    sub
+  })
+  // if (options.log) {
+  //   options.log("@1auth/session create", { params });
+  // }
   await options.store.insert(options.table, params)
 
   return params
@@ -51,61 +103,30 @@ export const create = async (sub, value = {}) => {
 
 // Before creating a new session, check if metadata is new
 export const check = async (sub, value) => {
-  const sessions = await list(sub)
+  const encodedValue = options.encode(value)
+  const sessions = await options.store.selectList(options.table, { sub })
   for (const session of sessions) {
-    if (options.checkMetadata(session.value, value)) {
+    const decryptedValue = symetricDecrypt(session.value, {
+      sub,
+      encryptedKey: session.encryptionKey
+    })
+    if (options.checkMetadata(decryptedValue, encodedValue)) {
       return
     }
   }
   options.notify.trigger('authn-session-new-device', sub)
 }
 
-export const lookup = async (id, meta) => {
-  const now = nowInSeconds()
-  let session
-  if (id) {
-    session ??= await options.store.select(options.table, { id })
-    if (session.expire < now) {
-      return
-    }
-  }
-  // session ??= await options.id.create(null, meta)
-
-  /* let authToken // TODO return JWT or IAM to be passed around
-  if (session.sub) {
-    const account = await accountLookup(session.sub)
-    authToken = account
-  } else {
-    authToken = session
-  }
-  return authToken */
-  return session
-}
-
-export const list = async (sub) => {
-  const now = nowInSeconds()
-  return options.store
-    .selectList(options.table, { sub, type: undefined })
-    .then((items) =>
-      items
-        .filter((item) => item.expire > now)
-        .map((item) => {
-          item.value = JSON.parse(item.value)
-          return item
-        })
-    )
-}
-
-export const expire = async (id) => {
+export const expire = async (sub, id) => {
   await options.store.update(
     options.table,
-    { id },
+    { sub, id },
     { expire: nowInSeconds() - 1 }
   )
 }
 
-export const remove = async (id) => {
-  await options.store.remove(options.table, { id })
+export const remove = async (sub, id) => {
+  await options.store.remove(options.table, { sub, id })
 }
 
 // guest or onboard session to authenticated

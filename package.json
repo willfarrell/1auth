@@ -12,7 +12,8 @@
     "prepare": "husky install",
     "commit-msg": "commitlint --config commitlint.config.cjs --edit",
     "pre-commit": "lint-staged",
-    "test": "c8 node --test packages",
+    "start": "cd server && node --watch index.js",
+    "test": "node --experimental-test-coverage --test packages",
     "lint": "prettier --write packages/*/*.js && standard --fix packages/*/*.js",
     "rm": "npm run lerna:rm:coverage && npm run lerna:rm:node_modules && npm run lerna:rm:lock",
     "rm:coverage": "rm -rf coverage --workspaces",
@@ -54,12 +55,10 @@
     "@commitlint/config-conventional": "^19.0.0",
     "aws-sdk-client-mock": "^4.0.0",
     "benchmark": "^2.0.0",
-    "c8": "^10.0.0",
     "husky": "^9.0.0",
     "lerna": "^8.0.0",
     "lint-staged": "^15.0.0",
     "prettier": "^3.0.0",
-    "sinon": "^18.0.0",
     "standard": "^17.0.0"
   },
   "workspaces": [

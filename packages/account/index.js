@@ -1,26 +1,37 @@
 import {
+  entropyToCharacterLength,
+  charactersAlphaNumeric,
+  randomAlphaNumeric,
   randomId,
-  subject as randomSubject,
   makeSymetricKey,
   makeAsymmetricKeys,
-  encryptFields,
-  decryptFields
+  symetricEncryptFields,
+  symetricDecryptFields
 } from '@1auth/crypto'
 
-const options = {
+const id = 'authn'
+const randomSubject = {
+  type: 'id',
+  minLength: entropyToCharacterLength(64, charactersAlphaNumeric.length),
+  create: async (prefix) =>
+    (prefix ? prefix + '_' : '') + randomAlphaNumeric(randomSubject.minLength)
+}
+
+const defaults = {
+  id,
   store: undefined,
   notify: undefined,
   table: 'accounts',
   idGenerate: true,
-  idPrefix: 'account',
+  idPrefix: 'user',
   subPrefix: 'sub',
-  randomId: undefined,
-  randomSubject: undefined,
-  encryptedKeys: []
+  randomId,
+  randomSubject,
+  encryptedFields: ['privateKey'] // TODO has encryption build-in
 }
-
+const options = {}
 export default (params) => {
-  Object.assign(options, { randomId, randomSubject }, params)
+  Object.assign(options, defaults, params)
 }
 export const getOptions = () => options
 
@@ -29,30 +40,36 @@ export const exists = async (sub) => {
 }
 
 export const lookup = async (sub) => {
-  const item = options.store.select(options.table, { sub })
-  decryptFields(item, item.encryptionKey, sub, options.encryptedKeys)
+  let item = await options.store.select(options.table, { sub })
+  if (!item) return
+  const { encryptionKey: encryptedKey } = item
   delete item.encryptionKey
   delete item.privateKey
+  item = symetricDecryptFields(
+    item,
+    { encryptedKey, sub },
+    options.encryptedFields
+  )
   return item
 }
 
 export const create = async (values = {}) => {
   const sub = await options.randomSubject.create(options.subPrefix)
+  const asymmetricKeys = await makeAsymmetricKeys()
 
   const { encryptionKey, encryptedKey } = makeSymetricKey(sub)
-  const { publicKey, privateKey } = await makeAsymmetricKeys(encryptionKey)
-
-  // TODO optimize: don't decrypt encryptionKey
-  encryptFields(values, encryptedKey, sub, options.encryptedKeys)
+  const encryptedValues = symetricEncryptFields(
+    { ...values, ...asymmetricKeys },
+    { encryptionKey, sub },
+    options.encryptedFields
+  )
 
   const now = nowInSeconds()
   const params = {
     create: now, // allow use for migration import
-    ...values,
+    ...encryptedValues,
     sub,
     encryptionKey: encryptedKey,
-    publicKey,
-    privateKey,
     update: now
   }
   if (options.idGenerate) {
@@ -66,11 +83,19 @@ export const create = async (values = {}) => {
 
 // for in the clear user metadata
 export const update = async (sub, values = {}) => {
-  const { encryptionKey } = await options.store.select(options.table, {
-    sub
-  })
+  const { encryptionKey: encryptedKey } = await options.store.select(
+    options.table,
+    {
+      sub
+    },
+    ['encryptionKey']
+  )
 
-  encryptFields(values, encryptionKey, sub, options.encryptedKeys)
+  values = symetricEncryptFields(
+    values,
+    { encryptedKey, sub },
+    options.encryptedFields
+  )
 
   await options.store.update(
     options.table,
@@ -80,8 +105,8 @@ export const update = async (sub, values = {}) => {
 }
 
 export const remove = async (sub) => {
-  await options.store.remove(options.table, { sub }) // Should trigger removal of credentials and messengers
-  await options.notify.trigger('account-remove', sub)
+  // Should trigger removal of credentials and messengers
+  await options.store.remove(options.table, { sub })
 }
 
 /* export const expire = async (sub) => {

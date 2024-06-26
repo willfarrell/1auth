@@ -1,0 +1,26 @@
+<html>
+  <head> </head>
+  <body>
+    <h1>Recovery Codes</h1>
+    <h2>Registered</h2>
+    {authenticationCount} {authenticationList}
+    <h2>Registration</h2>
+    <form method="POST" id="registrationForm">
+      <input type="hidden" name="action" id="create" value="create" /><br />
+      <button type="submit">create</button>
+    </form>
+    <form method="POST" id="registrationForm">
+      <input type="hidden" name="action" id="create" value="update" /><br />
+      <button type="submit">update</button>
+    </form>
+    {recoveryCodes}
+    <h2>Authentication</h2>
+    <form method="POST" id="authenticationForm">
+      <input name="username" id="username" value="{username}" /><br />
+      <input name="password" id="password" value="" /><br />
+
+      <button type="submit" id="authentication">authentication</button>
+      <div id="authenticationOutput">{authenticationOutput}</div>
+    </form>
+  </body>
+</html>

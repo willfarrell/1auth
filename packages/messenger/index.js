@@ -1,116 +1,193 @@
 import {
+  entropyToCharacterLength,
+  charactersNumeric,
+  randomNumeric,
+  createSecretHash,
+  verifySecretHash,
   randomId,
-  outOfBandToken,
-  createDigest,
+  createEncryptedDigest,
   makeSymetricKey,
-  encrypt
-  // decrypt
+  symetricEncryptFields,
+  symetricDecryptFields
 } from '@1auth/crypto'
 
 import {
+  getOptions as authnGetOptions,
   create as authnCreate,
-  verify as authnVerify,
-  expire as authnExpire
+  verify as authnVerify
 } from '@1auth/authn'
 
-export const options = {
+const id = 'messenger'
+
+const token = {
+  id,
+  type: 'token',
+  minLength: entropyToCharacterLength(19, charactersNumeric.length),
+  otp: true,
+  expire: 10 * 60,
+  create: async () => randomNumeric(token.minLength),
+  encode: async (value) => createSecretHash(value),
+  decode: async (value) => value,
+  verify: async (value, hash) => verifySecretHash(hash, value)
+}
+
+const defaults = {
+  id,
   store: undefined,
   notify: undefined,
   table: 'messengers',
   idGenerate: true,
   idPrefix: 'messenger',
-  randomId: undefined,
-  token: undefined
+  randomId: { ...randomId },
+  token,
+  encryptedFields: ['value']
 }
-export default (params) => {
-  Object.assign(options, { randomId, token: outOfBandToken }, params)
+
+const options = {}
+export default (opt = {}) => {
+  Object.assign(options, defaults, opt)
 }
 export const getOptions = () => options
 
-export const exists = async (value) => {
+export const exists = async (type, value) => {
+  const valueDigest = createEncryptedDigest(value)
   return options.store.exists(options.table, {
-    digest: await createDigest(value)
-  })
-}
-
-export const lookup = async (sub, type) => {
-  const filters = { sub }
-  if (type) {
-    filters.type = type
-  }
-  return options.store.selectList(options.table, filters) // { sub, type }
-}
-
-// TODO everything below, update email to build on top of
-export const create = async (sub, type, value) => {
-  const valueDigest = await createDigest(value)
-  const valueExists = await options.store.select(options.table, {
+    type,
     digest: valueDigest
   })
-  if (valueExists?.sub === sub && valueExists?.verify) {
+}
+
+export const lookup = async (type, value) => {
+  const valueDigest = createEncryptedDigest(value)
+  const res = await options.store.select(options.table, {
+    type,
+    digest: valueDigest
+  })
+  if (!res?.verify) return
+  const { encryptionKey: encryptedKey, sub } = res
+  delete res.encryptionKey
+  const decryptedValues = symetricDecryptFields(
+    res,
+    { encryptedKey, sub },
+    options.encryptedFields
+  )
+  return decryptedValues
+}
+
+export const list = async (type, sub) => {
+  const messengers = await options.store.selectList(options.table, {
+    sub,
+    type
+  })
+  for (let i = messengers.length; i--;) {
+    const { encryptionKey: encryptedKey, sub } = messengers[i]
+    delete messengers[i].encryptionKey
+    messengers[i] = symetricDecryptFields(
+      messengers[i],
+      { encryptedKey, sub },
+      options.encryptedFields
+    )
+  }
+  return messengers
+}
+
+export const create = async (type, sub, value, values) => {
+  const digest = createEncryptedDigest(value)
+  const valueExists = await options.store.select(
+    options.table,
+    {
+      digest
+    },
+    ['id', 'sub', 'verify']
+  )
+  if (valueExists?.sub !== sub && valueExists?.verify) {
     await options.notify.trigger(`messenger-${type}-exists`, sub)
     return
-  } else if (valueExists?.verify) {
-    await createToken(sub, valueExists.id)
+  } else if (valueExists?.sub === sub) {
+    await createToken(type, sub, valueExists.id)
     return valueExists.id
   }
   const now = nowInSeconds()
 
-  const { encryptedKey } = makeSymetricKey(sub)
-  const encryptedData = encrypt(value, encryptedKey, sub)
+  const { encryptedKey, encryptionKey } = makeSymetricKey(sub)
+  const encryptedValues = symetricEncryptFields(
+    {
+      ...values,
+      value,
+      digest
+    },
+    {
+      encryptionKey,
+      sub
+    },
+    options.encryptedFields
+  )
   const params = {
+    ...encryptedValues,
     sub,
-    type: options.id,
+    type,
     encryptionKey: encryptedKey,
-    value: encryptedData,
-    digest: valueDigest,
     create: now,
     update: now // in case new digests need to be created
   }
   if (options.idGenerate) {
-    params.id = await options.randomId.create(options.idPrefix)
+    params.id = options.randomId.create(options.idPrefix)
   }
-  const { id } = await options.store.insert(options.table, params)
-  await createToken(sub, id)
+  const id = await options.store.insert(options.table, params)
+
+  await createToken(type, sub, id)
   return id
 }
 
-export const remove = async (sub, id) => {
-  const item = await options.store.select(options.table, { id })
-  const verifyTimestamp = item?.verify
-
-  if (item.sub !== sub) {
-    throw new Error('403 Unauthorized')
-  }
-  await authnExpire(sub, id, options)
-  await options.store.remove(options.table, { id, sub })
-
-  if (verifyTimestamp) {
-    await options.notify.trigger(`messenger-${item.type}-removed`, sub)
-  }
-}
-
-export const createToken = async (sub, id) => {
-  await authnExpire(sub, id, options)
+export const createToken = async (type, sub, sourceId) => {
+  // await authnRemove(options.token, sub, sourceId);
+  await authnGetOptions().store.remove(authnGetOptions().table, {
+    sub,
+    sourceId
+  })
   const token = await options.token.create()
-  id = await authnCreate(
-    options.token.type,
-    { id, sub, value: token },
-    options
-  )
-  await options.notify.trigger('messenger-TYPE-verify', sub, { token })
+  // make authn id the same as messenger id
+  const { id, expire } = await authnCreate(options.token, sub, {
+    value: token,
+    sourceId
+  })
+  await options.notify.trigger(`messenger-${type}-verify`, sub, {
+    token,
+    expire
+  })
   return id
 }
 
-export const verifyToken = async (sub, token) => {
-  const { id } = await authnVerify(options.token.type, sub, token, options)
-  await authnExpire(sub, id, options)
+export const verifyToken = async (type, sub, token, notify = true) => {
+  const { sourceId } = await authnVerify(options.token, sub, token)
   await options.store.update(
     options.table,
-    { id, sub },
+    { sub, id: sourceId },
     { verify: nowInSeconds() }
   )
-  await options.notify.trigger('messenger-TYPE-create', sub) // make sure message not sent when part of onboard
+  if (notify) {
+    await options.notify.trigger(`messenger-${type}-create`, sub)
+  }
+}
+
+export const remove = async (type, sub, id) => {
+  const item = await options.store.select(options.table, { id, sub, type }, [
+    'verify'
+  ])
+
+  if (!item) {
+    throw new Error('403 Unauthorized')
+  }
+  // await authnRemove(options.token, sub, id);
+  await authnGetOptions().store.remove(authnGetOptions().table, {
+    sub,
+    sourceId: id
+  })
+  await options.store.remove(options.table, { id, sub })
+
+  if (item?.verify) {
+    await options.notify.trigger(`messenger-${type}-remove`, sub)
+  }
 }
 
 const nowInSeconds = () => Math.floor(Date.now() / 1000)
