@@ -133,7 +133,8 @@ describe('authn-webauthn', () => {
     equal(secret.expire, undefined)
 
     // Authentication
-    const { secret: authenticationOptions } = await webauthnCreateChallenge(sub)
+    const { secret: authenticationOptions } =
+      await webauthnCreateChallenge(sub)
     equal(authenticationOptions.challenge.length, 43)
     equal(authenticationOptions.rpId, origin.substring(7))
     deepEqual(authenticationOptions.userVerification, 'preferred')
@@ -154,7 +155,7 @@ describe('authn-webauthn', () => {
 
     // Override challenge
     console.log('override', {
-      authenticator: JSON.parse(
+      ...JSON.parse(
         symetricDecrypt(challenge.value, {
           sub,
           encryptedKey: challenge.encryptionKey
@@ -171,7 +172,7 @@ describe('authn-webauthn', () => {
       {
         value: symetricEncrypt(
           JSON.stringify({
-            authenticator: JSON.parse(
+            ...JSON.parse(
               symetricDecrypt(challenge.value, {
                 sub,
                 encryptedKey: challenge.encryptionKey
