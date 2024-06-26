@@ -53,8 +53,16 @@ const secret = {
   // charPool: characterPoolSize.base64,
   // minLength: entropyToCharacterLength(64, charactersAlphaNumeric.length),
   otp: false,
-  encode: (value) => JSON.stringify(jsonEncodeSecret(value)),
-  decode: (value) => jsonParseSecret(JSON.parse(value))
+  encode: (value) => {
+    value = jsonEncodeSecret(value)
+    value = JSON.stringify(value)
+    return value
+  },
+  decode: (value) => {
+    value = JSON.parse(value)
+    value = jsonParseSecret(value)
+    return value
+  }
 }
 
 const challenge = {
@@ -67,7 +75,8 @@ const challenge = {
   // create: () => randomAlphaNumeric(challenge.minLength),
   encode: (value) => {
     value.authenticator = jsonEncodeSecret(value.authenticator)
-    return JSON.stringify(value)
+    value = JSON.stringify(value)
+    return value
   },
   decode: (value) => {
     value = JSON.parse(value)
@@ -75,6 +84,7 @@ const challenge = {
     return value
   },
   verify: async (response, value) => {
+    console.log({ response, value })
     try {
       const { verified, authenticationInfo } =
         await verifyAuthenticationResponse({

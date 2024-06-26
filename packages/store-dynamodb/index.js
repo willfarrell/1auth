@@ -50,7 +50,6 @@ export const count = async (table, filters) => {
   return items.length
 }
 
-// TODO add in attributes to select
 export const select = async (table, filters = {}, fields = []) => {
   // GetItemCommand doesn't support IndexName
   if (!(filters.sub && filters.id)) {

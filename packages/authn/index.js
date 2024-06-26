@@ -168,10 +168,14 @@ export const authenticate = async (credentialOptions, username, secret) => {
   const timeout = setTimeout(options.authenticationDuration)
   const type = makeType(credentialOptions)
 
-  const credentials = await options.store.selectList(options.table, {
-    sub,
-    type
-  })
+  const credentials = await options.store.selectList(
+    options.table,
+    {
+      sub,
+      type
+    },
+    ['id', 'value', 'otp', 'verify', 'expire', 'sourceId']
+  )
   let valid
   for (const credential of credentials) {
     // non-opt credentials must be verified before use

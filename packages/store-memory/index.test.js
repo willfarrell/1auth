@@ -66,7 +66,11 @@ describe('store-memory', () => {
     await store.insert(table, row)
     let result = await store.select(table, { id: row.id })
     row.value = 'b'
-    await store.update(table, { id: row.id }, { value: row.value })
+    await store.update(
+      table,
+      { sub: 'sub_000', id: row.id },
+      { value: row.value }
+    )
     result = await store.select(table, { id: row.id })
     deepEqual(result, row)
     equal(mocks.log.mock.calls.length, 4)
@@ -96,7 +100,7 @@ describe('store-memory', () => {
       { id: 2, sub: 'sub_000', value: 'b' }
     ]
     await store.insertList(table, rows)
-    await store.remove(table, { id: rows[0].id })
+    await store.remove(table, { sub: 'sub_000', id: rows[0].id })
     const result = await store.selectList(table, { sub: rows[0].sub })
     deepEqual(result, [rows[1]])
     equal(mocks.log.mock.calls.length, 3)
@@ -107,7 +111,7 @@ describe('store-memory', () => {
       { id: 2, sub: 'sub_000', value: 'b' }
     ]
     await store.insertList(table, rows)
-    await store.remove(table, { id: rows[0].id, sub: rows[0].sub })
+    await store.remove(table, { sub: rows[0].sub, id: rows[0].id })
     const result = await store.selectList(table, { sub: rows[0].sub })
     deepEqual(result, [rows[1]])
     equal(mocks.log.mock.calls.length, 3)
@@ -119,7 +123,7 @@ describe('store-memory', () => {
       { id: 3, sub: 'sub_000', value: 'c' }
     ]
     await store.insertList(table, rows)
-    await store.remove(table, { id: [rows[0].id, rows[1].id] })
+    await store.remove(table, { sub: 'sub_000', id: [rows[0].id, rows[1].id] })
     const result = await store.selectList(table, { sub: rows[0].sub })
     deepEqual(result, [rows[2]])
     equal(mocks.log.mock.calls.length, 3)

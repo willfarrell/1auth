@@ -23,7 +23,7 @@ import accountUsername, {
 import authn, { getOptions as authnGetOptions } from '../authn/index.js'
 
 import webauthn, {
-  getOptions as webauthnGetOptions,
+  // getOptions as webauthnGetOptions,
   authenticate as webauthnAuthenticate,
   create as webauthnCreate,
   // exists as webauthnExists,
@@ -54,7 +54,7 @@ authn({
 const name = '1Auth'
 const origin = 'http://localhost'
 webauthn({
-  log: () => {}, // console.log,
+  log: console.log,
   name,
   origin
 })
@@ -80,19 +80,19 @@ test.afterEach(async (t) => {
 describe('authn-webauthn', () => {
   it('Can create recovery codes on an account', async () => {
     // Registration
-    let clientOptions = await webauthnCreate(sub)
+    const { secret: registrationOptions } = await webauthnCreate(sub)
 
-    equal(clientOptions.challenge.length, 43)
-    equal(clientOptions.rp.name, name)
-    equal(clientOptions.rp.id, origin.substring(7))
-    ok(clientOptions.user.id)
-    equal(clientOptions.user.name, username)
-    deepEqual(clientOptions.authenticatorSelection, {
+    equal(registrationOptions.challenge.length, 43)
+    equal(registrationOptions.rp.name, name)
+    equal(registrationOptions.rp.id, origin.substring(7))
+    ok(registrationOptions.user.id)
+    equal(registrationOptions.user.name, username)
+    deepEqual(registrationOptions.authenticatorSelection, {
       residentKey: 'preferred',
       userVerification: 'preferred',
       requireResidentKey: false
     })
-    deepEqual(clientOptions.excludeCredentials, [])
+    deepEqual(registrationOptions.excludeCredentials, [])
 
     let authnDB = await store.selectList(authnGetOptions().table, { sub })
     equal(authnDB.length, 1)
@@ -109,9 +109,9 @@ describe('authn-webauthn', () => {
       {
         value: symetricEncrypt(
           JSON.stringify({
-            expectedChallenge: registrationOptions.challenge,
+            expectedChallenge: registrationOptionsOverride.challenge,
             expectedOrigin: origin,
-            expectedRPID: registrationOptions.rp.id,
+            expectedRPID: registrationOptionsOverride.rp.id,
             requireUserVerification: true
           }),
           {
@@ -133,11 +133,11 @@ describe('authn-webauthn', () => {
     equal(secret.expire, undefined)
 
     // Authentication
-    clientOptions = await webauthnCreateChallenge(sub)
-    equal(clientOptions.challenge.length, 43)
-    equal(clientOptions.rpId, origin.substring(7))
-    deepEqual(clientOptions.userVerification, 'preferred')
-    deepEqual(clientOptions.allowCredentials, [
+    const { secret: authenticationOptions } = await webauthnCreateChallenge(sub)
+    equal(authenticationOptions.challenge.length, 43)
+    equal(authenticationOptions.rpId, origin.substring(7))
+    deepEqual(authenticationOptions.userVerification, 'preferred')
+    deepEqual(authenticationOptions.allowCredentials, [
       {
         id: registrationResponse.id,
         type: 'public-key'
@@ -153,21 +153,33 @@ describe('authn-webauthn', () => {
     ok(challenge.expire)
 
     // Override challenge
+    console.log('override', {
+      authenticator: JSON.parse(
+        symetricDecrypt(challenge.value, {
+          sub,
+          encryptedKey: challenge.encryptionKey
+        })
+      ),
+      expectedChallenge: authenticationOptionsOverride.challenge,
+      expectedOrigin: origin,
+      expectedRPID: authenticationOptionsOverride.rpId,
+      requireUserVerification: true
+    })
     await store.update(
       authnGetOptions().table,
       { sub, id: challenge.id },
       {
         value: symetricEncrypt(
-          webauthnGetOptions().challenge.encode({
-            authenticator: webauthnGetOptions().secret.decode(
-              symetricDecrypt(secret.value, {
+          JSON.stringify({
+            authenticator: JSON.parse(
+              symetricDecrypt(challenge.value, {
                 sub,
-                encryptedKey: secret.encryptionKey
+                encryptedKey: challenge.encryptionKey
               })
             ),
-            expectedChallenge: authenticationOptions.challenge,
+            expectedChallenge: authenticationOptionsOverride.challenge,
             expectedOrigin: origin,
-            expectedRPID: authenticationOptions.rpId,
+            expectedRPID: authenticationOptionsOverride.rpId,
             requireUserVerification: true
           }),
           {
@@ -246,7 +258,7 @@ describe('authn-webauthn', () => {
     }); */
 })
 
-const registrationOptions = {
+const registrationOptionsOverride = {
   challenge: 'Jl-QJo7l9_InkLl52RE0DLbc3I7sU4IuVJHV1EyHYY4',
   rp: {
     name: '1Auth',
@@ -303,7 +315,7 @@ const registrationResponse = {
   authenticatorAttachment: 'platform'
 }
 
-const authenticationOptions = {
+const authenticationOptionsOverride = {
   rpId: 'localhost',
   challenge: '53kCzYApTbJ5vZnkBYMKMYl76mVfWHL18mSj9cfzjT4',
   allowCredentials: [{ id: registrationResponse.id, type: 'public-key' }],

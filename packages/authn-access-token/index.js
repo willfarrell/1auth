@@ -78,7 +78,7 @@ export const create = async (sub, values = {}) => {
   await options.notify.trigger('authn-access-token-create', sub, {
     expire
   })
-  console.log({ values, expire })
+
   return { id, secret }
 }
 

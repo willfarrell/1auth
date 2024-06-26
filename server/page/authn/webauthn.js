@@ -48,8 +48,8 @@ export default async (template, data) => {
 
   const authenticationCount = await webauthnCount(sub)
   const authenticationList = await webauthnList(sub)
-  const registrationOptions = await webauthnCreate(sub)
-  const authenticationOptions = await webauthnCreateChallenge(sub)
+  const { secret: registrationOptions } = await webauthnCreate(sub)
+  const { secret: authenticationOptions } = await webauthnCreateChallenge(sub)
 
   return template
     .replace('{authenticationCount}', authenticationCount)
