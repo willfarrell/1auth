@@ -84,7 +84,6 @@ const challenge = {
     return value
   },
   verify: async (response, value) => {
-    console.log({ response, value })
     try {
       const { verified, authenticationInfo } =
         await verifyAuthenticationResponse({

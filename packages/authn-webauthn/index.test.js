@@ -54,7 +54,7 @@ authn({
 const name = '1Auth'
 const origin = 'http://localhost'
 webauthn({
-  log: console.log,
+  // log: console.log,
   name,
   origin
 })
@@ -154,18 +154,6 @@ describe('authn-webauthn', () => {
     ok(challenge.expire)
 
     // Override challenge
-    console.log('override', {
-      ...JSON.parse(
-        symetricDecrypt(challenge.value, {
-          sub,
-          encryptedKey: challenge.encryptionKey
-        })
-      ),
-      expectedChallenge: authenticationOptionsOverride.challenge,
-      expectedOrigin: origin,
-      expectedRPID: authenticationOptionsOverride.rpId,
-      requireUserVerification: true
-    })
     await store.update(
       authnGetOptions().table,
       { sub, id: challenge.id },
