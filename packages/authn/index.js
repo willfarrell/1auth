@@ -174,7 +174,7 @@ export const authenticate = async (credentialOptions, username, secret) => {
       sub,
       type
     },
-    ['id', 'value', 'otp', 'verify', 'expire', 'sourceId']
+    ['id', 'encryptionKey', 'value', 'otp', 'verify', 'expire', 'sourceId']
   )
   let valid
   for (const credential of credentials) {

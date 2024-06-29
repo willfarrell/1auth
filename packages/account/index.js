@@ -9,7 +9,7 @@ import {
   symetricDecryptFields
 } from '@1auth/crypto'
 
-const id = 'authn'
+const id = 'account'
 const randomSubject = {
   type: 'id',
   minLength: entropyToCharacterLength(64, charactersAlphaNumeric.length),
@@ -40,17 +40,17 @@ export const exists = async (sub) => {
 }
 
 export const lookup = async (sub) => {
-  let item = await options.store.select(options.table, { sub })
-  if (!item) return
-  const { encryptionKey: encryptedKey } = item
-  delete item.encryptionKey
-  delete item.privateKey
-  item = symetricDecryptFields(
-    item,
+  const account = await options.store.select(options.table, { sub })
+  if (!account) return
+  const { encryptionKey: encryptedKey } = account
+  delete account.encryptionKey
+  delete account.privateKey
+  const decryptedAccount = symetricDecryptFields(
+    account,
     { encryptedKey, sub },
     options.encryptedFields
   )
-  return item
+  return decryptedAccount
 }
 
 export const create = async (values = {}) => {
@@ -101,6 +101,14 @@ export const update = async (sub, values = {}) => {
     options.table,
     { sub },
     { ...values, update: nowInSeconds() }
+  )
+}
+
+export const expire = async (sub) => {
+  await options.store.update(
+    options.table,
+    { sub },
+    { expire: nowInSeconds() }
   )
 }
 

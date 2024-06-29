@@ -137,13 +137,18 @@ export const randomId = {
 }
 
 // *** Digests *** //
+export const createChecksum = (value, { algorithm } = {}) => {
+  algorithm ??= options.digestAlgorithm
+  return checksum(algorithm).update(value).digest('hex')
+}
 export const createDigest = (value, { algorithm } = {}) => {
   algorithm ??= options.digestAlgorithm
-  const hash = checksum(algorithm).update(value).digest('hex')
-  const digest = `${algorithm}:${hash}`
-  return digest
+  const checksum = createChecksum(value, { algorithm })
+  return `${algorithm}:${checksum}`
 }
 
+// TODO evaluate non-iv encryption approach?
+// Use encryption as pepper to allow easier rotation of pepper
 export const createEncryptedDigest = (value, { algorithm } = {}) => {
   const digest = createDigest(value, { algorithm })
   // encrypting using the symetricEncryptionKey instread of
@@ -157,6 +162,28 @@ export const createEncryptedDigest = (value, { algorithm } = {}) => {
         0,
         symetricEncryptionEncodingLengths.iv
       ),
+      options.symetricEncryptionEncoding
+    )
+  })
+}
+
+export const rotateDigestEncryption = (
+  encryptedValue,
+  encryptionKey,
+  newEncryptionKey
+) => {
+  const digest = symetricDecrypt(encryptedValue, {
+    encryptionKey,
+    sub: '',
+    encoding: options.symetricEncryptionEncoding
+  })
+
+  return symetricEncrypt(digest, {
+    encryptionKey: newEncryptionKey,
+    sub: '',
+    encoding: options.symetricEncryptionEncoding,
+    iv: Buffer.from(
+      newEncryptionKey.substring(0, symetricEncryptionEncodingLengths.iv),
       options.symetricEncryptionEncoding
     )
   })

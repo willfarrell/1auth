@@ -12,6 +12,7 @@ import {
   list as authnList,
   create as authnCreate,
   authenticate as authnAuthenticate,
+  expire as authnExpire,
   remove as authnRemove
 } from '@1auth/authn'
 
@@ -80,6 +81,11 @@ export const create = async (sub, values = {}) => {
   })
 
   return { id, secret }
+}
+
+export const expire = async (sub, id) => {
+  await authnExpire(options.secret, sub, id)
+  await options.notify.trigger('authn-access-token-expire', sub)
 }
 
 export const remove = async (sub, id) => {
