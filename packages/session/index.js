@@ -41,7 +41,7 @@ export const getOptions = () => options
 export const lookup = async (id) => {
   const now = nowInSeconds()
   const session = await options.store.select(options.table, { id })
-  if (session.expire < now) {
+  if (session?.expire < now) {
     return
   }
   return session
