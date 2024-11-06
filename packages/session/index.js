@@ -38,13 +38,22 @@ export default (opt = {}) => {
 }
 export const getOptions = () => options
 
-export const lookup = async (id) => {
-  const now = nowInSeconds()
+export const lookup = async (id, value = {}) => {
   const session = await options.store.select(options.table, { id })
-  if (session?.expire < now) {
-    return
+  if (session) {
+    const now = nowInSeconds()
+    if (session.expire < now) {
+      return
+    }
+    const encodedValue = options.encode(value)
+    const decryptedValue = symetricDecrypt(session.value, {
+      sub: session.sub,
+      encryptedKey: session.encryptionKey
+    })
+    if (options.checkMetadata(decryptedValue, encodedValue)) {
+      return session
+    }
   }
-  return session
 }
 
 export const list = async (sub) => {

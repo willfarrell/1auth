@@ -40,14 +40,14 @@ export default (opt = {}) => {
 
 export const count = async (sub) => {
   if (options.log) {
-    options.log('@1auth/autn-recovery-codes count(', sub, ')')
+    options.log('@1auth/authn-recovery-codes count(', sub, ')')
   }
   return await authnCount(options.secret, sub)
 }
 
 export const list = async (sub) => {
   if (options.log) {
-    options.log('@1auth/autn-recovery-codes list(', sub, ')')
+    options.log('@1auth/authn-recovery-codes list(', sub, ')')
   }
   return await authnList(options.secret, sub)
 }
@@ -58,7 +58,7 @@ export const authenticate = async (username, secret) => {
 
 export const create = async (sub) => {
   if (options.log) {
-    options.log('@1auth/autn-recovery-codes create(', sub, ')')
+    options.log('@1auth/authn-recovery-codes create(', sub, ')')
   }
   const secrets = await createSecrets(sub, options.count)
   await options.notify.trigger('authn-recovery-codes-create', sub)
@@ -67,7 +67,7 @@ export const create = async (sub) => {
 
 export const update = async (sub) => {
   if (options.log) {
-    options.log('@1auth/autn-recovery-codes update(', sub, ')')
+    options.log('@1auth/authn-recovery-codes update(', sub, ')')
   }
   const existingSecrets = await options.store.selectList(options.table, {
     sub,
@@ -83,7 +83,7 @@ export const update = async (sub) => {
 
 export const remove = async (sub, id) => {
   if (options.log) {
-    options.log('@1auth/autn-recovery-codes remove(', sub, id, ')')
+    options.log('@1auth/authn-recovery-codes remove(', sub, id, ')')
   }
   const existingSecrets = id
     ? await options.store.selectList(options.table, {

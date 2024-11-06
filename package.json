@@ -1,6 +1,6 @@
 {
   "name": "@1auth/monorepo",
-  "version": "0.0.0-alpha.35",
+  "version": "0.0.0-alpha.36",
   "description": "",
   "private": true,
   "type": "module",
@@ -22,9 +22,10 @@
     "update": "npm update --workspaces && npm install --workspaces",
     "outdated": "npm outdated --workspaces",
     "audit": "npm audit fix --workspaces",
-    "lerna:sync": "npm install && lerna publish --exact --yes --skip-npm --no-git-tag-version --no-push --bump $npm_package_version",
-    "lerna:publish": "lerna publish --exact --yes --no-git-tag-version --no-push --bump $npm_package_version",
-    "lerna:publish:next": "lerna publish --exact --yes --no-git-tag-version --no-push --bump $npm_package_version --dist-tag next"
+    "release:sync": "npm version $npm_package_version --workspaces && find ./packages -name \"package.json\" -exec sed -i '' -E \"s|\\\"@1auth/(.*)\\\": ([^,]*)|\\\"@1auth/\\1\\\": $(npm pkg get version)|g\" {} \\;",
+    "release:tag": "git tag $npm_package_version && git push --tags",
+    "release:publish": "npm publish --workspaces",
+    "release:publish:next": "npm publish --tag next --workspaces"
   },
   "repository": {
     "type": "git",

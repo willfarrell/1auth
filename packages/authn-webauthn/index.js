@@ -40,7 +40,7 @@ const token = {
       if (!verified) throw new Error('Failed verifyRegistrationResponse')
       return { registrationInfo: jsonEncodeSecret(registrationInfo) }
     } catch (e) {
-      console.error('@1auth/autn-webauthn token.verify()', e)
+      console.error('@1auth/authn-webauthn token.verify()', e)
       return false
     }
   }
@@ -95,7 +95,7 @@ const challenge = {
       value.authenticator = jsonEncodeSecret(value.authenticator)
       return true
     } catch (e) {
-      console.error('@1auth/autn-webauthn challenge.verify()', e)
+      console.error('@1auth/authn-webauthn challenge.verify()', e)
       return false
     }
   },
@@ -132,28 +132,28 @@ export const getOptions = () => options
 
 export const count = async (sub) => {
   if (options.log) {
-    options.log('@1auth/autn-webauthn count(', sub, ')')
+    options.log('@1auth/authn-webauthn count(', sub, ')')
   }
   return await authnCount(options.secret, sub)
 }
 
 export const list = async (sub) => {
   if (options.log) {
-    options.log('@1auth/autn-webauthn list(', sub, ')')
+    options.log('@1auth/authn-webauthn list(', sub, ')')
   }
   return await authnList(options.secret, sub)
 }
 
 export const authenticate = async (username, input) => {
   if (options.log) {
-    options.log('@1auth/autn-webauthn authenticate(', username, input, ')')
+    options.log('@1auth/authn-webauthn authenticate(', username, input, ')')
   }
   return await authnAuthenticate(options.challenge, username, input)
 }
 
 export const create = async (sub) => {
   if (options.log) {
-    options.log('@1auth/autn-webauthn create(', sub, ')')
+    options.log('@1auth/authn-webauthn create(', sub, ')')
   }
   return await createToken(sub)
 }
@@ -161,7 +161,7 @@ export const create = async (sub) => {
 export const verify = async (sub, response, { name } = {}, notify = true) => {
   if (options.log) {
     options.log(
-      '@1auth/autn-webauthn verify(',
+      '@1auth/authn-webauthn verify(',
       sub,
       response,
       ({ name } = {}),
@@ -184,7 +184,7 @@ export const verify = async (sub, response, { name } = {}, notify = true) => {
 
 const createToken = async (sub) => {
   if (options.log) {
-    options.log('@1auth/autn-webauthn createToken(', sub, ')')
+    options.log('@1auth/authn-webauthn createToken(', sub, ')')
   }
   const [credentials, account] = await Promise.all([
     authnList(options.secret, sub, undefined, ['encryptionKey', 'value']),
@@ -228,7 +228,7 @@ const createToken = async (sub) => {
     // ]
   }
   if (options.log) {
-    options.log('@1auth/autn-webauthn createToken', { registrationOptions })
+    options.log('@1auth/authn-webauthn createToken', { registrationOptions })
   }
   const secret = await generateRegistrationOptions(registrationOptions)
   const { id } = await authnCreate(options.token, sub, {
@@ -242,7 +242,7 @@ const createToken = async (sub) => {
 
   if (options.log) {
     options.log(
-      '@1auth/autn-webauthn createToken return',
+      '@1auth/authn-webauthn createToken return',
       JSON.stringify(secret, null, 2)
     )
   }
@@ -251,7 +251,7 @@ const createToken = async (sub) => {
 
 const verifyToken = async (sub, credential) => {
   if (options.log) {
-    options.log('@1auth/autn-webauthn verifyToken(', sub, credential, ')')
+    options.log('@1auth/authn-webauthn verifyToken(', sub, credential, ')')
   }
   const { registrationInfo } = await authnVerify(
     options.token,
@@ -263,7 +263,7 @@ const verifyToken = async (sub, credential) => {
 
 export const createChallenge = async (sub) => {
   if (options.log) {
-    options.log('@1auth/autn-webauthn createChallenge(', sub, ')')
+    options.log('@1auth/authn-webauthn createChallenge(', sub, ')')
   }
   // const challenge = options.challenge.create();
   const now = nowInSeconds()
@@ -311,14 +311,14 @@ export const createChallenge = async (sub) => {
   const id = await Promise.all(challenges)
 
   if (options.log) {
-    options.log('@1auth/autn-webauthn createChallenge', { secret }, '')
+    options.log('@1auth/authn-webauthn createChallenge', { secret }, '')
   }
   return { id, secret }
 }
 
 export const expire = async (sub, id) => {
   if (options.log) {
-    options.log('@1auth/autn-webauthn remove(', sub, id, ')')
+    options.log('@1auth/authn-webauthn remove(', sub, id, ')')
   }
   await authnExpire(options.secret, sub, id)
   await options.notify.trigger('authn-webauthn-expire', sub)
@@ -326,7 +326,7 @@ export const expire = async (sub, id) => {
 
 export const remove = async (sub, id) => {
   if (options.log) {
-    options.log('@1auth/autn-webauthn remove(', sub, id, ')')
+    options.log('@1auth/authn-webauthn remove(', sub, id, ')')
   }
   await authnRemove(options.secret, sub, id)
   await options.notify.trigger('authn-webauthn-remove', sub)
