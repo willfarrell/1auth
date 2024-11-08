@@ -19,35 +19,37 @@
       ><br />
     </form>
     <script type="module">
-      const { startRegistration } = SimpleWebAuthnBrowser;
-      const form = document.getElementById("registrationForm");
-      const button = document.getElementById("registration");
-      const response = document.getElementById("registrationResponse");
-      const output = document.getElementById("registrationOutput");
+      const { startRegistration } = SimpleWebAuthnBrowser
+      const form = document.getElementById('registrationForm')
+      const button = document.getElementById('registration')
+      const response = document.getElementById('registrationResponse')
+      const output = document.getElementById('registrationOutput')
 
-      button.addEventListener("click", async () => {
-        output.innerHTML = "";
+      button.addEventListener('click', async () => {
+        output.innerHTML = ''
         const registrationOptions = JSON.parse(
-          document.getElementById("registrationOptions").value,
-        );
-        let attResp;
+          document.getElementById('registrationOptions').value
+        )
+        let attResp
         try {
           // Pass the options to the authenticator and wait for a response
-          attResp = await startRegistration(registrationOptions);
+          attResp = await startRegistration({
+            optionsJSON: registrationOptions
+          })
         } catch (error) {
           // Some basic error handling
-          if (error.name === "InvalidStateError") {
+          if (error.name === 'InvalidStateError') {
             output.innerHTML =
-              "Error: Authenticator was probably already registered by user";
+              'Error: Authenticator was probably already registered by user'
           } else {
-            output.innerHTML = error;
+            output.innerHTML = error
           }
 
-          throw error;
+          throw error
         }
-        response.value = JSON.stringify(attResp);
-        form.submit();
-      });
+        response.value = JSON.stringify(attResp)
+        form.submit()
+      })
     </script>
     <h2>Login</h2>
     <form method="POST" id="authenticationForm">
@@ -68,30 +70,32 @@
       ><br />
     </form>
     <script type="module">
-      const { startAuthentication } = SimpleWebAuthnBrowser;
+      const { startAuthentication } = SimpleWebAuthnBrowser
 
-      const form = document.getElementById("authenticationForm");
-      const button = document.getElementById("authentication");
-      const response = document.getElementById("authenticationResponse");
-      const output = document.getElementById("authenticationOutput");
+      const form = document.getElementById('authenticationForm')
+      const button = document.getElementById('authentication')
+      const response = document.getElementById('authenticationResponse')
+      const output = document.getElementById('authenticationOutput')
 
-      button.addEventListener("click", async () => {
-        output.innerHTML = "";
+      button.addEventListener('click', async () => {
+        output.innerHTML = ''
         const authenticationOptions = JSON.parse(
-          document.getElementById("authenticationOptions").value,
-        );
-        let asseResp;
+          document.getElementById('authenticationOptions').value
+        )
+        let asseResp
         try {
           // Pass the options to the authenticator and wait for a response
-          asseResp = await startAuthentication(authenticationOptions);
+          asseResp = await startAuthentication({
+            optionsJSON: authenticationOptions
+          })
         } catch (error) {
           // Some basic error handling
-          output.innerText = error;
-          throw error;
+          output.innerText = error
+          throw error
         }
-        response.value = JSON.stringify(asseResp);
-        form.submit();
-      });
+        response.value = JSON.stringify(asseResp)
+        form.submit()
+      })
     </script>
   </body>
 </html>

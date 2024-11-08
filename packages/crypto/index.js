@@ -256,7 +256,7 @@ export const symetricEncrypt = (
       sub
     })
   }
-  if (!encryptionKey) return data
+  if (!encryptionKey || !data) return data
   decoding ??= 'utf8'
   encoding ??= options.symetricEncryptionEncoding
   iv ??= randomBytes(12) // 96 bits
@@ -319,7 +319,7 @@ export const symetricDecrypt = (
       sub
     })
   }
-  if (!encryptionKey) return encryptedDataPacket
+  if (!encryptionKey || !encryptedDataPacket) return encryptedDataPacket
   decoding ??= options.symetricEncryptionEncoding
   encoding ??= 'utf8'
 
