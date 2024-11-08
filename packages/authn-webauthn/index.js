@@ -195,7 +195,7 @@ const createToken = async (sub) => {
     const credential = credentials[i]
     const value = options.secret.decode(credential.value)
     excludeCredentials.push({
-      id: value.credentialID,
+      id: value.credential.id,
       type: 'public-key'
     })
   }
@@ -278,7 +278,7 @@ export const createChallenge = async (sub) => {
     const credential = credentials[i]
     const authenticator = options.secret.decode(credential.value)
     allowCredentials.push({
-      id: authenticator.credentialID,
+      id: authenticator.credential.id,
       type: 'public-key'
     })
   }
