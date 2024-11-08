@@ -231,19 +231,18 @@ const createToken = async (sub) => {
     options.log('@1auth/authn-webauthn createToken', { registrationOptions })
   }
   const secret = await generateRegistrationOptions(registrationOptions)
-  const { id } = await authnCreate(options.token, sub, {
-    value: {
-      expectedChallenge: secret.challenge,
-      expectedOrigin: options.origin,
-      expectedRPID: new URL(options.origin).hostname,
-      requireUserVerification: true // PassKey
-    }
-  })
+  const value = {
+    expectedChallenge: secret.challenge,
+    expectedOrigin: options.origin,
+    expectedRPID: new URL(options.origin).hostname,
+    requireUserVerification: true // PassKey
+  }
+  const { id } = await authnCreate(options.token, sub, { value })
 
   if (options.log) {
     options.log(
       '@1auth/authn-webauthn createToken return',
-      JSON.stringify(secret, null, 2)
+      JSON.stringify({ id, secret }, null, 2)
     )
   }
   return { id, secret }
@@ -294,16 +293,17 @@ export const createChallenge = async (sub) => {
   for (let i = credentials.length; i--;) {
     const credential = credentials[i]
     const authenticator = options.secret.decode(credential.value)
+    const value = {
+      authenticator,
+      expectedChallenge: secret.challenge,
+      expectedOrigin: options.origin,
+      expectedRPID: new URL(options.origin).hostname,
+      requireUserVerification: true // PassKey
+    }
     challenges.push(
       authnCreate(options.challenge, sub, {
         sourceId: credential.id,
-        value: {
-          authenticator,
-          expectedChallenge: secret.challenge,
-          expectedOrigin: options.origin,
-          expectedRPID: new URL(options.origin).hostname,
-          requireUserVerification: true // PassKey
-        },
+        value,
         update: now
       })
     )
@@ -334,14 +334,14 @@ export const remove = async (sub, id) => {
 
 const jsonEncodeSecret = (value) => {
   // value.credentialID = credentialNormalize(value.credentialID);
-  value.credentialPublicKey = credentialNormalize(value.credentialPublicKey)
+  value.credential.publicKey = credentialNormalize(value.credential.publicKey)
   value.attestationObject = credentialNormalize(value.attestationObject)
   return value
 }
 
 const jsonParseSecret = (value) => {
   // value.credentialID = credentialBuffer(value.credentialID);
-  value.credentialPublicKey = credentialBuffer(value.credentialPublicKey)
+  value.credential.publicKey = credentialBuffer(value.credential.publicKey)
   value.attestationObject = credentialBuffer(value.attestationObject)
   return value
 }
