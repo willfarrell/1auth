@@ -88,10 +88,11 @@ const challenge = {
       const { verified, authenticationInfo } =
         await verifyAuthenticationResponse({
           ...value,
+          credential: value.authenticator.credential,
           response
         })
       if (!verified) throw new Error('Failed verifyAuthenticationResponse')
-      value.authenticator.counter = authenticationInfo.newCounter
+      value.authenticator.credential.counter = authenticationInfo.newCounter
       value.authenticator = jsonEncodeSecret(value.authenticator)
       return true
     } catch (e) {
@@ -333,14 +334,14 @@ export const remove = async (sub, id) => {
 }
 
 const jsonEncodeSecret = (value) => {
-  // value.credentialID = credentialNormalize(value.credentialID);
+  // value.credential.id = credentialNormalize(value.credential.id);
   value.credential.publicKey = credentialNormalize(value.credential.publicKey)
   value.attestationObject = credentialNormalize(value.attestationObject)
   return value
 }
 
 const jsonParseSecret = (value) => {
-  // value.credentialID = credentialBuffer(value.credentialID);
+  // value.credential.id = credentialBuffer(value.credential.id);
   value.credential.publicKey = credentialBuffer(value.credential.publicKey)
   value.attestationObject = credentialBuffer(value.attestationObject)
   return value
