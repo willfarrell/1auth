@@ -4,6 +4,8 @@ import {
   createHash as checksum,
   createCipheriv,
   createDecipheriv,
+  createHmac,
+  timingSafeEqual,
   generateKeyPair as generateKeyPairCallback,
   sign as signCallback,
   verify as verifyCallback
@@ -22,6 +24,7 @@ const defaults = {
   symetricEncryptionEncoding: 'base64', // https://nodejs.org/api/buffer.html#buffers-and-character-encodings
   asymetricKey: 'P-384',
   digestAlgorithm: 'sha3-384',
+  hmacAlgorithm: 'sha256',
   signatureEncoding: 'base64'
 }
 const symetricEncryptionEncodingLengths = {}
@@ -379,13 +382,17 @@ export const makeAsymmetricKeys = async () => {
   return { publicKey, privateKey }
 }
 
-export const makeSignature = async (data, privateKey, { algorithm } = {}) => {
+export const makeAsymmetricSignature = async (
+  data,
+  privateKey,
+  { algorithm } = {}
+) => {
   algorithm ??= options.digestAlgorithm
   return (await sign(algorithm, Buffer.from(data), privateKey)).toString(
     options.signatureEncoding
   )
 }
-export const verifySignature = async (
+export const verifyAsymmetricSignature = async (
   data,
   publicKey,
   signature,
@@ -397,5 +404,42 @@ export const verifySignature = async (
     Buffer.from(data),
     publicKey,
     Buffer.from(signature, options.signatureEncoding)
+  )
+}
+
+export const makeSymmetricSignature = (
+  data,
+  encryptionKey,
+  { algorithm } = {}
+) => {
+  encryptionKey ??= options.symetricEncryptionKey
+  algorithm ??= options.hmacAlgorithm
+  const signature = createHmac('sha256', encryptionKey)
+    .update(data)
+    .digest('base64')
+    .replace(/=+$/, '')
+  const signedData = data + '.' + signature
+  return signedData
+}
+
+export const verifySymmetricSignature = (
+  signedData,
+  encryptionKey,
+  { algorithm } = {}
+) => {
+  const data = signedData.slice(0, signedData.lastIndexOf('.'))
+  const signedDataExpected = makeSymmetricSignature(data, encryptionKey, {
+    algorithm
+  })
+
+  return safeEqual(signedData, signedDataExpected) && data
+}
+
+export const safeEqual = (input, expected) => {
+  const bufferInput = Buffer.from(input)
+  const bufferExpected = Buffer.from(expected)
+  return (
+    bufferInput.length === bufferExpected.length &&
+    timingSafeEqual(bufferInput, bufferExpected)
   )
 }

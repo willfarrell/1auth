@@ -4,7 +4,10 @@ import {
   randomAlphaNumeric,
   makeSymetricKey,
   symetricEncrypt,
-  symetricDecrypt
+  symetricDecrypt,
+  makeSymmetricSignature,
+  verifySymmetricSignature,
+  safeEqual
 } from '@1auth/crypto'
 
 const id = 'session'
@@ -30,7 +33,7 @@ const defaults = {
   // encryptedFields: ["value"],
   encode: (value) => JSON.stringify(value),
   decode: (value) => JSON.parse(value),
-  checkMetadata: (oldSession, newSession) => oldSession === newSession
+  checkMetadata: (oldSession, newSession) => safeEqual(oldSession, newSession)
 }
 const options = {}
 export default (opt = {}) => {
@@ -136,6 +139,14 @@ export const expire = async (sub, id) => {
 
 export const remove = async (sub, id) => {
   await options.store.remove(options.table, { sub, id })
+}
+
+export const sign = (id) => {
+  return makeSymmetricSignature(id)
+}
+
+export const verify = (id) => {
+  return verifySymmetricSignature(id)
 }
 
 // guest or onboard session to authenticated

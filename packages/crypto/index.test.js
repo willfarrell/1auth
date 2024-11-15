@@ -24,9 +24,12 @@ import crypto, {
   symetricDecryptFields,
   symetricDecrypt,
   symetricDecryptKey,
+  makeSymmetricSignature,
+  verifySymmetricSignature,
   makeAsymmetricKeys,
-  makeSignature,
-  verifySignature
+  makeAsymmetricSignature,
+  verifyAsymmetricSignature
+  // safeEqual
 } from '../crypto/index.js'
 
 crypto({
@@ -263,12 +266,29 @@ describe('symetric encryption', () => {
   })
 })
 
+describe('symetric signatures', () => {
+  it('Should be able to sign using a encryption key and verify using encryption key', async () => {
+    const data = '1auth'
+    const encryptionKey = 'secret'
+    const signedData = makeSymmetricSignature(data, encryptionKey)
+    const valid = verifySymmetricSignature(signedData, encryptionKey)
+    ok(valid)
+  })
+  it('Should NOT be able to dign using a encryption key and verify using another encryption key', async () => {
+    const data = '1auth'
+    const encryptionKey = 'secret'
+    const signedData = makeSymmetricSignature(data, encryptionKey)
+    const valid = verifySymmetricSignature(signedData, 'not' + encryptionKey)
+    ok(!valid)
+  })
+})
+
 describe('asymetric signatures', () => {
-  it('Should be able to dign using a private key and verify using public key', async () => {
+  it('Should be able to sign using a private key and verify using public key', async () => {
     const data = '1auth'
     const { publicKey, privateKey } = await makeAsymmetricKeys()
-    const signature = await makeSignature(data, privateKey)
-    const valid = await verifySignature(data, publicKey, signature)
+    const signature = await makeAsymmetricSignature(data, privateKey)
+    const valid = await verifyAsymmetricSignature(data, publicKey, signature)
     ok(valid)
   })
   it('Should NOT be able to dign using a private key and verify using another public key', async () => {
@@ -276,8 +296,12 @@ describe('asymetric signatures', () => {
 
     const alice = await makeAsymmetricKeys()
     const bob = await makeAsymmetricKeys()
-    const signature = await makeSignature(data, alice.privateKey)
-    const valid = await verifySignature(data, bob.publicKey, signature)
+    const signature = await makeAsymmetricSignature(data, alice.privateKey)
+    const valid = await verifyAsymmetricSignature(
+      data,
+      bob.publicKey,
+      signature
+    )
     ok(!valid)
   })
 })
