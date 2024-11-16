@@ -3,7 +3,7 @@ import {
   randomId,
   makeSymetricKey,
   symetricEncryptFields,
-  symetricDecryptFields
+  symmetricDecryptFields
 } from '@1auth/crypto'
 
 const id = 'authn'
@@ -79,7 +79,7 @@ export const list = async (credentialOptions, sub, params, fields) => {
     // }
     const { encryptionKey: encryptedKey } = credential
     delete credential.encryptionKey
-    const decryptedCredential = symetricDecryptFields(
+    const decryptedCredential = symmetricDecryptFields(
       credential,
       { encryptedKey, sub },
       options.encryptedFields
@@ -183,7 +183,7 @@ export const authenticate = async (credentialOptions, username, secret) => {
       continue
     }
     const { encryptionKey: encryptedKey } = credential
-    const decryptedCredential = symetricDecryptFields(
+    const decryptedCredential = symmetricDecryptFields(
       credential,
       { encryptedKey, sub },
       options.encryptedFields
@@ -237,7 +237,7 @@ export const verify = async (credentialOptions, sub, input) => {
   let valid, credential
   for (credential of credentials) {
     const { encryptionKey: encryptedKey } = credential
-    const decryptedCredential = symetricDecryptFields(
+    const decryptedCredential = symmetricDecryptFields(
       credential,
       { encryptedKey, sub },
       options.encryptedFields

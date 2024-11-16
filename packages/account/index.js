@@ -6,7 +6,7 @@ import {
   makeSymetricKey,
   makeAsymmetricKeys,
   symetricEncryptFields,
-  symetricDecryptFields
+  symmetricDecryptFields
 } from '@1auth/crypto'
 
 const id = 'account'
@@ -45,7 +45,7 @@ export const lookup = async (sub) => {
   const { encryptionKey: encryptedKey } = account
   delete account.encryptionKey
   delete account.privateKey
-  const decryptedAccount = symetricDecryptFields(
+  const decryptedAccount = symmetricDecryptFields(
     account,
     { encryptedKey, sub },
     options.encryptedFields

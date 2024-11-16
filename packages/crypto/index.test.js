@@ -21,7 +21,7 @@ import crypto, {
   makeSymetricKey,
   symetricEncryptFields,
   symetricEncrypt,
-  symetricDecryptFields,
+  symmetricDecryptFields,
   symetricDecrypt,
   symetricDecryptKey,
   makeSymmetricSignature,
@@ -257,7 +257,7 @@ describe('symetric encryption', () => {
       fields
     )
     notDeepEqual(encryptedValues, values)
-    const decryptedValues = symetricDecryptFields(
+    const decryptedValues = symmetricDecryptFields(
       encryptedValues,
       { encryptedKey, sub },
       fields

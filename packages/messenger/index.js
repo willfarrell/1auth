@@ -8,7 +8,7 @@ import {
   createEncryptedDigest,
   makeSymetricKey,
   symetricEncryptFields,
-  symetricDecryptFields
+  symmetricDecryptFields
 } from '@1auth/crypto'
 
 import {
@@ -66,7 +66,7 @@ export const lookup = async (type, value) => {
   if (!res?.verify) return
   const { encryptionKey: encryptedKey, sub } = res
   delete res.encryptionKey
-  const decryptedValues = symetricDecryptFields(
+  const decryptedValues = symmetricDecryptFields(
     res,
     { encryptedKey, sub },
     options.encryptedFields
@@ -82,7 +82,7 @@ export const list = async (type, sub) => {
   for (let i = messengers.length; i--;) {
     const { encryptionKey: encryptedKey, sub } = messengers[i]
     delete messengers[i].encryptionKey
-    messengers[i] = symetricDecryptFields(
+    messengers[i] = symmetricDecryptFields(
       messengers[i],
       { encryptedKey, sub },
       options.encryptedFields
@@ -101,7 +101,12 @@ export const create = async (type, sub, value, values) => {
     ['id', 'sub', 'verify']
   )
   if (valueExists?.sub !== sub && valueExists?.verify) {
-    await options.notify.trigger(`messenger-${type}-exists`, sub)
+    await options.notify.trigger(
+      `messenger-${type}-exists`,
+      sub,
+      {},
+      { messengers: [valueExists.id] }
+    )
     return
   } else if (valueExists?.sub === sub) {
     await createToken(type, sub, valueExists.id)
@@ -151,10 +156,15 @@ export const createToken = async (type, sub, sourceId) => {
     value: token,
     sourceId
   })
-  await options.notify.trigger(`messenger-${type}-verify`, sub, {
-    token,
-    expire
-  })
+  await options.notify.trigger(
+    `messenger-${type}-verify`,
+    sub,
+    {
+      token,
+      expire
+    },
+    { messengers: [sourceId] }
+  )
   return id
 }
 

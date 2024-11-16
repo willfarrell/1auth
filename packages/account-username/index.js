@@ -4,7 +4,7 @@ import {
   lookup as accountLookup
 } from '@1auth/account'
 
-import { createEncryptedDigest, symetricDecryptFields } from '@1auth/crypto'
+import { createEncryptedDigest, symmetricDecryptFields } from '@1auth/crypto'
 
 // Only allow characters that are safe to encode
 // . not allowed because it can be used to declare and extension
@@ -41,7 +41,7 @@ export const lookup = async (username) => {
   })
   if (!item) return
   // must match @1auth/account
-  item = symetricDecryptFields(
+  item = symmetricDecryptFields(
     item,
     { encryptedKey: item.encryptionKey, sub: item.sub },
     options.encryptedFields

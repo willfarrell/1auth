@@ -19,7 +19,7 @@ export default (params) => {
   //     .then((res) => res.QueueUrl)
 }
 
-export const trigger = async (id, sub, data = {}) => {
+export const trigger = async (id, sub, data = {}, options = {}) => {
   options.queueUrl ??= options.client
     .send(new GetQueueUrlCommand({ QueueName: options.queueName }))
     .then((res) => res.QueueUrl)
@@ -32,7 +32,7 @@ export const trigger = async (id, sub, data = {}) => {
     // MessageDeduplicationId: `${suffix}_${new Date()
     //   .toISOString()
     //   .substring(0, 10)}_update`,
-    MessageBody: JSON.stringify({ id, sub, data })
+    MessageBody: JSON.stringify({ id, sub, data, options })
   }
   if (options.log) {
     options.log('@1auth/notify-sqs SendMessageCommand', commandParams)

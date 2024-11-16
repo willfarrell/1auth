@@ -283,7 +283,7 @@ export const symetricEncrypt = (
   return encryptedDataPacket
 }
 
-export const symetricDecryptFields = (
+export const symmetricDecryptFields = (
   encryptedValues,
   { encryptedKey, encryptionKey, sub },
   fields = []
