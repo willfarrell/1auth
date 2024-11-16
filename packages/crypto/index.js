@@ -229,7 +229,7 @@ export const makeSymetricKey = (sub) => {
 }
 
 // sub add context to encryption
-export const symetricEncryptFields = (
+export const symmetricEncryptFields = (
   values,
   { encryptedKey, encryptionKey, sub },
   fields = []

@@ -19,7 +19,7 @@ import crypto, {
   createSecretHash,
   verifySecretHash,
   makeSymetricKey,
-  symetricEncryptFields,
+  symmetricEncryptFields,
   symetricEncrypt,
   symmetricDecryptFields,
   symetricDecrypt,
@@ -251,7 +251,7 @@ describe('symetric encryption', () => {
     const { encryptedKey } = makeSymetricKey(sub)
 
     const values = { name: 'pii', create: '2000-01-01' }
-    const encryptedValues = symetricEncryptFields(
+    const encryptedValues = symmetricEncryptFields(
       values,
       { encryptedKey, sub },
       fields

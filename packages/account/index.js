@@ -5,7 +5,7 @@ import {
   randomId,
   makeSymetricKey,
   makeAsymmetricKeys,
-  symetricEncryptFields,
+  symmetricEncryptFields,
   symmetricDecryptFields
 } from '@1auth/crypto'
 
@@ -58,7 +58,7 @@ export const create = async (values = {}) => {
   const asymmetricKeys = await makeAsymmetricKeys()
 
   const { encryptionKey, encryptedKey } = makeSymetricKey(sub)
-  const encryptedValues = symetricEncryptFields(
+  const encryptedValues = symmetricEncryptFields(
     { ...values, ...asymmetricKeys },
     { encryptionKey, sub },
     options.encryptedFields
@@ -91,7 +91,7 @@ export const update = async (sub, values = {}) => {
     ['encryptionKey']
   )
 
-  values = symetricEncryptFields(
+  values = symmetricEncryptFields(
     values,
     { encryptedKey, sub },
     options.encryptedFields
