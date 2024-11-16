@@ -274,11 +274,16 @@ describe('symetric signatures', () => {
     const valid = verifySymmetricSignature(signedData, encryptionKey)
     ok(valid)
   })
-  it('Should NOT be able to dign using a encryption key and verify using another encryption key', async () => {
+  it('Should NOT be able to sign using a encryption key and verify using another encryption key', async () => {
     const data = '1auth'
     const encryptionKey = 'secret'
     const signedData = makeSymmetricSignature(data, encryptionKey)
     const valid = verifySymmetricSignature(signedData, 'not' + encryptionKey)
+    ok(!valid)
+  })
+  it('Should NOT be able to sign using a encryption key and verify when input is undefined', async () => {
+    const encryptionKey = 'secret'
+    const valid = verifySymmetricSignature(undefined, encryptionKey)
     ok(!valid)
   })
 })

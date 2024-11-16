@@ -412,6 +412,7 @@ export const makeSymmetricSignature = (
   encryptionKey,
   { algorithm } = {}
 ) => {
+  // if (typeof data !== 'string') throw new TypeError('data must me a string')
   encryptionKey ??= options.symetricEncryptionKey
   algorithm ??= options.hmacAlgorithm
   const signature = createHmac('sha256', encryptionKey)
@@ -427,6 +428,7 @@ export const verifySymmetricSignature = (
   encryptionKey,
   { algorithm } = {}
 ) => {
+  if (typeof signedData !== 'string') return false
   const data = signedData.slice(0, signedData.lastIndexOf('.'))
   const signedDataExpected = makeSymmetricSignature(data, encryptionKey, {
     algorithm
