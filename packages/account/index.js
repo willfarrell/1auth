@@ -3,7 +3,7 @@ import {
   charactersAlphaNumeric,
   randomAlphaNumeric,
   randomId,
-  makeSymetricKey,
+  symmetricGenerateEncryptionKey,
   makeAsymmetricKeys,
   symmetricEncryptFields,
   symmetricDecryptFields
@@ -57,7 +57,7 @@ export const create = async (values = {}) => {
   const sub = await options.randomSubject.create(options.subPrefix)
   const asymmetricKeys = await makeAsymmetricKeys()
 
-  const { encryptionKey, encryptedKey } = makeSymetricKey(sub)
+  const { encryptionKey, encryptedKey } = symmetricGenerateEncryptionKey(sub)
   const encryptedValues = symmetricEncryptFields(
     { ...values, ...asymmetricKeys },
     { encryptionKey, sub },

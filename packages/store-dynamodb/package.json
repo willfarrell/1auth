@@ -1,6 +1,6 @@
 {
   "name": "@1auth/store-dynamodb",
-  "version": "0.0.0-alpha.44",
+  "version": "0.0.0-alpha.45",
   "description": "",
   "type": "module",
   "engines": {

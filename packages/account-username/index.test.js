@@ -3,7 +3,10 @@ import { ok, equal, notEqual, deepEqual } from 'node:assert/strict'
 
 import * as notify from '../notify-console/index.js'
 import * as store from '../store-memory/index.js'
-import crypto, { randomSymetricEncryptionKey } from '../crypto/index.js'
+import crypto, {
+  symmetricRandomEncryptionKey,
+  symmetricRandomSignatureSecret
+} from '../crypto/index.js'
 
 import account, {
   create as accountCreate,
@@ -20,7 +23,8 @@ import accountUsername, {
 } from '../account-username/index.js'
 
 crypto({
-  symetricEncryptionKey: randomSymetricEncryptionKey()
+  symmetricEncryptionKey: symmetricRandomEncryptionKey(),
+  symmetricSignatureSecret: symmetricRandomSignatureSecret()
 })
 store.default({ log: false })
 notify.default({
@@ -94,7 +98,8 @@ describe('account-username', () => {
     deepEqual(mocks.notifyClient.mock.calls[0].arguments[0], {
       id: 'account-username-change',
       sub,
-      params: undefined
+      data: undefined,
+      options: {}
     })
   })
   it('Can recover a useranme using { sub }', async () => {
@@ -107,7 +112,8 @@ describe('account-username', () => {
     deepEqual(mocks.notifyClient.mock.calls[0].arguments[0], {
       id: 'account-username-recover',
       sub,
-      params: { username: usernameValue }
+      data: { username: usernameValue },
+      options: {}
     })
   })
 

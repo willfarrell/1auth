@@ -1,7 +1,8 @@
 import * as notify from '../packages/notify-console/index.js'
 import * as store from '../packages/store-memory/index.js'
 import crypto, {
-  randomSymetricEncryptionKey
+  symmetricRandomEncryptionKey,
+  symmetricRandomSignatureSecret
 } from '../packages/crypto/index.js'
 
 import account, { create as accountCreate } from '../packages/account/index.js'
@@ -18,7 +19,10 @@ import accessToken, {
   exists as accessTokenExists
 } from '../packages/authn-access-token/index.js'
 
-crypto({ symetricEncryptionKey: randomSymetricEncryptionKey() })
+crypto({
+  symmetricEncryptionKey: symmetricRandomEncryptionKey(),
+  symmetricSignatureSecret: symmetricRandomSignatureSecret()
+})
 store.default({ log: false })
 notify.default({
   client: (id, sub, params) => {

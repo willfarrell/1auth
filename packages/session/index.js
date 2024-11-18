@@ -2,11 +2,11 @@ import {
   charactersAlphaNumeric,
   entropyToCharacterLength,
   randomAlphaNumeric,
-  makeSymetricKey,
-  symetricEncrypt,
-  symetricDecrypt,
-  makeSymmetricSignature,
-  verifySymmetricSignature,
+  symmetricGenerateEncryptionKey,
+  symmetricEncrypt,
+  symmetricDecrypt,
+  symmetricSignatureSign,
+  symmetricSignatureVerify,
   safeEqual
 } from '@1auth/crypto'
 
@@ -49,7 +49,7 @@ export const lookup = async (id, value = {}) => {
       return
     }
     const encodedValue = options.encode(value)
-    const decryptedValue = symetricDecrypt(session.value, {
+    const decryptedValue = symmetricDecrypt(session.value, {
       sub: session.sub,
       encryptedKey: session.encryptionKey
     })
@@ -68,7 +68,7 @@ export const list = async (sub) => {
     if (items[i].expire < now) {
       continue
     }
-    const decryptedValue = symetricDecrypt(items[i].value, {
+    const decryptedValue = symmetricDecrypt(items[i].value, {
       sub,
       encryptedKey: items[i].encryptionKey
     })
@@ -98,10 +98,10 @@ export const create = async (sub, value = {}) => {
     params.id = await options.randomId.create(options.idPrefix)
   }
 
-  const { encryptedKey, encryptionKey } = makeSymetricKey(sub)
+  const { encryptedKey, encryptionKey } = symmetricGenerateEncryptionKey(sub)
   params.encryptionKey = encryptedKey
   const encodedValue = options.encode(value)
-  params.value = symetricEncrypt(encodedValue, {
+  params.value = symmetricEncrypt(encodedValue, {
     encryptionKey,
     sub
   })
@@ -118,7 +118,7 @@ export const check = async (sub, value) => {
   const encodedValue = options.encode(value)
   const sessions = await options.store.selectList(options.table, { sub })
   for (const session of sessions) {
-    const decryptedValue = symetricDecrypt(session.value, {
+    const decryptedValue = symmetricDecrypt(session.value, {
       sub,
       encryptedKey: session.encryptionKey
     })
@@ -142,11 +142,11 @@ export const remove = async (sub, id) => {
 }
 
 export const sign = (id) => {
-  return makeSymmetricSignature(id)
+  return symmetricSignatureSign(id)
 }
 
 export const verify = (id) => {
-  return verifySymmetricSignature(id)
+  return symmetricSignatureVerify(id)
 }
 
 // guest or onboard session to authenticated

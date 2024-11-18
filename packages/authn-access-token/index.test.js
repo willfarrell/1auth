@@ -3,7 +3,10 @@ import { ok, equal, deepEqual } from 'node:assert/strict'
 
 import * as notify from '../notify-console/index.js'
 import * as store from '../store-memory/index.js'
-import crypto, { randomSymetricEncryptionKey } from '../crypto/index.js'
+import crypto, {
+  symmetricRandomEncryptionKey,
+  symmetricRandomSignatureSecret
+} from '../crypto/index.js'
 
 import account, {
   create as accountCreate,
@@ -27,7 +30,10 @@ import accessToken, {
   remove as accessTokenRemove
 } from '../authn-access-token/index.js'
 
-crypto({ symetricEncryptionKey: randomSymetricEncryptionKey() })
+crypto({
+  symmetricEncryptionKey: symmetricRandomEncryptionKey(),
+  symmetricSignatureSecret: symmetricRandomSignatureSecret()
+})
 store.default({ log: false })
 notify.default({
   client: (id, sub, params) => {
@@ -77,11 +83,12 @@ describe('authn-access-token', () => {
     ok(db.expire)
 
     // notify
-    const { expire } = mocks.notifyClient.mock.calls[0].arguments[0].params
+    const { expire } = mocks.notifyClient.mock.calls[0].arguments[0].data
     deepEqual(mocks.notifyClient.mock.calls[0].arguments[0], {
       id: 'authn-access-token-create',
       sub,
-      params: { expire }
+      data: { expire },
+      options: {}
     })
 
     const userSub = await accessTokenAuthenticate(null, secret)
@@ -99,7 +106,8 @@ describe('authn-access-token', () => {
     deepEqual(mocks.notifyClient.mock.calls[1].arguments[0], {
       id: 'authn-access-token-remove',
       sub,
-      params: undefined
+      data: undefined,
+      options: {}
     })
 
     try {

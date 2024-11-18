@@ -18,28 +18,37 @@ const sign = promisify(signCallback)
 const verify = promisify(verifyCallback)
 
 const defaults = {
-  // symetricEncryptionKey: randomBytes(32).toString('base64') // 256 bits
-  symetricEncryptionKey: undefined,
-  symetricEncryptionMethod: 'chacha20-poly1305', // 2024-05: AES-256 GCM (aes-256-gcm) or ChaCha20-Poly1305 (chacha20-poly1305)
-  symetricEncryptionEncoding: 'base64', // https://nodejs.org/api/buffer.html#buffers-and-character-encodings
-  asymetricKey: 'P-384',
+  // symmetricEncryptionKey: randomBytes(32).toString('base64') // 256 bits
+  symmetricEncryptionKey: undefined,
+  symmetricEncryptionMethod: 'chacha20-poly1305', // 2024-05: AES-256 GCM (aes-256-gcm) or ChaCha20-Poly1305 (chacha20-poly1305)
+  symmetricEncryptionEncoding: 'base64', // https://nodejs.org/api/buffer.html#buffers-and-character-encodings
+  symmetricSignatureAlgorithm: 'sha3-384',
+  // symmetricSignatureSecret: randomBytes(32).toString('base64') // 256 bits
+  symmetricSignatureSecret: undefined,
+  asymmetricKeyNamedCurve: 'P-384', // P-512
+  asymmetricSignatureAlgorithm: 'sha3-384',
   digestAlgorithm: 'sha3-384',
-  hmacAlgorithm: 'sha256',
+  digestEncoding: 'hex',
   signatureEncoding: 'base64'
 }
-const symetricEncryptionEncodingLengths = {}
+const symmetricEncryptionEncodingLengths = {}
 const options = {}
 export default (opt = {}) => {
   Object.assign(options, defaults, opt)
-  symetricEncryptionEncodingLengths.iv = randomBytes(12).toString(
-    options.symetricEncryptionEncoding
+  symmetricEncryptionEncodingLengths.iv = randomBytes(12).toString(
+    options.symmetricEncryptionEncoding
   ).length
-  symetricEncryptionEncodingLengths.ivAndAuthTag =
-    symetricEncryptionEncodingLengths.iv +
-    randomBytes(16).toString(options.symetricEncryptionEncoding).length
-  if (!options.symetricEncryptionKey) {
+  symmetricEncryptionEncodingLengths.ivAndAuthTag =
+    symmetricEncryptionEncodingLengths.iv +
+    randomBytes(16).toString(options.symmetricEncryptionEncoding).length
+  if (!options.symmetricEncryptionKey) {
     console.warn(
-      "@1auth/crypto symetricEncryptionKey is empty, use a stored secret made from randomBytes(32).toString('base64'). Encryption disabled."
+      "@1auth/crypto symmetricEncryptionKey is empty, use a stored secret made from randomBytes(32).toString('base64'). Encryption disabled."
+    )
+  }
+  if (!options.symmetricSignatureSecret) {
+    console.warn(
+      "@1auth/crypto symmetricSignatureSecret is empty, use a stored secret made from randomBytes(32).toString('base64'). Signature disabled."
     )
   }
 }
@@ -126,10 +135,6 @@ export const randomNumeric = (characterLength) => {
   return randomCharacters(characterLength, charactersNumeric)
 }
 
-export const randomSymetricEncryptionKey = () => {
-  return randomBytes(32).toString('base64') // 256 bits
-}
-
 // *** configs *** //
 export const randomId = {
   type: 'id',
@@ -140,9 +145,10 @@ export const randomId = {
 }
 
 // *** Digests *** //
-export const createChecksum = (value, { algorithm } = {}) => {
+export const createChecksum = (value, { algorithm, encoding } = {}) => {
   algorithm ??= options.digestAlgorithm
-  return checksum(algorithm).update(value).digest('hex')
+  encoding ??= options.digestEncoding
+  return checksum(algorithm).update(value).digest(encoding)
 }
 export const createDigest = (value, { algorithm } = {}) => {
   algorithm ??= options.digestAlgorithm
@@ -153,19 +159,20 @@ export const createDigest = (value, { algorithm } = {}) => {
 // TODO evaluate non-iv encryption approach?
 // Use encryption as pepper to allow easier rotation of pepper
 export const createEncryptedDigest = (value, { algorithm } = {}) => {
+  algorithm ??= options.digestAlgorithm
   const digest = createDigest(value, { algorithm })
-  // encrypting using the symetricEncryptionKey instread of
+  // encrypting using the symmetricEncryptionKey instead of
   // the row encryptionKey to allow lookup, must have fixed iv
-  return symetricEncrypt(digest, {
-    encryptionKey: options.symetricEncryptionKey,
+  return symmetricEncrypt(digest, {
+    encryptionKey: options.symmetricEncryptionKey,
     sub: '',
-    encoding: options.symetricEncryptionEncoding,
+    encoding: options.symmetricEncryptionEncoding,
     iv: Buffer.from(
-      options.symetricEncryptionKey.substring(
+      options.symmetricEncryptionKey.substring(
         0,
-        symetricEncryptionEncodingLengths.iv
+        symmetricEncryptionEncodingLengths.iv
       ),
-      options.symetricEncryptionEncoding
+      options.symmetricEncryptionEncoding
     )
   })
 }
@@ -175,19 +182,19 @@ export const rotateDigestEncryption = (
   encryptionKey,
   newEncryptionKey
 ) => {
-  const digest = symetricDecrypt(encryptedValue, {
+  const digest = symmetricDecrypt(encryptedValue, {
     encryptionKey,
     sub: '',
-    encoding: options.symetricEncryptionEncoding
+    encoding: options.symmetricEncryptionEncoding
   })
 
-  return symetricEncrypt(digest, {
+  return symmetricEncrypt(digest, {
     encryptionKey: newEncryptionKey,
     sub: '',
-    encoding: options.symetricEncryptionEncoding,
+    encoding: options.symmetricEncryptionEncoding,
     iv: Buffer.from(
-      newEncryptionKey.substring(0, symetricEncryptionEncodingLengths.iv),
-      options.symetricEncryptionEncoding
+      newEncryptionKey.substring(0, symmetricEncryptionEncodingLengths.iv),
+      options.symmetricEncryptionEncoding
     )
   })
 }
@@ -211,19 +218,23 @@ export const verifySecretHash = async (hash, value) => {
   return secretVerify(hash, value)
 }
 
-// *** Encryption *** //
+// *** Symmetric Encryption *** //
 const authTagLength = 16
 
-export const makeSymetricKey = (sub) => {
-  if (!options.symetricEncryptionKey) {
+export const symmetricRandomEncryptionKey = () => {
+  return randomBytes(32).toString('base64') // 256 bits
+}
+
+export const symmetricGenerateEncryptionKey = (sub) => {
+  if (!options.symmetricEncryptionKey) {
     return { encryptionKey: '', encryptedKey: '' }
   }
-  const encryptionKey = randomSymetricEncryptionKey()
-  const encryptedKey = symetricEncrypt(encryptionKey, {
-    encryptionKey: options.symetricEncryptionKey,
+  const encryptionKey = symmetricRandomEncryptionKey()
+  const encryptedKey = symmetricEncrypt(encryptionKey, {
+    encryptionKey: options.symmetricEncryptionKey,
     sub,
     decoding: 'base64',
-    encoding: options.symetricEncryptionEncoding
+    encoding: options.symmetricEncryptionEncoding
   })
   return { encryptionKey, encryptedKey }
 }
@@ -235,14 +246,14 @@ export const symmetricEncryptFields = (
   fields = []
 ) => {
   if (encryptedKey) {
-    encryptionKey ??= symetricDecryptKey(encryptedKey, {
+    encryptionKey ??= symmetricDecryptKey(encryptedKey, {
       sub
     })
   }
   if (!encryptionKey) return values
   const encryptedValues = structuredClone(values)
   for (const key of fields) {
-    encryptedValues[key] &&= symetricEncrypt(encryptedValues[key], {
+    encryptedValues[key] &&= symmetricEncrypt(encryptedValues[key], {
       encryptionKey,
       sub
     })
@@ -250,22 +261,22 @@ export const symmetricEncryptFields = (
   return encryptedValues
 }
 
-export const symetricEncrypt = (
+export const symmetricEncrypt = (
   data,
-  { encryptedKey, encryptionKey, sub, decoding, encoding, iv }
+  { encryptedKey, encryptionKey, signatureSecret, sub, decoding, encoding, iv }
 ) => {
   if (encryptedKey) {
-    encryptionKey ??= symetricDecryptKey(encryptedKey, {
+    encryptionKey ??= symmetricDecryptKey(encryptedKey, {
       sub
     })
   }
   if (!encryptionKey || !data) return data
   decoding ??= 'utf8'
-  encoding ??= options.symetricEncryptionEncoding
+  encoding ??= options.symmetricEncryptionEncoding
   iv ??= randomBytes(12) // 96 bits
 
   const cipher = createCipheriv(
-    options.symetricEncryptionMethod,
+    options.symmetricEncryptionMethod,
     Buffer.from(encryptionKey, 'base64'),
     iv,
     {
@@ -280,23 +291,24 @@ export const symetricEncrypt = (
   const encryptedDataPacket =
     iv.toString(encoding) + authTag.toString(encoding) + encryptedData
 
-  return encryptedDataPacket
+  // add signature to end
+  return symmetricSignatureSign(encryptedDataPacket, signatureSecret)
 }
 
 export const symmetricDecryptFields = (
   encryptedValues,
-  { encryptedKey, encryptionKey, sub },
+  { encryptedKey, encryptionKey, signatureSecret, sub },
   fields = []
 ) => {
   if (encryptedKey) {
-    encryptionKey ??= symetricDecryptKey(encryptedKey, {
+    encryptionKey ??= symmetricDecryptKey(encryptedKey, {
       sub
     })
   }
   if (!encryptionKey) return encryptedValues
   const values = structuredClone(encryptedValues)
   for (const key of fields) {
-    values[key] &&= symetricDecrypt(values[key], {
+    values[key] &&= symmetricDecrypt(values[key], {
       encryptionKey,
       sub
     })
@@ -304,48 +316,58 @@ export const symmetricDecryptFields = (
   return values
 }
 
-export const symetricDecryptKey = (encryptedKey, { sub } = {}) => {
-  return symetricDecrypt(encryptedKey, {
-    encryptionKey: options.symetricEncryptionKey,
+export const symmetricDecryptKey = (encryptedKey, { sub } = {}) => {
+  return symmetricDecrypt(encryptedKey, {
+    encryptionKey: options.symmetricEncryptionKey,
     sub,
-    decoding: options.symetricEncryptionEncoding,
+    decoding: options.symmetricEncryptionEncoding,
     encoding: 'base64'
   })
 }
 
-export const symetricDecrypt = (
+export const symmetricDecrypt = (
   encryptedDataPacket,
-  { encryptedKey, encryptionKey, sub, decoding, encoding }
+  { encryptedKey, encryptionKey, signatureSecret, sub, decoding, encoding }
 ) => {
   if (encryptedKey) {
-    encryptionKey ??= symetricDecryptKey(encryptedKey, {
+    encryptionKey ??= symmetricDecryptKey(encryptedKey, {
       sub
     })
   }
   if (!encryptionKey || !encryptedDataPacket) return encryptedDataPacket
-  decoding ??= options.symetricEncryptionEncoding
+  decoding ??= options.symmetricEncryptionEncoding
   encoding ??= 'utf8'
 
+  // remove signature when successful
+  encryptedDataPacket = symmetricSignatureVerify(
+    encryptedDataPacket,
+    signatureSecret
+  )
+
+  if (encryptedDataPacket === false) {
+    throw new Error('Signature incorrect')
+  }
+
   const iv = Buffer.from(
-    encryptedDataPacket.substring(0, symetricEncryptionEncodingLengths.iv),
+    encryptedDataPacket.substring(0, symmetricEncryptionEncodingLengths.iv),
     decoding
   )
   const authTag = Buffer.from(
     encryptedDataPacket.substring(
-      symetricEncryptionEncodingLengths.iv,
-      symetricEncryptionEncodingLengths.ivAndAuthTag
+      symmetricEncryptionEncodingLengths.iv,
+      symmetricEncryptionEncodingLengths.ivAndAuthTag
     ),
     decoding
   )
   const encryptedData = Buffer.from(
     encryptedDataPacket.substring(
-      symetricEncryptionEncodingLengths.ivAndAuthTag
+      symmetricEncryptionEncodingLengths.ivAndAuthTag
     ),
     decoding
   )
 
   const decipher = createDecipheriv(
-    options.symetricEncryptionMethod,
+    options.symmetricEncryptionMethod,
     Buffer.from(encryptionKey, 'base64'),
     iv,
     {
@@ -361,11 +383,65 @@ export const symetricDecrypt = (
   return data
 }
 
-// *** Signatures *** //
+// *** Symmetric Signatures *** //
+export const symmetricRandomSignatureSecret = () => {
+  return randomBytes(32).toString('base64') // 256 bits
+}
+
+export const symmetricGenerateSignatureSecret = (sub) => {
+  if (!options.symmetricSignatureSecret) {
+    return { signatureSecret: '' }
+  }
+  const signatureSecret = symmetricRandomSignatureSecret()
+  return { signatureSecret }
+}
+
+export const symmetricSignatureSign = (
+  data,
+  signatureSecret,
+  { algorithm } = {}
+) => {
+  // if (typeof data !== 'string') throw new TypeError('data must me a string')
+  signatureSecret ??= options.symmetricSignatureSecret
+  algorithm ??= options.symmetricSignatureAlgorithm
+  const signature = createHmac(algorithm, signatureSecret)
+    .update(data)
+    .digest(options.signatureEncoding)
+    .replace(/=+$/, '')
+  const signedData = data + '.' + signature
+  return signedData
+}
+
+export const symmetricSignatureVerify = (
+  signedData,
+  signatureSecret,
+  { algorithm } = {}
+) => {
+  if (typeof signedData !== 'string') return false
+  const data = signedData.slice(0, signedData.lastIndexOf('.'))
+  const signedDataExpected = symmetricSignatureSign(data, signatureSecret, {
+    algorithm
+  })
+
+  return safeEqual(signedData, signedDataExpected) && data
+}
+
+export const symmetricRotation = (
+  encryptedValues,
+  oldOptions, // { encryptedKey, encryptionKey, signatureSecret, sub }, // old
+  newOptions, // { encryptedKey, encryptionKey, signatureSecret, sub, decoding, encoding, iv }, // new
+  fields = []
+) => {
+  const data = symmetricDecryptFields(encryptedValues, oldOptions, fields)
+  const newEncryptedData = symmetricEncryptFields(data, newOptions, fields)
+  return newEncryptedData
+}
+
+// *** Asymmetric Signatures *** //
 // asymmetricKeyPairType
 export const makeAsymmetricKeys = async () => {
   const { publicKey, privateKey } = await generateKeyPair('ec', {
-    namedCurve: 'P-384', // P-512
+    namedCurve: options.asymmetricKeyNamedCurve,
     paramEncoding: 'named',
     publicKeyEncoding: {
       type: 'spki',
@@ -375,7 +451,7 @@ export const makeAsymmetricKeys = async () => {
       type: 'sec1',
       format: 'pem'
       // Encryption done at another level for consistency
-      // cipher: options.asymetricEncryptionMethod,
+      // cipher: options.asymmetricEncryptionMethod,
       // passphrase: encryptionKey,
     }
   })
@@ -387,7 +463,7 @@ export const makeAsymmetricSignature = async (
   privateKey,
   { algorithm } = {}
 ) => {
-  algorithm ??= options.digestAlgorithm
+  algorithm ??= options.asymmetricSignatureAlgorithm
   return (await sign(algorithm, Buffer.from(data), privateKey)).toString(
     options.signatureEncoding
   )
@@ -398,43 +474,13 @@ export const verifyAsymmetricSignature = async (
   signature,
   { algorithm } = {}
 ) => {
-  algorithm ??= options.digestAlgorithm
+  algorithm ??= options.asymmetricSignatureAlgorithm
   return await verify(
     algorithm,
     Buffer.from(data),
     publicKey,
     Buffer.from(signature, options.signatureEncoding)
   )
-}
-
-export const makeSymmetricSignature = (
-  data,
-  encryptionKey,
-  { algorithm } = {}
-) => {
-  // if (typeof data !== 'string') throw new TypeError('data must me a string')
-  encryptionKey ??= options.symetricEncryptionKey
-  algorithm ??= options.hmacAlgorithm
-  const signature = createHmac('sha256', encryptionKey)
-    .update(data)
-    .digest('base64')
-    .replace(/=+$/, '')
-  const signedData = data + '.' + signature
-  return signedData
-}
-
-export const verifySymmetricSignature = (
-  signedData,
-  encryptionKey,
-  { algorithm } = {}
-) => {
-  if (typeof signedData !== 'string') return false
-  const data = signedData.slice(0, signedData.lastIndexOf('.'))
-  const signedDataExpected = makeSymmetricSignature(data, encryptionKey, {
-    algorithm
-  })
-
-  return safeEqual(signedData, signedDataExpected) && data
 }
 
 export const safeEqual = (input, expected) => {

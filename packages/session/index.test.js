@@ -13,7 +13,10 @@ import sessionMemoryTable from './table/memory.js'
 import sessionSQLTable from './table/sql.js'
 import sessionDynamoDBTable from './table/dynamodb.js'
 
-import crypto, { randomSymetricEncryptionKey } from '../crypto/index.js'
+import crypto, {
+  symmetricRandomEncryptionKey,
+  symmetricRandomSignatureSecret
+} from '../crypto/index.js'
 
 import account, {
   create as accountCreate,
@@ -43,7 +46,10 @@ const mocks = {
   notifyClient: () => {}
 }
 
-crypto({ symetricEncryptionKey: randomSymetricEncryptionKey() })
+crypto({
+  symmetricEncryptionKey: symmetricRandomEncryptionKey(),
+  symmetricSignatureSecret: symmetricRandomSignatureSecret()
+})
 notify.default({
   client: (id, sub, params) => {
     mocks.notifyClient(id, sub, params)
@@ -120,7 +126,8 @@ describe('session', () => {
         deepEqual(mocks.notifyClient.mock.calls[0].arguments[0], {
           id: 'authn-session-new-device',
           sub,
-          params: undefined
+          data: undefined,
+          options: {}
         })
       })
       it('Can create session on an account from same device', async () => {
@@ -146,7 +153,8 @@ describe('session', () => {
         deepEqual(mocks.notifyClient.mock.calls[0].arguments[0], {
           id: 'authn-session-new-device',
           sub,
-          params: undefined
+          data: undefined,
+          options: {}
         })
       })
       it('Can list sessions for an account', async () => {
@@ -163,7 +171,7 @@ describe('session', () => {
       it('Can lookup a session by { id }', async () => {
         const currentDevice = { os: 'MacOS' }
         const { id } = await sessionCreate(sub, currentDevice)
-        const session = await sessionLookup(id)
+        const session = await sessionLookup(id, currentDevice)
         ok(session)
         equal(session.id, id)
       })
@@ -172,7 +180,16 @@ describe('session', () => {
         const currentDevice = { os: 'MacOS' }
         const { id } = await sessionCreate(sub, currentDevice)
         await sessionExpire(sub, id)
-        const session = await sessionLookup(id)
+        const session = await sessionLookup(id, currentDevice)
+        equal(session, undefined)
+      })
+
+      it('Can NOT lookup a session by { id } when different device', async () => {
+        const currentDevice = { os: 'MacOS' }
+        const attackerDevice = { os: 'Windows' }
+        const { id } = await sessionCreate(sub, currentDevice)
+        await sessionExpire(sub, id)
+        const session = await sessionLookup(id, attackerDevice)
         equal(session, undefined)
       })
 

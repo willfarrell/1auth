@@ -3,7 +3,10 @@ import { ok, equal, deepEqual } from 'node:assert/strict'
 
 import * as notify from '../notify-console/index.js'
 import * as store from '../store-memory/index.js'
-import crypto, { randomSymetricEncryptionKey } from '../crypto/index.js'
+import crypto, {
+  symmetricRandomEncryptionKey,
+  symmetricRandomSignatureSecret
+} from '../crypto/index.js'
 
 import authn, { getOptions as authnGetOptions } from '../authn/index.js'
 
@@ -19,7 +22,10 @@ import emailAddress, {
   remove as emailAddressrRemove
 } from '../messenger-email-address/index.js'
 
-crypto({ symetricEncryptionKey: randomSymetricEncryptionKey() })
+crypto({
+  symmetricEncryptionKey: symmetricRandomEncryptionKey(),
+  symmetricSignatureSecret: symmetricRandomSignatureSecret()
+})
 store.default({ log: false })
 notify.default({
   client: (id, sub, params) => {
@@ -44,17 +50,18 @@ test.afterEach(async (t) => {
   await store.__clear(messengerGetOptions().table)
 })
 
-describe('messenger', () => {
+describe('messenger-email-address', () => {
   it('Can create a messenger on an account', async () => {
     const messengerId = await emailAddressCreate(sub, 'username@example.org')
     const { token, expire } =
-      mocks.notifyClient.mock.calls[0].arguments[0].params
+      mocks.notifyClient.mock.calls[0].arguments[0].data
 
     // notify
     deepEqual(mocks.notifyClient.mock.calls[0].arguments[0], {
       id: 'messenger-emailAddress-verify',
       sub,
-      params: { token, expire }
+      data: { token, expire },
+      options: { messengers: [messengerId] }
     })
 
     let messengerDB = await store.select(messengerGetOptions().table, { sub })
@@ -72,7 +79,8 @@ describe('messenger', () => {
     deepEqual(mocks.notifyClient.mock.calls[1].arguments[0], {
       id: 'messenger-emailAddress-create',
       sub,
-      params: undefined
+      data: undefined,
+      options: {}
     })
 
     messengerDB = await store.select(messengerGetOptions().table, { sub })
@@ -83,7 +91,7 @@ describe('messenger', () => {
 
   it('Can remove a verified messenger on an account', async () => {
     const messengerId = await emailAddressCreate(sub, 'username@example.org')
-    const { token } = mocks.notifyClient.mock.calls[0].arguments[0].params
+    const { token } = mocks.notifyClient.mock.calls[0].arguments[0].data
     await emailAddressrVerifyToken(sub, token)
     await emailAddressrRemove(sub, messengerId)
 
@@ -91,7 +99,8 @@ describe('messenger', () => {
     deepEqual(mocks.notifyClient.mock.calls[2].arguments[0], {
       id: 'messenger-emailAddress-remove',
       sub,
-      params: undefined
+      data: undefined,
+      options: {}
     })
 
     const messengerDB = await store.select(messengerGetOptions().table, {
@@ -125,7 +134,7 @@ describe('messenger', () => {
   it('Can check is a messenger exists (exists)', async () => {
     const messengerValue = 'username@example.org'
     await emailAddressCreate(sub, messengerValue)
-    const { token } = mocks.notifyClient.mock.calls[0].arguments[0].params
+    const { token } = mocks.notifyClient.mock.calls[0].arguments[0].data
     await emailAddressrVerifyToken(sub, token)
     const user = await emailAddressExists(messengerValue)
     ok(user)
@@ -138,7 +147,7 @@ describe('messenger', () => {
   it('Can lookup a messenger { value } (exists)', async () => {
     const messengerValue = 'username@example.org'
     await emailAddressCreate(sub, messengerValue)
-    const { token } = mocks.notifyClient.mock.calls[0].arguments[0].params
+    const { token } = mocks.notifyClient.mock.calls[0].arguments[0].data
     await emailAddressrVerifyToken(sub, token)
     const messenger = await emailAddressLookup(messengerValue)
 

@@ -6,7 +6,7 @@ import {
   verifySecretHash,
   randomId,
   createEncryptedDigest,
-  makeSymetricKey,
+  symmetricGenerateEncryptionKey,
   symmetricEncryptFields,
   symmetricDecryptFields
 } from '@1auth/crypto'
@@ -114,7 +114,7 @@ export const create = async (type, sub, value, values) => {
   }
   const now = nowInSeconds()
 
-  const { encryptedKey, encryptionKey } = makeSymetricKey(sub)
+  const { encryptedKey, encryptionKey } = symmetricGenerateEncryptionKey(sub)
   const encryptedValues = symmetricEncryptFields(
     {
       ...values,

@@ -1,7 +1,7 @@
 import { setTimeout } from 'node:timers/promises'
 import {
   randomId,
-  makeSymetricKey,
+  symmetricGenerateEncryptionKey,
   symmetricEncryptFields,
   symmetricDecryptFields
 } from '@1auth/crypto'
@@ -105,7 +105,7 @@ export const create = async (
   value ??= credentialOptions.create()
   const encodedValue = await credentialOptions.encode(value)
 
-  const { encryptionKey, encryptedKey } = makeSymetricKey(sub)
+  const { encryptionKey, encryptedKey } = symmetricGenerateEncryptionKey(sub)
   const encryptedValues = symmetricEncryptFields(
     { ...values, value: encodedValue },
     { encryptionKey, sub },

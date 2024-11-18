@@ -4,9 +4,10 @@ import { ok, equal, deepEqual } from 'node:assert/strict'
 import * as notify from '../notify-console/index.js'
 import * as store from '../store-memory/index.js'
 import crypto, {
-  randomSymetricEncryptionKey,
-  symetricEncrypt,
-  symetricDecrypt
+  symmetricRandomEncryptionKey,
+  symmetricRandomSignatureSecret,
+  symmetricEncrypt,
+  symmetricDecrypt
 } from '../crypto/index.js'
 
 import account, {
@@ -34,7 +35,10 @@ import webauthn, {
   // remove as webauthnRemove,
 } from '../authn-webauthn/index.js'
 
-crypto({ symetricEncryptionKey: randomSymetricEncryptionKey() })
+crypto({
+  symmetricEncryptionKey: symmetricRandomEncryptionKey(),
+  symmetricSignatureSecret: symmetricRandomSignatureSecret()
+})
 store.default({ log: false })
 notify.default({
   client: (id, sub, params) => {
@@ -99,7 +103,7 @@ describe('authn-webauthn', () => {
     const token = authnDB[0]
     equal(token.type, 'WebAuthn-token')
     equal(token.otp, true)
-    equal(token.value.length, 256)
+    equal(token.value.length, 321)
     ok(token.expire)
 
     // Override challenge
@@ -107,7 +111,7 @@ describe('authn-webauthn', () => {
       authnGetOptions().table,
       { sub, id: token.id },
       {
-        value: symetricEncrypt(
+        value: symmetricEncrypt(
           JSON.stringify({
             expectedChallenge: registrationOptionsOverride.challenge,
             expectedOrigin: origin,
@@ -129,7 +133,7 @@ describe('authn-webauthn', () => {
     const secret = authnDB[0]
     equal(secret.type, 'WebAuthn-secret')
     equal(secret.otp, false)
-    equal(secret.value.length, 1648)
+    equal(secret.value.length, 1741)
     equal(secret.expire, undefined)
 
     // Authentication
@@ -150,7 +154,7 @@ describe('authn-webauthn', () => {
     const challenge = authnDB[1]
     equal(challenge.type, 'WebAuthn-challenge')
     equal(challenge.otp, true)
-    equal(challenge.value.length, 1884)
+    equal(challenge.value.length, 1977)
     ok(challenge.expire)
 
     // Override challenge
@@ -158,10 +162,10 @@ describe('authn-webauthn', () => {
       authnGetOptions().table,
       { sub, id: challenge.id },
       {
-        value: symetricEncrypt(
+        value: symmetricEncrypt(
           JSON.stringify({
             ...JSON.parse(
-              symetricDecrypt(challenge.value, {
+              symmetricDecrypt(challenge.value, {
                 sub,
                 encryptedKey: challenge.encryptionKey
               })

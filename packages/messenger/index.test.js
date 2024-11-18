@@ -3,7 +3,10 @@ import { ok, equal, deepEqual } from 'node:assert/strict'
 
 import * as notify from '../notify-console/index.js'
 import * as store from '../store-memory/index.js'
-import crypto, { randomSymetricEncryptionKey } from '../crypto/index.js'
+import crypto, {
+  symmetricRandomEncryptionKey,
+  symmetricRandomSignatureSecret
+} from '../crypto/index.js'
 
 import authn, { getOptions as authnGetOptions } from '../authn/index.js'
 
@@ -17,7 +20,10 @@ import messenger, {
   getOptions as messengerGetOptions
 } from '../messenger/index.js'
 
-crypto({ symetricEncryptionKey: randomSymetricEncryptionKey() })
+crypto({
+  symmetricEncryptionKey: symmetricRandomEncryptionKey(),
+  symmetricSignatureSecret: symmetricRandomSignatureSecret()
+})
 store.default({ log: false })
 notify.default({
   client: (id, sub, params) => {
@@ -50,13 +56,16 @@ describe('messenger', () => {
       '@username.00'
     )
     const { token, expire } =
-      mocks.notifyClient.mock.calls[0].arguments[0].params
+      mocks.notifyClient.mock.calls[0].arguments[0].data
 
     // notify
     deepEqual(mocks.notifyClient.mock.calls[0].arguments[0], {
       id: 'messenger-signal-verify',
       sub,
-      params: { token, expire }
+      data: { token, expire },
+      options: {
+        messengers: [messengerId]
+      }
     })
 
     let messengerDB = await store.select(messengerGetOptions().table, { sub })
@@ -74,7 +83,8 @@ describe('messenger', () => {
     deepEqual(mocks.notifyClient.mock.calls[1].arguments[0], {
       id: 'messenger-signal-create',
       sub,
-      params: undefined
+      data: undefined,
+      options: {}
     })
 
     messengerDB = await store.select(messengerGetOptions().table, { sub })
@@ -90,7 +100,7 @@ describe('messenger', () => {
       sub,
       '@username.00'
     )
-    const { token } = mocks.notifyClient.mock.calls[0].arguments[0].params
+    const { token } = mocks.notifyClient.mock.calls[0].arguments[0].data
     await messengerVerifyToken(messengerType, sub, token)
     await messengerRemove(messengerType, sub, messengerId)
 
@@ -98,7 +108,8 @@ describe('messenger', () => {
     deepEqual(mocks.notifyClient.mock.calls[2].arguments[0], {
       id: 'messenger-signal-remove',
       sub,
-      params: undefined
+      data: undefined,
+      options: {}
     })
 
     const messengerDB = await store.select(messengerGetOptions().table, {
@@ -143,7 +154,7 @@ describe('messenger', () => {
     const messengerType = 'signal'
     const messengerValue = '@username.00'
     await messengerCreate(messengerType, sub, messengerValue)
-    const { token } = mocks.notifyClient.mock.calls[0].arguments[0].params
+    const { token } = mocks.notifyClient.mock.calls[0].arguments[0].data
     await messengerVerifyToken(messengerType, sub, token)
     const user = await messengerExists(messengerType, messengerValue)
     ok(user)
@@ -158,7 +169,7 @@ describe('messenger', () => {
     const messengerType = 'signal'
     const messengerValue = '@username.00'
     await messengerCreate(messengerType, sub, messengerValue)
-    const { token } = mocks.notifyClient.mock.calls[0].arguments[0].params
+    const { token } = mocks.notifyClient.mock.calls[0].arguments[0].data
     await messengerVerifyToken(messengerType, sub, token)
     const messenger = await messengerLookup(messengerType, messengerValue)
 

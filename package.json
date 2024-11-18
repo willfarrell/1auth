@@ -1,6 +1,6 @@
 {
   "name": "@1auth/monorepo",
-  "version": "0.0.0-alpha.44",
+  "version": "0.0.0-alpha.45",
   "description": "",
   "private": true,
   "type": "module",
@@ -9,11 +9,11 @@
   },
   "engineStrict": true,
   "scripts": {
-    "prepare": "husky install",
     "commit-msg": "commitlint --config commitlint.config.cjs --edit",
     "pre-commit": "lint-staged",
     "start": "cd server && node --watch index.js",
     "test": "node --experimental-test-coverage --test packages",
+    "test:dynamodb": "docker run -p 8000:8000 amazon/dynamodb-local -jar DynamoDBLocal.jar",
     "lint": "prettier --write packages/*/*.js && standard --fix packages/*/*.js",
     "rm": "npm run rm:coverage && npm run rm:node_modules && npm run rm:lock",
     "rm:coverage": "find . -name 'coverage' -type d -prune -exec rm -rf '{}' +",

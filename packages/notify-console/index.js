@@ -7,6 +7,6 @@ export default (params) => {
   Object.assign(options, params)
 }
 
-export const trigger = (id, sub, data, options = {}) => {
-  options.client({ id, sub, data, options })
+export const trigger = (id, sub, data, notifyOptions = {}) => {
+  options.client({ id, sub, data, options: notifyOptions })
 }
