@@ -9,6 +9,7 @@ import {
 import {
   getOptions as authnGetOptions,
   count as authnCount,
+  select as authnSelect,
   list as authnList,
   create as authnCreate,
   authenticate as authnAuthenticate,
@@ -58,6 +59,10 @@ export const lookup = async (secret) => {
 
 export const count = async (sub) => {
   return await authnCount(options.secret, sub)
+}
+
+export const select = async (sub, id) => {
+  return await authnSelect(options.secret, sub, id)
 }
 
 export const list = async (sub) => {

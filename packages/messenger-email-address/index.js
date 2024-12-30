@@ -5,6 +5,7 @@ import {
   remove as messengerRemove,
   exists as messengerExists,
   lookup as messengerLookup,
+  select as messengerSelect,
   list as messengerList,
   getOptions as messengerOptions
 } from '@1auth/messenger'
@@ -61,6 +62,10 @@ export const create = async (sub, emailAddress) => {
   }
 
   return await messengerCreate(options.id, sub, emailAddressSanitized)
+}
+
+export const select = async (sub, id) => {
+  await messengerSelect(options.id, sub, id)
 }
 
 export const list = async (sub) => {

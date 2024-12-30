@@ -200,4 +200,21 @@ export const remove = async (type, sub, id) => {
   }
 }
 
+export const select = async (type, sub, id) => {
+  const res = await options.store.select(options.table, {
+    type,
+    sub,
+    id
+  })
+  if (!res?.verify) return
+  const { encryptionKey: encryptedKey } = res
+  delete res.encryptionKey
+  const decryptedValues = symmetricDecryptFields(
+    res,
+    { encryptedKey, sub },
+    options.encryptedFields
+  )
+  return decryptedValues
+}
+
 const nowInSeconds = () => Math.floor(Date.now() / 1000)

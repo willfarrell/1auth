@@ -2,6 +2,7 @@ import {
   getOptions as authnGetOptions,
   authenticate as authnAuthenticate,
   count as authnCount,
+  select as authnSelect,
   list as authnList,
   create as authnCreate,
   update as authnUpdate,
@@ -331,6 +332,10 @@ export const remove = async (sub, id) => {
   }
   await authnRemove(options.secret, sub, id)
   await options.notify.trigger('authn-webauthn-remove', sub)
+}
+
+export const select = async (sub, id) => {
+  return await authnSelect(options.secret, sub, id)
 }
 
 const jsonEncodeSecret = (value) => {

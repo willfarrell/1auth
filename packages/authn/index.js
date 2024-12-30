@@ -281,6 +281,19 @@ export const remove = async (credentialOptions, sub, id) => {
   await options.store.remove(options.table, { id, type, sub })
 }
 
+export const select = async (credentialOptions, sub, id) => {
+  const type = makeType(credentialOptions)
+  const item = await options.store.select(options.table, { id, type, sub })
+  const { encryptionKey: encryptedKey } = item
+  delete item.encryptionKey
+  const decryptedItem = symmetricDecryptFields(
+    item,
+    { encryptedKey, sub },
+    options.encryptedFields
+  )
+  return decryptedItem
+}
+
 // TODO manage onboard state
 
 // TODO save notification settings
