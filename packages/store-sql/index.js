@@ -1,6 +1,10 @@
 const options = {
   log: undefined,
   query: undefined, // async (sql, parameters) => {}
+  // number of seconds after expire before removal
+  // 10d chosen based on EFF DNT Policy
+  timeToLiveExpireOffset: 10 * 24 * 60 * 60,
+  timeToLiveKey: 'remove',
   // mode:
   // ?: use `?` for variables, ie sqlite
   // $: use `$1` for variables, ie postgres
@@ -66,6 +70,10 @@ export const insert = async (table, values = {}) => {
   if (options.log) {
     options.log('@1auth/store-sql insert(', table, values, ')')
   }
+  if (values.expire && options.timeToLiveKey) {
+    values[options.timeToLiveKey] =
+      values.expire + options.timeToLiveExpireOffset
+  }
   values = structuredClone(values)
   normalizeValues(values)
   const { insert, parameters } = makeSqlParts({}, values)
@@ -124,6 +132,7 @@ const normalizeValues = (values) => {
   values.verify &&= new Date(values.verify * 1000).toISOString()
   values.lastused &&= new Date(values.lastused * 1000).toISOString()
   values.expire &&= new Date(values.expire * 1000).toISOString()
+  values.remove &&= new Date(values.remove * 1000).toISOString()
 }
 
 const parseValues = (values) => {
@@ -133,6 +142,7 @@ const parseValues = (values) => {
   values.verify &&= Date.parse(values.verify) / 1000
   values.lastused &&= Date.parse(values.lastused) / 1000
   values.expire &&= Date.parse(values.expire) / 1000
+  values.remove &&= Date.parse(values.remove) / 1000
 }
 
 // export for testing

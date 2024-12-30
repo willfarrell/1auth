@@ -36,6 +36,7 @@ import session, {
   getOptions as sessionGetOptions,
   create as sessionCreate,
   check as sessionCheck,
+  select as sessionSelect,
   lookup as sessionLookup,
   list as sessionList,
   expire as sessionExpire,
@@ -60,7 +61,7 @@ storeMemory.default({
   log: false // console.log,
 })
 storeSQL.default({
-  log: false, // mockStoreSQL.log,
+  log: mockStoreSQL.log, // mockStoreSQL.log,
   query: mockStoreSQL.query
 })
 storeDynamoDB.default({
@@ -157,12 +158,33 @@ describe('session', () => {
           options: {}
         })
       })
-      it('Can list sessions for an account', async () => {
+
+      it('Can select a session by { sub, id }', async () => {
+        const currentDevice = { os: 'MacOS' }
+        const { id, expire } = await sessionCreate(sub, currentDevice)
+        const session = await sessionSelect(sub, id)
+        ok(session)
+        equal(session.id, id)
+        equal(session.expire, expire)
+      })
+
+      it('Can list sessions for an account, including expired', async () => {
         const currentDevice = { os: 'MacOS' }
         const otherDevice = { os: 'iOS' }
         await sessionCreate(sub, currentDevice)
         const { id } = await sessionCreate(sub, otherDevice)
         await sessionExpire(sub, id)
+
+        const sessions = await sessionList(sub)
+        equal(sessions.length, 2)
+      })
+
+      it('Can list sessions for an account, excluding removed', async () => {
+        const currentDevice = { os: 'MacOS' }
+        const otherDevice = { os: 'iOS' }
+        await sessionCreate(sub, currentDevice)
+        const { id } = await sessionCreate(sub, otherDevice)
+        await sessionRemove(sub, id)
 
         const sessions = await sessionList(sub)
         equal(sessions.length, 1)
@@ -172,15 +194,6 @@ describe('session', () => {
         const currentDevice = { os: 'MacOS' }
         const { id, sid, expire } = await sessionCreate(sub, currentDevice)
         const session = await sessionLookup(sid, currentDevice)
-        ok(session)
-        equal(session.id, id)
-        equal(session.expire, expire)
-      })
-
-      it('Can lookup a session by { sid, value } when null device', async () => {
-        const currentDevice = { os: 'MacOS' }
-        const { id, sid, expire } = await sessionCreate(sub, currentDevice)
-        const session = await sessionLookup(sid, null)
         ok(session)
         equal(session.id, id)
         equal(session.expire, expire)
@@ -208,17 +221,6 @@ describe('session', () => {
         await sessionRemove(sub, id)
         const session = await sessionLookup(sid, currentDevice)
         equal(session, undefined)
-      })
-
-      it('Can list sessions for an account, excluding expired', async () => {
-        const currentDevice = { os: 'MacOS' }
-        const otherDevice = { os: 'iOS' }
-        await sessionCreate(sub, currentDevice)
-        const { id } = await sessionCreate(sub, otherDevice)
-        await sessionExpire(sub, id)
-
-        const sessions = await sessionList(sub)
-        equal(sessions.length, 1)
       })
     })
   }

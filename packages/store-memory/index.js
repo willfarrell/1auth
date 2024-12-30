@@ -2,7 +2,11 @@ const db = {}
 
 const options = {
   id: '',
-  log: undefined
+  log: undefined,
+  // number of seconds after expire before removal
+  // 10d chosen based on EFF DNT Policy
+  timeToLiveExpireOffset: 10 * 24 * 60 * 60,
+  timeToLiveKey: 'remove'
 }
 
 export default (params) => {
@@ -65,15 +69,19 @@ export const selectList = async (table, filters = {}) => {
   return structuredClone(rows)
 }
 
-export const insert = async (table, params = {}) => {
+export const insert = async (table, values = {}) => {
   if (options.log) {
-    options.log('@1auth/store-memeory insert(', table, params, ')')
+    options.log('@1auth/store-memeory insert(', table, values, ')')
   }
   db[table] ??= []
-  params = structuredClone(params)
+  if (values.expire && options.timeToLiveKey) {
+    values[options.timeToLiveKey] =
+      values.expire + options.timeToLiveExpireOffset
+  }
+  values = structuredClone(values)
 
-  db[table].push(params)
-  return params.id
+  db[table].push(values)
+  return values.id
 }
 
 export const insertList = async (table, list = []) => {
@@ -89,13 +97,13 @@ export const insertList = async (table, list = []) => {
   return ids
 }
 
-export const update = async (table, filters = {}, params = {}) => {
+export const update = async (table, filters = {}, values = {}) => {
   if (options.log) {
-    options.log('@1auth/store-memeory update(', table, filters, params, ')')
+    options.log('@1auth/store-memeory update(', table, filters, values, ')')
   }
   for (const [idx, item] of Object.entries(db[table])) {
     if (matchFilter(item, filters)) {
-      db[table][idx] = { ...item, ...structuredClone(params) }
+      db[table][idx] = { ...item, ...structuredClone(values) }
     }
   }
 }

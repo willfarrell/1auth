@@ -12,8 +12,8 @@ export default (table = 'sessions') => {
     "create"             TIMESTAMP WITH TIME ZONE DEFAULT NULL,
     "update"             TIMESTAMP WITH TIME ZONE DEFAULT NULL,
     "verify"             TIMESTAMP WITH TIME ZONE DEFAULT NULL,
-    "expire"             TIMESTAMP WITH TIME ZONE DEFAULT NULL,
-    "remove"             TIMESTAMP WITH TIME ZONE DEFAULT NULL,
+    "expire"             TIMESTAMP WITH TIME ZONE DEFAULT (NOW() + interval '12 hour'),
+    "remove"             TIMESTAMP WITH TIME ZONE DEFAULT (NOW() + interval '12 hour' + interval '10 days'),
 
     CONSTRAINT ${table}_pkey PRIMARY KEY ("id")
     CONSTRAINT ${table}_ukey UNIQUE ("digest")

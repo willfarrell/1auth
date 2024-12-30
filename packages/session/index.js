@@ -52,7 +52,6 @@ export default (opt = {}) => {
 }
 export const getOptions = () => options
 
-// pass value: null to skip metadata check
 export const lookup = async (sid, value = {}) => {
   const digest = createEncryptedDigest(sid)
   const session = await options.store.select(options.table, { digest })
@@ -60,9 +59,6 @@ export const lookup = async (sid, value = {}) => {
     const now = nowInSeconds()
     if (session.expire < now) {
       return
-    }
-    if (value === null) {
-      return session
     }
     const encodedValue = options.encode(value)
     const decryptedValue = symmetricDecrypt(session.value, {
@@ -75,22 +71,37 @@ export const lookup = async (sid, value = {}) => {
   }
 }
 
-export const list = async (sub) => {
+export const select = async (sub, id) => {
+  const session = await options.store.select(options.table, { sub, id })
   const now = nowInSeconds()
-  const items = await options.store.selectList(options.table, { sub })
+  if (session) {
+    if (session.remove < now) {
+      return
+    }
+    const decryptedValue = symmetricDecrypt(session.value, {
+      sub,
+      encryptedKey: session.encryptionKey
+    })
+    session.value = options.decode(decryptedValue)
+    return session
+  }
+}
 
+export const list = async (sub) => {
+  const items = await options.store.selectList(options.table, { sub })
+  const now = nowInSeconds()
   const sessions = []
   for (let i = items.length; i--;) {
-    const item = items[i]
-    if (item.expire < now) {
+    const session = items[i]
+    if (session.remove < now) {
       continue
     }
-    const decryptedValue = symmetricDecrypt(item.value, {
+    const decryptedValue = symmetricDecrypt(session.value, {
       sub,
-      encryptedKey: item.encryptionKey
+      encryptedKey: session.encryptionKey
     })
-    item.value = options.decode(decryptedValue)
-    sessions.push(item)
+    session.value = options.decode(decryptedValue)
+    sessions.push(session)
   }
   return sessions
 }

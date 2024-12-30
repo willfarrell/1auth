@@ -125,33 +125,24 @@ export const selectList = async (table, filters = {}, fields = []) => {
     .then((res) => res.Items.map(unmarshall))
 }
 
-export const insert = async (table, params = {}) => {
+export const insert = async (table, values = {}) => {
   if (options.log) {
-    options.log('@1auth/store-dynamodb insert(', table, params, ')')
+    options.log('@1auth/store-dynamodb insert(', table, values, ')')
   }
-  if (params.expire && options.timeToLiveKey) {
-    params[options.timeToLiveKey] =
-      params.expire + options.timeToLiveExpireOffset
+  if (values.expire && options.timeToLiveKey) {
+    values[options.timeToLiveKey] =
+      values.expire + options.timeToLiveExpireOffset
   }
-
-  // delete params.sub;
-  // delete params.id;
-  // delete params.encryptionKey;
-  // delete params.value;
-  // delete params.create;
-  // delete params.update;
-  // delete params.expire;
-  // delete params.remove;
 
   const commandParams = {
     TableName: table,
-    Item: marshall(params, marshallOptions)
+    Item: marshall(values, marshallOptions)
   }
   if (options.log) {
     options.log('@1auth/store-dynamodb PutItemCommand(', commandParams, ')')
   }
   await options.client.send(new PutItemCommand(commandParams))
-  return params.id
+  return values.id
 }
 
 export const insertList = async (table, list = []) => {
@@ -189,25 +180,25 @@ export const insertList = async (table, list = []) => {
   return ids
 }
 
-export const update = async (table, filters = {}, params = {}) => {
+export const update = async (table, filters = {}, values = {}) => {
   if (options.log) {
-    options.log('@1auth/store-dynamodb update(', table, filters, params, ')')
+    options.log('@1auth/store-dynamodb update(', table, filters, values, ')')
   }
   if (Array.isArray(filters.id)) {
     return Promise.allSettled(
-      filters.id.map((id) => update(table, { ...filters, id }, params))
+      filters.id.map((id) => update(table, { ...filters, id }, values))
     )
   }
-  if (params.expire && options.timeToLiveKey) {
-    params[options.timeToLiveKey] =
-      params.expire + options.timeToLiveExpireOffset
+  if (values.expire && options.timeToLiveKey) {
+    values[options.timeToLiveKey] =
+      values.expire + options.timeToLiveExpireOffset
   }
 
   const {
     ExpressionAttributeNames,
     ExpressionAttributeValues,
     KeyConditionExpression
-  } = makeQueryParams(params)
+  } = makeQueryParams(values)
   const commandParams = {
     TableName: table,
     Key: marshall(filters, marshallOptions),

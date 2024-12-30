@@ -6,9 +6,9 @@ CREATE TABLE IF NOT EXISTS accounts
   --notification JSONB
   encryptionKey      VARCHAR(128)                      NOT NULL,
   privateKey         VARCHAR(128)                      NOT NULL,
-  publicKey         VARCHAR(128)                      NOT NULL,
-  username       VARCHAR(128) DEFAULT NULL,
-  digest         VARCHAR(73) DEFAULT NULL, -- of username
+  publicKey          VARCHAR(128)                      NOT NULL,
+  username           VARCHAR(128) DEFAULT NULL,
+  digest             VARCHAR(73) DEFAULT NULL, -- of username
   name               VARCHAR(128) DEFAULT NULL,
   locale             VARCHAR(5) NOT NULL,
   agreementTermsOfUse TIMESTAMP WITH TIME ZONE DEFAULT NULL,
@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS accounts
   verify             TIMESTAMP WITH TIME ZONE DEFAULT NULL,
   verifySub          VARCHAR(128),
   expire             TIMESTAMP WITH TIME ZONE DEFAULT NULL,
+  remove             TIMESTAMP WITH TIME ZONE DEFAULT NULL,
   CONSTRAINT accounts_pkey PRIMARY KEY (sub),
   -- CONSTRAINT accounts_ukey PRIMARY KEY (digest)
 );
@@ -31,12 +32,12 @@ $$;
 
 CREATE TABLE IF NOT EXISTS app.credentials
 (
-  id                VARCHAR(11) PRIMARY KEY,
+  id                 VARCHAR(11) PRIMARY KEY,
   sub                VARCHAR(11),
-  type              VARCHAR(17), -- TODO decrease size
+  type               VARCHAR(17), -- TODO decrease size
 
   encryptionKey      VARCHAR(128)                      NOT NULL,
-  challenge       VARCHAR(128) DEFAULT NULL,
+  challenge          VARCHAR(128) DEFAULT NULL,
   name               VARCHAR(128) DEFAULT NULL,
   otp                BOOL DEFAULT FALSE,
   value              VARCHAR(128) NOT NULL
@@ -44,6 +45,7 @@ CREATE TABLE IF NOT EXISTS app.credentials
   update             TIMESTAMP WITH TIME ZONE DEFAULT NULL,
   verify             TIMESTAMP WITH TIME ZONE DEFAULT NULL,
   expire             TIMESTAMP WITH TIME ZONE DEFAULT NULL,
+  remove             TIMESTAMP WITH TIME ZONE DEFAULT NULL,
 );
 
 DO
@@ -65,18 +67,19 @@ $$;
 
 CREATE TABLE IF NOT EXISTS app.messengers
 (
-  id                VARCHAR(11) PRIMARY KEY,
+  id                 VARCHAR(11) PRIMARY KEY,
   sub                VARCHAR(11),
-  type              VARCHAR(17), -- TODO decrease size
+  type               VARCHAR(17), -- TODO decrease size
 
   encryptionKey      VARCHAR(128)                      NOT NULL,
 
   value              VARCHAR(128) NOT NULL,
-  digest           VARCHAR(73) NOT NULL, -- of value
+  digest             VARCHAR(73) NOT NULL, -- of value
   create             TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   update             TIMESTAMP WITH TIME ZONE DEFAULT NULL,
   verify             TIMESTAMP WITH TIME ZONE DEFAULT NULL,
   expire             TIMESTAMP WITH TIME ZONE DEFAULT NULL,
+  remove             TIMESTAMP WITH TIME ZONE DEFAULT NULL,
 );
 
 DO
@@ -98,7 +101,7 @@ $$;
 
 CREATE TABLE IF NOT EXISTS app.sessions
 (
-  id                VARCHAR(21) PRIMARY KEY,
+  id                 VARCHAR(21) PRIMARY KEY,
   sub                VARCHAR(11),
 
   encryptionKey      VARCHAR(128)                      NOT NULL,
@@ -109,6 +112,7 @@ CREATE TABLE IF NOT EXISTS app.sessions
   update             TIMESTAMP WITH TIME ZONE DEFAULT NULL,
   verify             TIMESTAMP WITH TIME ZONE DEFAULT NULL,
   expire             TIMESTAMP WITH TIME ZONE DEFAULT NULL,
+  remove             TIMESTAMP WITH TIME ZONE DEFAULT NULL,
 );
 
 DO
