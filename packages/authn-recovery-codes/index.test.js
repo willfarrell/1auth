@@ -101,6 +101,8 @@ describe('authn-recovery-codes', () => {
     await recoveryCodesAuthenticate(username, secret)
 
     let authnDB = await store.selectList(authnGetOptions().table, { sub })
+    equal(authnDB.length, 5)
+    authnDB = authnDB.filter((item) => item.expire === undefined)
     equal(authnDB.length, 4)
 
     await recoveryCodesUpdate(sub)

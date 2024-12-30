@@ -408,6 +408,7 @@ export const symmetricSignatureSign = (
     .update(data)
     .digest(options.signatureEncoding)
     .replace(/=+$/, '')
+
   const signedData = data + '.' + signature
   return signedData
 }

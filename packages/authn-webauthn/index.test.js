@@ -190,6 +190,8 @@ describe('authn-webauthn', () => {
     equal(userSub, sub)
 
     authnDB = await store.selectList(authnGetOptions().table, { sub })
+    equal(authnDB.length, 2)
+    authnDB = authnDB.filter((item) => item.expire === undefined)
     equal(authnDB.length, 1)
   })
   /*

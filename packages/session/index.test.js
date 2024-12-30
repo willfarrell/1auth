@@ -38,8 +38,8 @@ import session, {
   check as sessionCheck,
   lookup as sessionLookup,
   list as sessionList,
-  expire as sessionExpire
-  // remove as sessionRemove,
+  expire as sessionExpire,
+  remove as sessionRemove
 } from '../session/index.js'
 
 const mocks = {
@@ -168,28 +168,45 @@ describe('session', () => {
         equal(sessions.length, 1)
       })
 
-      it('Can lookup a session by { id }', async () => {
+      it('Can lookup a session by { sid, value }', async () => {
         const currentDevice = { os: 'MacOS' }
-        const { id } = await sessionCreate(sub, currentDevice)
-        const session = await sessionLookup(id, currentDevice)
+        const { id, sid, expire } = await sessionCreate(sub, currentDevice)
+        const session = await sessionLookup(sid, currentDevice)
         ok(session)
         equal(session.id, id)
+        equal(session.expire, expire)
       })
 
-      it('Can NOT lookup a session by { id } when expired', async () => {
+      it('Can lookup a session by { sid, value } when null device', async () => {
         const currentDevice = { os: 'MacOS' }
-        const { id } = await sessionCreate(sub, currentDevice)
-        await sessionExpire(sub, id)
-        const session = await sessionLookup(id, currentDevice)
+        const { id, sid, expire } = await sessionCreate(sub, currentDevice)
+        const session = await sessionLookup(sid, null)
+        ok(session)
+        equal(session.id, id)
+        equal(session.expire, expire)
+      })
+
+      it('Can NOT lookup a session by { sid, value } when different device', async () => {
+        const currentDevice = { os: 'MacOS' }
+        const attackerDevice = { os: 'Windows' }
+        const { sid } = await sessionCreate(sub, currentDevice)
+        const session = await sessionLookup(sid, attackerDevice)
         equal(session, undefined)
       })
 
-      it('Can NOT lookup a session by { id } when different device', async () => {
+      it('Can NOT lookup a session by { sid, value } when expired', async () => {
         const currentDevice = { os: 'MacOS' }
-        const attackerDevice = { os: 'Windows' }
-        const { id } = await sessionCreate(sub, currentDevice)
+        const { id, sid } = await sessionCreate(sub, currentDevice)
         await sessionExpire(sub, id)
-        const session = await sessionLookup(id, attackerDevice)
+        const session = await sessionLookup(sid, currentDevice)
+        equal(session, undefined)
+      })
+
+      it('Can NOT lookup a session by { sid, value } when removed', async () => {
+        const currentDevice = { os: 'MacOS' }
+        const { id, sid } = await sessionCreate(sub, currentDevice)
+        await sessionRemove(sub, id)
+        const session = await sessionLookup(sid, currentDevice)
         equal(session, undefined)
       })
 

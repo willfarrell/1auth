@@ -10,6 +10,10 @@ export default (table = 'sessions', { timeToLiveKey } = {}) => {
       {
         AttributeName: 'id',
         AttributeType: 'S'
+      },
+      {
+        AttributeName: 'digest',
+        AttributeType: 'S'
       }
     ],
     KeySchema: [
@@ -37,10 +41,10 @@ export default (table = 'sessions', { timeToLiveKey } = {}) => {
         }
       },
       {
-        IndexName: 'key', // must be length of >=3
+        IndexName: 'digest',
         KeySchema: [
           {
-            AttributeName: 'id',
+            AttributeName: 'digest',
             KeyType: 'HASH'
           }
         ],

@@ -66,6 +66,7 @@ export const insert = async (table, values = {}) => {
   if (options.log) {
     options.log('@1auth/store-sql insert(', table, values, ')')
   }
+  values = structuredClone(values)
   normalizeValues(values)
   const { insert, parameters } = makeSqlParts({}, values)
   const sql = `INSERT INTO ${table} ${insert} RETURNING id`
@@ -100,6 +101,7 @@ export const update = async (table, filters = {}, values = {}) => {
   if (options.log) {
     options.log('@1auth/store-sql update(', table, filters, values, ')')
   }
+  values = structuredClone(values)
   normalizeValues(values)
   const { update, where, parameters } = makeSqlParts(filters, values)
   const sql = `UPDATE ${table} SET ${update} ${where}`

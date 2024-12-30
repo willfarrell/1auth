@@ -10,7 +10,7 @@ const timeToLiveKey = 'remove'
 store.default({
   log: function () {
     mocks.log(...arguments)
-    // console.log(...arguments);
+    // console.log(...arguments)
   },
   client,
   timeToLiveKey
@@ -94,7 +94,7 @@ describe('store-dynamodb', () => {
     deepEqual(result.reverse(), rows)
     equal(mocks.log.mock.calls.length, 3 * 2)
   })
-  it("`remove` Should remove row in store using {id:''}", async () => {
+  it('`remove` Should remove row in store using {sub,id}', async () => {
     const rows = [
       { id: 1, sub: 'sub_000', value: 'a' },
       { id: 2, sub: 'sub_000', value: 'b' }

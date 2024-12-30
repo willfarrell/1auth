@@ -60,7 +60,7 @@ export const count = async (credentialOptions, sub) => {
 
 export const list = async (credentialOptions, sub, params, fields) => {
   const type = makeType(credentialOptions)
-  const credentials = await options.store.selectList(
+  const items = await options.store.selectList(
     options.table,
     {
       ...params,
@@ -71,20 +71,20 @@ export const list = async (credentialOptions, sub, params, fields) => {
   )
   // const now = nowInSeconds();
   const list = []
-  for (let i = credentials.length; i--;) {
-    const credential = credentials[i]
+  for (let i = items.length; i--;) {
+    const item = items[i]
     // TODO need filter for expire
     // if (credential.expire < now) {
     //   continue;
     // }
-    const { encryptionKey: encryptedKey } = credential
-    delete credential.encryptionKey
-    const decryptedCredential = symmetricDecryptFields(
-      credential,
+    const { encryptionKey: encryptedKey } = item
+    delete item.encryptionKey
+    const decryptedItem = symmetricDecryptFields(
+      item,
       { encryptedKey, sub },
       options.encryptedFields
     )
-    list.push(decryptedCredential)
+    list.push(decryptedItem)
   }
   return list
 }
@@ -176,6 +176,7 @@ export const authenticate = async (credentialOptions, username, secret) => {
     },
     ['id', 'encryptionKey', 'value', 'otp', 'verify', 'expire', 'sourceId']
   )
+  const now = nowInSeconds()
   let valid
   for (const credential of credentials) {
     // non-opt credentials must be verified before use
@@ -194,7 +195,11 @@ export const authenticate = async (credentialOptions, username, secret) => {
     if (valid) {
       const { id, otp } = credential
       if (otp) {
-        await options.store.remove(options.table, { id, sub })
+        await options.store.update(
+          options.table,
+          { id, sub },
+          { update: now, expire: now, lastused: now }
+        )
       } else if (credentialOptions.clean) {
         await credentialOptions.clean(sub, value, values)
       } else {
@@ -211,7 +216,9 @@ export const authenticate = async (credentialOptions, username, secret) => {
   }
 
   await timeout
-  if (!valid) throw new Error('401 Unauthorized')
+  if (!valid) {
+    throw new Error('401 Unauthorized')
+  }
   return sub
 }
 

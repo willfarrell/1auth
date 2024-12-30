@@ -4,12 +4,16 @@ export default (table, { timeToLiveKey } = {}) => {
     TableName: table,
     AttributeDefinitions: [
       {
+        AttributeName: 'id',
+        AttributeType: 'N'
+      },
+      {
         AttributeName: 'sub',
         AttributeType: 'S'
       },
       {
-        AttributeName: 'id',
-        AttributeType: 'N'
+        AttributeName: 'digest', // account-username & session
+        AttributeType: 'S'
       }
       // {
       //   AttributeName: "expire",
@@ -28,6 +32,19 @@ export default (table, { timeToLiveKey } = {}) => {
     ],
     GlobalSecondaryIndexes: [
       {
+        IndexName: 'key',
+        KeySchema: [
+          {
+            AttributeName: 'id',
+            KeyType: 'HASH'
+          }
+        ],
+        Projection: {
+          ProjectionType: 'INCLUDE',
+          NonKeyAttributes: ['value', 'create', 'expire']
+        }
+      },
+      {
         IndexName: 'sub',
         KeySchema: [
           {
@@ -41,10 +58,10 @@ export default (table, { timeToLiveKey } = {}) => {
         }
       },
       {
-        IndexName: 'key',
+        IndexName: 'digest',
         KeySchema: [
           {
-            AttributeName: 'id',
+            AttributeName: 'digest',
             KeyType: 'HASH'
           }
         ],

@@ -2,6 +2,7 @@ import {
   charactersAlphaNumeric,
   entropyToCharacterLength,
   randomAlphaNumeric,
+  createEncryptedDigest,
   symmetricGenerateEncryptionKey,
   symmetricEncrypt,
   symmetricDecrypt,
@@ -19,6 +20,15 @@ const randomId = {
   create: async (prefix) =>
     (prefix ? prefix + '_' : '') + randomAlphaNumeric(randomId.minLength)
 }
+const randomSessionId = {
+  id,
+  type: 'id',
+  minLength: entropyToCharacterLength(128, charactersAlphaNumeric.length), // ASVS 3.2.2
+  expire: 15 * 60,
+  create: async (prefix) =>
+    (prefix ? prefix + '_' : '') +
+    randomAlphaNumeric(randomSessionId.minLength)
+}
 
 const defaults = {
   id,
@@ -29,6 +39,7 @@ const defaults = {
   idGenerate: true, // turn off to allow DB to handle
   idPrefix: 'session',
   randomId,
+  randomSessionId,
   expire: randomId.expire,
   // encryptedFields: ["value"],
   encode: (value) => JSON.stringify(value),
@@ -41,12 +52,17 @@ export default (opt = {}) => {
 }
 export const getOptions = () => options
 
-export const lookup = async (id, value = {}) => {
-  const session = await options.store.select(options.table, { id })
+// pass value: null to skip metadata check
+export const lookup = async (sid, value = {}) => {
+  const digest = createEncryptedDigest(sid)
+  const session = await options.store.select(options.table, { digest })
   if (session) {
     const now = nowInSeconds()
     if (session.expire < now) {
       return
+    }
+    if (value === null) {
+      return session
     }
     const encodedValue = options.encode(value)
     const decryptedValue = symmetricDecrypt(session.value, {
@@ -65,15 +81,16 @@ export const list = async (sub) => {
 
   const sessions = []
   for (let i = items.length; i--;) {
-    if (items[i].expire < now) {
+    const item = items[i]
+    if (item.expire < now) {
       continue
     }
-    const decryptedValue = symmetricDecrypt(items[i].value, {
+    const decryptedValue = symmetricDecrypt(item.value, {
       sub,
-      encryptedKey: items[i].encryptionKey
+      encryptedKey: item.encryptionKey
     })
-    items[i].value = options.decode(decryptedValue)
-    sessions.push(items[i])
+    item.value = options.decode(decryptedValue)
+    sessions.push(item)
   }
   return sessions
 }
@@ -88,7 +105,10 @@ export const create = async (sub, value = {}) => {
     options.log('@1auth/session create(', sub, value, ')')
   }
   const now = nowInSeconds()
+  const sid = await options.randomSessionId.create()
+  const digest = createEncryptedDigest(sid)
   const params = {
+    digest,
     sub,
     create: now,
     update: now,
@@ -97,10 +117,10 @@ export const create = async (sub, value = {}) => {
   if (options.idGenerate) {
     params.id = await options.randomId.create(options.idPrefix)
   }
+  const encodedValue = options.encode(value)
 
   const { encryptedKey, encryptionKey } = symmetricGenerateEncryptionKey(sub)
   params.encryptionKey = encryptedKey
-  const encodedValue = options.encode(value)
   params.value = symmetricEncrypt(encodedValue, {
     encryptionKey,
     sub
@@ -109,7 +129,7 @@ export const create = async (sub, value = {}) => {
   //   options.log("@1auth/session create", { params });
   // }
   await options.store.insert(options.table, params)
-
+  params.sid = sid
   return params
 }
 
@@ -130,10 +150,11 @@ export const check = async (sub, value) => {
 }
 
 export const expire = async (sub, id) => {
+  const now = nowInSeconds()
   await options.store.update(
     options.table,
     { sub, id },
-    { expire: nowInSeconds() - 1 }
+    { update: now, expire: now - 1 }
   )
 }
 
