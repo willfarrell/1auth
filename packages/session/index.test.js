@@ -61,7 +61,7 @@ storeMemory.default({
   log: false // console.log,
 })
 storeSQL.default({
-  log: mockStoreSQL.log, // mockStoreSQL.log,
+  log: false, // mockStoreSQL.log,
   query: mockStoreSQL.query
 })
 storeDynamoDB.default({

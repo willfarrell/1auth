@@ -65,7 +65,7 @@ export const create = async (sub, emailAddress) => {
 }
 
 export const select = async (sub, id) => {
-  await messengerSelect(options.id, sub, id)
+  return await messengerSelect(options.id, sub, id)
 }
 
 export const list = async (sub) => {
