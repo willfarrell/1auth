@@ -80,8 +80,8 @@ export const createToken = async (sub, id) => {
   return messengerCreateToken(options.id, sub, id)
 }
 
-export const verifyToken = async (sub, token, notify) => {
-  await messengerVerifyToken(options.id, sub, token, notify)
+export const verifyToken = async (sub, token) => {
+  await messengerVerifyToken(options.id, sub, token)
 }
 
 export const sanitize = (emailAddress) => {

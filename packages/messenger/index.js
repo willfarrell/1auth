@@ -105,7 +105,7 @@ export const create = async (type, sub, value, values) => {
       `messenger-${type}-exists`,
       sub,
       {},
-      { messengers: [valueExists.id] }
+      { messengers: [{ id: valueExists.id }] }
     )
     return
   } else if (valueExists?.sub === sub) {
@@ -163,29 +163,45 @@ export const createToken = async (type, sub, sourceId) => {
       token,
       expire
     },
-    { messengers: [sourceId] }
+    { messengers: [{ id: sourceId }] }
   )
   return id
 }
 
-export const verifyToken = async (type, sub, token, notify = true) => {
+export const verifyToken = async (type, sub, token) => {
+  let messengers = list(type, sub).then((items) => {
+    const messengers = []
+    for (let i = items.length; i--;) {
+      const messenger = items[i]
+      if (!messenger.verify) {
+        continue
+      }
+      messengers.push({ id: messenger.id })
+    }
+    return messengers
+  })
   const { sourceId } = await authnVerify(options.token, sub, token)
   await options.store.update(
     options.table,
     { sub, id: sourceId },
     { verify: nowInSeconds() }
   )
-  if (notify) {
-    await options.notify.trigger(`messenger-${type}-create`, sub)
+  messengers = await messengers
+  if (messengers.length) {
+    await options.notify.trigger(`messenger-${type}-create`, sub, undefined, {
+      messengers
+    })
   }
 }
 
 export const remove = async (type, sub, id) => {
-  const item = await options.store.select(options.table, { id, sub, type }, [
-    'verify'
-  ])
+  const messenger = await options.store.select(
+    options.table,
+    { id, sub, type },
+    ['value', 'verify']
+  )
 
-  if (!item) {
+  if (!messenger) {
     throw new Error('403 Unauthorized')
   }
   // await authnRemove(options.token, sub, id);
@@ -195,9 +211,28 @@ export const remove = async (type, sub, id) => {
   })
   await options.store.remove(options.table, { id, sub })
 
-  if (item?.verify) {
-    await options.notify.trigger(`messenger-${type}-remove`, sub)
+  // remove request is self clean up
+  if (!messenger?.verify) {
+    return
   }
+
+  const { encryptionKey: encryptedKey } = messenger
+  delete messenger.encryptionKey
+  const { value } = symmetricDecryptFields(
+    messenger,
+    { encryptedKey, sub },
+    options.encryptedFields
+  )
+
+  await Promise.all([
+    // Let messenger know it was removed
+    options.notify.trigger(`messenger-${type}-remove-self`, sub, undefined, {
+      messengers: [{ type, value }]
+    }),
+
+    // Let all others know one was removed
+    options.notify.trigger(`messenger-${type}-remove`, sub)
+  ])
 }
 
 export const select = async (type, sub, id) => {

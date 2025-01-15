@@ -64,7 +64,7 @@ describe('messenger', () => {
       sub,
       data: { token, expire },
       options: {
-        messengers: [messengerId]
+        messengers: [{ id: messengerId }]
       }
     })
 
@@ -80,12 +80,7 @@ describe('messenger', () => {
     await messengerVerifyToken(messengerType, sub, token)
 
     // notify
-    deepEqual(mocks.notifyClient.mock.calls[1].arguments[0], {
-      id: 'messenger-signal-create',
-      sub,
-      data: undefined,
-      options: {}
-    })
+    equal(mocks.notifyClient.mock.calls.length, 1)
 
     messengerDB = await store.select(messengerGetOptions().table, { sub })
     authnDB = await store.select(authnGetOptions().table, { sub })
@@ -105,6 +100,19 @@ describe('messenger', () => {
     await messengerRemove(messengerType, sub, messengerId)
 
     // notify
+    deepEqual(mocks.notifyClient.mock.calls[1].arguments[0], {
+      id: 'messenger-signal-remove-self',
+      sub,
+      data: undefined,
+      options: {
+        messengers: [
+          {
+            type: 'signal',
+            value: '@username.00'
+          }
+        ]
+      }
+    })
     deepEqual(mocks.notifyClient.mock.calls[2].arguments[0], {
       id: 'messenger-signal-remove',
       sub,

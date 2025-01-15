@@ -123,6 +123,14 @@ describe('account-username', () => {
     const user = await accountUsernameExists(usernameValue)
     ok(user)
   })
+  it('Should throw when username @ from email', async () => {
+    const usernameValue = 'username@domain.tld'
+    try {
+      await accountUsernameCreate(sub, usernameValue)
+    } catch (e) {
+      equal(e.message, '400 invalid username')
+    }
+  })
   it('Should throw when username is too short', async () => {
     const usernameValue = ''
     try {

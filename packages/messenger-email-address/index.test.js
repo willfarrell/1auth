@@ -61,7 +61,9 @@ describe('messenger-email-address', () => {
       id: 'messenger-emailAddress-verify',
       sub,
       data: { token, expire },
-      options: { messengers: [messengerId] }
+      options: {
+        messengers: [{ id: messengerId }]
+      }
     })
 
     let messengerDB = await store.select(messengerGetOptions().table, { sub })
@@ -76,12 +78,7 @@ describe('messenger-email-address', () => {
     await emailAddressrVerifyToken(sub, token)
 
     // notify
-    deepEqual(mocks.notifyClient.mock.calls[1].arguments[0], {
-      id: 'messenger-emailAddress-create',
-      sub,
-      data: undefined,
-      options: {}
-    })
+    equal(mocks.notifyClient.mock.calls.length, 1)
 
     messengerDB = await store.select(messengerGetOptions().table, { sub })
     authnDB = await store.select(authnGetOptions().table, { sub })
@@ -96,6 +93,19 @@ describe('messenger-email-address', () => {
     await emailAddressrRemove(sub, messengerId)
 
     // notify
+    deepEqual(mocks.notifyClient.mock.calls[1].arguments[0], {
+      id: 'messenger-emailAddress-remove-self',
+      sub,
+      data: undefined,
+      options: {
+        messengers: [
+          {
+            type: 'emailAddress',
+            value: 'username@example.org'
+          }
+        ]
+      }
+    })
     deepEqual(mocks.notifyClient.mock.calls[2].arguments[0], {
       id: 'messenger-emailAddress-remove',
       sub,
