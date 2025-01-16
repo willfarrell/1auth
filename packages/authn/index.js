@@ -90,7 +90,7 @@ export const list = async (credentialOptions, sub, params, fields) => {
   return list
 }
 
-export const create = async (
+const createCredential = async (
   credentialOptions,
   sub,
   { id, value, ...values }
@@ -125,8 +125,22 @@ export const create = async (
   if (options.idGenerate) {
     params.id = id
   }
+  return params
+}
+
+export const create = async (credentialOptions, sub, values) => {
+  const params = await createCredential(credentialOptions, sub, values)
   const row = await options.store.insert(options.table, params)
-  return { type, id: row.id, value, otp, expire }
+  return { ...params, id: row.id }
+}
+
+export const createList = async (credentialOptions, sub, list) => {
+  const rows = await Promise.all(
+    list.map((values) => createCredential(credentialOptions, sub, values))
+  )
+  const params = rows[0]
+  const res = await options.store.insertList(options.table, rows)
+  return { ...params, id: res }
 }
 
 export const update = async (

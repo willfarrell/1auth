@@ -82,14 +82,14 @@ export const insert = async (table, values = {}) => {
   return res.id
 }
 
-export const insertList = async (table, list = []) => {
+export const insertList = async (table, rows = []) => {
   if (options.log) {
-    options.log('@1auth/store-sql insertList(', table, list, ')')
+    options.log('@1auth/store-sql insertList(', table, rows, ')')
   }
   const insertValues = []
   let insertParameters = []
-  for (let i = 0, l = list.length; i < l; i++) {
-    const values = list[i]
+  for (let i = 0, l = rows.length; i < l; i++) {
+    const values = rows[i]
     const { insert, parameters } = makeSqlParts({}, values)
     if (i) {
       insertValues.push(insert.split('VALUES')[1]) // (?)

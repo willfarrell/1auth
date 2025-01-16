@@ -145,24 +145,26 @@ export const insert = async (table, values = {}) => {
   return values.id
 }
 
-export const insertList = async (table, list = []) => {
+export const insertList = async (table, rows = []) => {
   if (options.log) {
-    options.log('@1auth/store-dynamodb insertList(', table, list, ')')
+    options.log('@1auth/store-dynamodb insertList(', table, rows, ')')
   }
 
   const ids = []
-  const putRequests = list.map((params) => {
+  const putRequests = []
+  for (let i = 0, l = rows.length; i < l; i++) {
+    const params = rows[i]
     if (params.expire && options.timeToLiveKey) {
       params[options.timeToLiveKey] =
         params.expire + options.timeToLiveExpireOffset
     }
     ids.push(params.id)
-    return {
+    putRequests.push({
       PutRequest: {
         Item: marshall(params, marshallOptions)
       }
-    }
-  })
+    })
+  }
 
   const commandParams = {
     RequestItems: {

@@ -27,12 +27,10 @@ import webauthn, {
   // getOptions as webauthnGetOptions,
   authenticate as webauthnAuthenticate,
   create as webauthnCreate,
-  // exists as webauthnExists,
-  // lookup as webauthnLookup,
   verify as webauthnVerify,
-  createChallenge as webauthnCreateChallenge
-  // list as webauthnList,
-  // remove as webauthnRemove,
+  createChallenge as webauthnCreateChallenge,
+  list as webauthnList,
+  remove as webauthnRemove
 } from '../authn-webauthn/index.js'
 
 crypto({
@@ -82,7 +80,7 @@ test.afterEach(async (t) => {
 })
 
 describe('authn-webauthn', () => {
-  it('Can create recovery codes on an account', async () => {
+  it('Can create WebAuthn on an account', async () => {
     // Registration
     const { secret: registrationOptions } = await webauthnCreate(sub)
 
@@ -106,27 +104,16 @@ describe('authn-webauthn', () => {
     equal(token.value.length, 321)
     ok(token.expire)
 
-    // Override challenge
-    await store.update(
-      authnGetOptions().table,
-      { sub, id: token.id },
-      {
-        value: symmetricEncrypt(
-          JSON.stringify({
-            expectedChallenge: registrationOptionsOverride.challenge,
-            expectedOrigin: origin,
-            expectedRPID: registrationOptionsOverride.rp.id,
-            requireUserVerification: true
-          }),
-          {
-            sub,
-            encryptedKey: token.encryptionKey
-          }
-        )
-      }
-    )
+    await overrideCreateChallenge(sub, token)
 
-    await webauthnVerify(sub, registrationResponse, { name: 'PassKey' }, false)
+    await webauthnVerify(sub, registrationResponse, { name: 'PassKey' })
+
+    deepEqual(mocks.notifyClient.mock.calls[0].arguments[0], {
+      id: 'authn-webauthn-create',
+      sub,
+      data: undefined,
+      options: {}
+    })
 
     authnDB = await store.selectList(authnGetOptions().table, { sub })
     equal(authnDB.length, 1)
@@ -157,31 +144,8 @@ describe('authn-webauthn', () => {
     equal(challenge.value.length, 1977)
     ok(challenge.expire)
 
-    // Override challenge
-    await store.update(
-      authnGetOptions().table,
-      { sub, id: challenge.id },
-      {
-        value: symmetricEncrypt(
-          JSON.stringify({
-            ...JSON.parse(
-              symmetricDecrypt(challenge.value, {
-                sub,
-                encryptedKey: challenge.encryptionKey
-              })
-            ),
-            expectedChallenge: authenticationOptionsOverride.challenge,
-            expectedOrigin: origin,
-            expectedRPID: authenticationOptionsOverride.rpId,
-            requireUserVerification: true
-          }),
-          {
-            sub,
-            encryptedKey: challenge.encryptionKey
-          }
-        )
-      }
-    )
+    // Override authentication challenge
+    await overrideGetChallenge(sub, challenge)
 
     const userSub = await webauthnAuthenticate(
       username,
@@ -194,63 +158,59 @@ describe('authn-webauthn', () => {
     authnDB = authnDB.filter((item) => item.expire === undefined)
     equal(authnDB.length, 1)
   })
-  /*
-  it("Can remove recovery codes on an account", async () => {
-    const secrets = await webauthnCreate(sub);
-    await webauthnRemove(sub, secrets[0].id);
-    const authDB = await store.select(authnGetOptions().table, { sub });
 
-    ok(!authDB);
+  it('Can remove WebAuthn on an account', async () => {
+    await webauthnCreate(sub)
+    const [token] = await store.selectList(authnGetOptions().table, { sub })
+    await overrideCreateChallenge(sub, token)
+    await webauthnVerify(sub, registrationResponse, { name: 'PassKey' })
+
+    await webauthnRemove(sub, token.id)
+    let authnDB = await store.selectList(authnGetOptions().table, { sub })
+    equal(authnDB.length, 1)
+    authnDB = authnDB.filter((item) => item.expire !== undefined)
+    equal(authnDB.length, 0)
 
     // notify
     deepEqual(mocks.notifyClient.mock.calls[1].arguments[0], {
-      id: "authn-recovery-codes-remove",
+      id: 'authn-webauthn-remove',
       sub,
-      params: undefined,
-    });
+      data: undefined,
+      options: {}
+    })
 
     try {
-      await webauthnAuthenticate(username, secrets[0].secret);
+      await webauthnAuthenticate(username, authenticationResponse)
     } catch (e) {
-      equal(e.message, "401 Unauthorized");
+      equal(e.message, '401 Unauthorized')
+      deepEqual(e.message, '401 Unauthorized', { cause: 'missing' })
     }
-  });
-  it("Can NOT remove recovery codes from someone elses account", async () => {
-    const secrets = await webauthnCreate(sub);
-    await webauthnRemove("sub_1111111", secrets[0].id);
-    const authDB = await store.selectList(authnGetOptions().table, { sub });
+  })
+  it('Can NOT remove WebAuthn from someone elses account', async () => {
+    const secret = await webauthnCreate(sub)
+    const [token] = await store.selectList(authnGetOptions().table, { sub })
+    await overrideCreateChallenge(sub, token)
+    await webauthnVerify(sub, registrationResponse, { name: 'PassKey' }, false)
 
-    ok(authDB);
-    equal(authDB.length, 5);
-  });
+    await webauthnRemove('sub_1111111', secret.id)
+    const authnDB = await store.selectList(authnGetOptions().table, { sub })
 
-  /*it("Can check is an recovery codes exists (exists)", async () => {
-    const secrets = await webauthnCreate(sub);
-    const row = await webauthnExists(secrets[0].secret);
-    ok(row);
-  });
-  it("Can check is an recovery codes exists (not exists)", async () => {
-    const row = await webauthnExists("pat-notfound");
-    equal(row, undefined);
-  });
-  it("Can lookup an recovery codes with { secret } (exists)", async () => {
-    const secrets = await webauthnCreate(sub);
-    const row = await webauthnLookup(secrets[0].secret);
-    ok(row);
-  });
-  it("Can lookup an recovery codes with { secret } (not exists)", async () => {
-    const row = await webauthnLookup("pat-notfound");
-    equal(row, undefined);
-  });
-  it("Can list an recovery codes with { sub } (exists)", async () => {
-    const secrets = await webauthnCreate(sub);
-    const row = await webauthnList(sub);
-    equal(row.length, 1);
-  });
-  it("Can list an recovery codes with { sub } (not exists)", async () => {
-    const row = await webauthnList(sub);
-    equal(row.length, 0);
-    }); */
+    ok(authnDB)
+    equal(authnDB.length, 1)
+  })
+
+  it('Can list an WebAuthn with { sub } (exists)', async () => {
+    await webauthnCreate(sub)
+    const [token] = await store.selectList(authnGetOptions().table, { sub })
+    await overrideCreateChallenge(sub, token)
+    await webauthnVerify(sub, registrationResponse, { name: 'PassKey' }, false)
+    const row = await webauthnList(sub)
+    equal(row.length, 1)
+  })
+  it('Can list an WebAuthn with { sub } (not exists)', async () => {
+    const row = await webauthnList(sub)
+    equal(row.length, 0)
+  })
 })
 
 const registrationOptionsOverride = {
@@ -332,4 +292,52 @@ const authenticationResponse = {
   type: 'public-key',
   clientExtensionResults: {},
   authenticatorAttachment: 'platform'
+}
+
+const overrideCreateChallenge = async (sub, token) => {
+  await store.update(
+    authnGetOptions().table,
+    { sub, id: token.id },
+    {
+      value: symmetricEncrypt(
+        JSON.stringify({
+          expectedChallenge: registrationOptionsOverride.challenge,
+          expectedOrigin: origin,
+          expectedRPID: registrationOptionsOverride.rp.id,
+          requireUserVerification: true
+        }),
+        {
+          sub,
+          encryptedKey: token.encryptionKey
+        }
+      )
+    }
+  )
+}
+
+const overrideGetChallenge = async (sub, challenge) => {
+  await store.update(
+    authnGetOptions().table,
+    { sub, id: challenge.id },
+    {
+      value: symmetricEncrypt(
+        JSON.stringify({
+          ...JSON.parse(
+            symmetricDecrypt(challenge.value, {
+              sub,
+              encryptedKey: challenge.encryptionKey
+            })
+          ),
+          expectedChallenge: authenticationOptionsOverride.challenge,
+          expectedOrigin: origin,
+          expectedRPID: authenticationOptionsOverride.rpId,
+          requireUserVerification: true
+        }),
+        {
+          sub,
+          encryptedKey: challenge.encryptionKey
+        }
+      )
+    }
+  )
 }

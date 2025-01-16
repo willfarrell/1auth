@@ -25,6 +25,10 @@
     "index.js",
     "index.d.ts"
   ],
+  "scripts": {
+    "test": "npm run test:unit",
+    "test:unit": "node --test"
+  },
   "license": "MIT",
   "funding": {
     "type": "github",
