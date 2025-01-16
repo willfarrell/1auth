@@ -45,7 +45,7 @@ accessToken()
 const name = '1Auth'
 const origin = 'http://localhost'
 webauthn({
-  log: () => {}, // console.log,
+  log: false, // console.log,
   name,
   origin
 })
