@@ -5,6 +5,7 @@ import {
   select as authnSelect,
   list as authnList,
   create as authnCreate,
+  createList as authnCreateList,
   update as authnUpdate,
   verify as authnVerify,
   expire as authnExpire,
@@ -293,15 +294,13 @@ export const createChallenge = async (sub) => {
       expectedRPID: new URL(options.origin).hostname,
       requireUserVerification: true // PassKey
     }
-    challenges.push(
-      authnCreate(options.challenge, sub, {
-        sourceId: credential.id,
-        value,
-        update: now
-      })
-    )
+    challenges.push({
+      sourceId: credential.id,
+      value,
+      update: now
+    })
   }
-  const id = await Promise.all(challenges)
+  const id = await authnCreateList(options.challenge, sub, challenges)
 
   if (options.log) {
     options.log('@1auth/authn-webauthn createChallenge', { secret }, '')
