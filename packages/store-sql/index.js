@@ -1,5 +1,5 @@
 const options = {
-  log: undefined,
+  log: false,
   query: undefined, // async (sql, parameters) => {}
   // number of seconds after expire before removal
   // 10d chosen based on EFF DNT Policy

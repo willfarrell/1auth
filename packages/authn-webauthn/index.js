@@ -33,17 +33,12 @@ const token = {
   encode: (value) => JSON.stringify(value),
   decode: (value) => JSON.parse(value),
   verify: async (response, value) => {
-    try {
-      const { verified, registrationInfo } = await verifyRegistrationResponse({
-        ...value,
-        response
-      })
-      if (!verified) throw new Error('Failed verifyRegistrationResponse')
-      return { registrationInfo: jsonEncodeSecret(registrationInfo) }
-    } catch (e) {
-      console.error('@1auth/authn-webauthn token.verify()', e)
-      return false
-    }
+    const { verified, registrationInfo } = await verifyRegistrationResponse({
+      ...value,
+      response
+    })
+    if (!verified) throw new Error('Failed verifyRegistrationResponse')
+    return { registrationInfo: jsonEncodeSecret(registrationInfo) }
   }
 }
 
@@ -85,21 +80,17 @@ const challenge = {
     return value
   },
   verify: async (response, value) => {
-    try {
-      const { verified, authenticationInfo } =
-        await verifyAuthenticationResponse({
-          ...value,
-          credential: value.authenticator.credential,
-          response
-        })
-      if (!verified) throw new Error('Failed verifyAuthenticationResponse')
-      value.authenticator.credential.counter = authenticationInfo.newCounter
-      value.authenticator = jsonEncodeSecret(value.authenticator)
-      return true
-    } catch (e) {
-      console.error('@1auth/authn-webauthn challenge.verify()', e)
-      return false
-    }
+    const { verified, authenticationInfo } = await verifyAuthenticationResponse(
+      {
+        ...value,
+        credential: value.authenticator.credential,
+        response
+      }
+    )
+    if (!verified) throw new Error('Failed verifyAuthenticationResponse')
+    value.authenticator.credential.counter = authenticationInfo.newCounter
+    value.authenticator = jsonEncodeSecret(value.authenticator)
+    return true
   },
   cleanup: async (sub, value, { sourceId } = {}) => {
     const now = nowInSeconds()

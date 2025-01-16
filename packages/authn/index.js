@@ -10,6 +10,7 @@ const id = 'authn'
 
 const defaults = {
   id,
+  log: false,
   store: undefined,
   notify: undefined,
   table: 'authentications',
@@ -178,9 +179,17 @@ export const authenticate = async (credentialOptions, username, secret) => {
   )
   const now = nowInSeconds()
   let valid
+  let skipIgnoredCount = 0
+  let skipExpiredCount = 0
   for (const credential of credentials) {
     // non-opt credentials must be verified before use
     if (!credential.otp && !credential.verify) {
+      skipIgnoredCount += 1
+      continue
+    }
+    // skip expired
+    if (credential.expire < now) {
+      skipExpiredCount += 1
       continue
     }
     const { encryptionKey: encryptedKey } = credential
@@ -191,7 +200,14 @@ export const authenticate = async (credentialOptions, username, secret) => {
     )
     let { value, ...values } = decryptedCredential
     value = await credentialOptions.decode(value)
-    valid = await credentialOptions.verify(secret, value, values)
+    try {
+      valid = await credentialOptions.verify(secret, value, values)
+    } catch (e) {
+      if (options.log) {
+        options.log(e)
+      }
+      continue
+    }
     if (valid) {
       const { id, otp } = credential
       if (otp) {
@@ -217,7 +233,14 @@ export const authenticate = async (credentialOptions, username, secret) => {
 
   await timeout
   if (!valid) {
-    throw new Error('401 Unauthorized')
+    let cause = 'invalid'
+    const credentialsCount = credentials.length - skipIgnoredCount
+    if (credentialsCount === 0) {
+      cause = 'missing'
+    } else if (skipExpiredCount === credentialsCount) {
+      cause = 'expired'
+    }
+    throw new Error('401 Unauthorized', cause)
   }
   return sub
 }
@@ -241,8 +264,16 @@ export const verify = async (credentialOptions, sub, input) => {
     type
   })
 
-  let valid, credential
+  const now = nowInSeconds()
+  let valid
+  let credential
+  let skipExpiredCount = 0
   for (credential of credentials) {
+    // skip expired
+    if (credential.expire < now) {
+      skipExpiredCount += 1
+      continue
+    }
     const { encryptionKey: encryptedKey } = credential
     const decryptedCredential = symmetricDecryptFields(
       credential,
@@ -251,19 +282,35 @@ export const verify = async (credentialOptions, sub, input) => {
     )
     let { value, ...values } = decryptedCredential
     value = await credentialOptions.decode(value)
-    valid = await credentialOptions.verify(input, value, values)
+    try {
+      valid = await credentialOptions.verify(input, value, values)
+    } catch (e) {
+      if (options.log) {
+        options.log(e)
+      }
+      continue
+    }
     if (valid) {
       const { id, otp } = credential
       if (otp) {
         await options.store.remove(options.table, { id, sub })
       }
-
       break
     }
   }
 
   await timeout
-  if (!valid) throw new Error('401 Unauthorized')
+
+  if (!valid) {
+    let cause = 'invalid'
+    const credentialsCount = credentials.length
+    if (credentialsCount === 0) {
+      cause = 'missing'
+    } else if (skipExpiredCount === credentialsCount) {
+      cause = 'expired'
+    }
+    throw new Error('401 Unauthorized', { cause })
+  }
   return { ...credential, ...valid }
 }
 

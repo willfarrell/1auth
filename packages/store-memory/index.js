@@ -2,7 +2,7 @@ const db = {}
 
 const options = {
   id: '',
-  log: undefined,
+  log: false,
   // number of seconds after expire before removal
   // 10d chosen based on EFF DNT Policy
   timeToLiveExpireOffset: 10 * 24 * 60 * 60,

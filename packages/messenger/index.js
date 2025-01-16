@@ -169,7 +169,7 @@ export const createToken = async (type, sub, sourceId) => {
 }
 
 export const verifyToken = async (type, sub, token) => {
-  let messengers = list(type, sub).then((items) => {
+  const messengers = await list(type, sub).then((items) => {
     const messengers = []
     for (let i = items.length; i--;) {
       const messenger = items[i]
@@ -186,7 +186,6 @@ export const verifyToken = async (type, sub, token) => {
     { sub, id: sourceId },
     { verify: nowInSeconds() }
   )
-  messengers = await messengers
   if (messengers.length) {
     await options.notify.trigger(`messenger-${type}-create`, sub, undefined, {
       messengers

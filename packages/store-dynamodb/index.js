@@ -14,7 +14,7 @@ import { marshall, unmarshall } from '@aws-sdk/util-dynamodb'
 const marshallOptions = { removeUndefinedValues: true }
 
 const options = {
-  log: undefined,
+  log: false,
   client: new DynamoDBClient(),
   // number of seconds after expire before removal
   // 10d chosen based on EFF DNT Policy
