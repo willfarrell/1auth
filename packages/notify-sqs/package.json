@@ -1,6 +1,6 @@
 {
   "name": "@1auth/notify-sqs",
-  "version": "0.0.0-alpha.53",
+  "version": "0.0.0-alpha.54",
   "description": "",
   "type": "module",
   "engines": {
