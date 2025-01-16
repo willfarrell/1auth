@@ -90,7 +90,12 @@ export const insertList = async (table, rows = []) => {
   let insertParameters = []
   for (let i = 0, l = rows.length; i < l; i++) {
     const values = rows[i]
-    const { insert, parameters } = makeSqlParts({}, values)
+    const { insert, parameters } = makeSqlParts(
+      {},
+      values,
+      [],
+      i * Object.keys(values).length + 1
+    )
     if (i) {
       insertValues.push(insert.split('VALUES')[1]) // (?)
     } else {
@@ -149,9 +154,13 @@ const parseValues = (values) => {
 export const getPlaceholder = (idx) => {
   return options.placeholder === '$' ? '$' + idx : options.placeholder
 }
-export const makeSqlParts = (filters = {}, values = {}, fields = []) => {
+export const makeSqlParts = (
+  filters = {},
+  values = {},
+  fields = [],
+  idx = 1
+) => {
   let parameters = []
-  let idx = 1
   const keys = Object.keys(values)
 
   const select = fields.length ? '"' + fields.join('", "') + '"' : '*'
