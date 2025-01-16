@@ -89,7 +89,8 @@ export const insertList = async (table, rows = []) => {
   const insertValues = []
   let insertParameters = []
   for (let i = 0, l = rows.length; i < l; i++) {
-    const values = rows[i]
+    const values = structuredClone(rows[i])
+    normalizeValues(values)
     const { insert, parameters } = makeSqlParts(
       {},
       values,
