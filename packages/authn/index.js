@@ -254,7 +254,7 @@ export const authenticate = async (credentialOptions, username, secret) => {
     } else if (skipExpiredCount === credentialsCount) {
       cause = 'expired'
     }
-    throw new Error('401 Unauthorized', cause)
+    throw new Error('401 Unauthorized', { cause })
   }
   return sub
 }

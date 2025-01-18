@@ -260,6 +260,38 @@ export const remove = async (table, filters = {}) => {
   await options.client.send(new DeleteItemCommand(commandParams))
 }
 
+// Can only be used with recovery-codes for now
+// export const removeList = async (table, filters = {}) => {
+//   if (options.log) {
+//     options.log('@1auth/store-dynamodb removeList(', table, filters, ')')
+//   }
+//
+//   const deleteRequests = []
+//   for (let i = 0, l = filters.id.length; i < l; i++) {
+//     const itemFilters = structuredClone(filters)
+//     itemFilters.id = filters.id[i]
+//     deleteRequests.push({
+//       DeleteRequest: {
+//         Key: marshall(itemFilters, marshallOptions)
+//       }
+//     })
+//   }
+//
+//   const commandParams = {
+//     RequestItems: {
+//       [table]: putRequests
+//     }
+//   }
+//   if (options.log) {
+//     options.log(
+//       '@1auth/store-dynamodb BatchWriteItemCommand(',
+//       commandParams,
+//       ')'
+//     )
+//   }
+//   await options.client.send(new BatchWriteItemCommand(commandParams))
+// }
+
 export const makeQueryParams = (filters = {}, select = []) => {
   const expressionAttributeNames = {}
   const expressionAttributeValues = {}

@@ -9,7 +9,8 @@ import {
   getOptions as authnGetOptions,
   count as authnCount,
   list as authnList,
-  create as authnCreate,
+  // create as authnCreate,
+  createList as authnCreateList,
   authenticate as authnAuthenticate,
   remove as authnRemove
 } from '@1auth/authn'
@@ -74,9 +75,10 @@ export const update = async (sub) => {
     type: options.secret.id + '-' + options.secret.type
   })
   const secrets = await createSecrets(sub, options.count)
-  for (const item of existingSecrets) {
-    await authnRemove(options.secret, sub, item.id)
-  }
+
+  const id = existingSecrets.map((item) => item.id)
+  await authnRemove(options.secret, sub, id)
+
   await options.notify.trigger('authn-recovery-codes-update', sub)
   return secrets
 }
@@ -85,16 +87,16 @@ export const remove = async (sub, id) => {
   if (options.log) {
     options.log('@1auth/authn-recovery-codes remove(', sub, id, ')')
   }
-  const existingSecrets = id
-    ? await options.store.selectList(options.table, {
+
+  id ??= await options.store
+    .selectList(options.table, {
       sub,
       type: options.id + '-' + options.secret.type
     })
-    : [{ id }]
-  // TODO update to remove in single request id: []
-  for (const item of existingSecrets) {
-    options.store.remove(options.table, { id: item.id, sub })
-  }
+    .then((res) => res.map((item) => item.id))
+
+  await authnRemove(options.secret, sub, id)
+
   await options.notify.trigger('authn-recovery-codes-remove', sub)
 }
 
@@ -103,12 +105,12 @@ const createSecrets = async (sub, count = options.count) => {
   const now = nowInSeconds()
   for (let i = count; i--;) {
     const secret = await options.secret.create()
-    const id = await authnCreate(options.secret, sub, {
+    secrets.push({
       value: secret,
       verify: now
     })
-    secrets.push({ id, secret })
   }
+  await authnCreateList(options.secret, sub, secrets)
   return secrets
 }
 

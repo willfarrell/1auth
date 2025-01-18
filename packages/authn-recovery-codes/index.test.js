@@ -90,15 +90,13 @@ describe('authn-recovery-codes', () => {
       data: undefined,
       options: {}
     })
-    const { secret } = secrets[0]
-    const userSub = await recoveryCodesAuthenticate(username, secret)
+    const userSub = await recoveryCodesAuthenticate(username, secrets[0].value)
     equal(userSub, sub)
   })
   it('Can update recovery codes on an account', async () => {
     const secrets = await recoveryCodesCreate(sub)
 
-    const { secret } = secrets[0]
-    await recoveryCodesAuthenticate(username, secret)
+    await recoveryCodesAuthenticate(username, secrets[0].value)
 
     let authnDB = await store.selectList(authnGetOptions().table, { sub })
     equal(authnDB.length, 5)
@@ -119,7 +117,7 @@ describe('authn-recovery-codes', () => {
   })
   it('Can remove recovery codes on an account', async () => {
     const secrets = await recoveryCodesCreate(sub)
-    await recoveryCodesRemove(sub, secrets[0].id)
+    await recoveryCodesRemove(sub)
     const authDB = await store.select(authnGetOptions().table, { sub })
 
     ok(!authDB)
@@ -133,14 +131,36 @@ describe('authn-recovery-codes', () => {
     })
 
     try {
-      await recoveryCodesAuthenticate(username, secrets[0].secret)
+      await recoveryCodesAuthenticate(username, secrets[0].value)
+    } catch (e) {
+      equal(e.message, '401 Unauthorized')
+    }
+  })
+  it('Can remove single recovery code on an account', async () => {
+    const secrets = await recoveryCodesCreate(sub)
+    let authDB = await store.select(authnGetOptions().table, { sub })
+    await recoveryCodesRemove(sub, authDB.id)
+    authDB = await store.selectList(authnGetOptions().table, { sub })
+
+    equal(authDB.length, 4)
+
+    // notify
+    deepEqual(mocks.notifyClient.mock.calls[1].arguments[0], {
+      id: 'authn-recovery-codes-remove',
+      sub,
+      data: undefined,
+      options: {}
+    })
+
+    try {
+      await recoveryCodesAuthenticate(username, secrets[0].value)
     } catch (e) {
       equal(e.message, '401 Unauthorized')
     }
   })
   it('Can NOT remove recovery codes from someone elses account', async () => {
-    const secrets = await recoveryCodesCreate(sub)
-    await recoveryCodesRemove('sub_1111111', secrets[0].id)
+    await recoveryCodesCreate(sub)
+    await recoveryCodesRemove('sub_1111111')
     const authDB = await store.selectList(authnGetOptions().table, { sub })
 
     ok(authDB)
