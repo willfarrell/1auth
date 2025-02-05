@@ -49,7 +49,8 @@ authn({
   store,
   notify,
   usernameExists: [accountUsernameExists],
-  encryptedFields: ['value', 'name']
+  encryptedFields: ['value', 'name'],
+  authenticationDuration: 0
 })
 recoveryCodes()
 

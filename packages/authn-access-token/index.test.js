@@ -48,7 +48,8 @@ authn({
   store,
   notify,
   usernameExists: [accountUsernameExists, accessTokenExists],
-  encryptedFields: ['value', 'name']
+  encryptedFields: ['value', 'name'],
+  authenticationDuration: 0
 })
 accessToken()
 

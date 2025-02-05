@@ -33,7 +33,7 @@ notify.default({
   }
 })
 
-authn({ store, notify })
+authn({ store, notify, authenticationDuration: 0 })
 messenger({ store, notify })
 emailAddress()
 
@@ -75,7 +75,7 @@ describe('messenger-email-address', () => {
     ok(messengerDB.digest)
     ok(!messengerDB.verify)
 
-    await emailAddressrVerifyToken(sub, token)
+    await emailAddressrVerifyToken(sub, token, messengerId)
 
     // notify
     equal(mocks.notifyClient.mock.calls.length, 1)
@@ -89,7 +89,7 @@ describe('messenger-email-address', () => {
   it('Can remove a verified messenger on an account', async () => {
     const messengerId = await emailAddressCreate(sub, 'username@example.org')
     const { token } = mocks.notifyClient.mock.calls[0].arguments[0].data
-    await emailAddressrVerifyToken(sub, token)
+    await emailAddressrVerifyToken(sub, token, messengerId)
     await emailAddressrRemove(sub, messengerId)
 
     // notify
@@ -143,9 +143,9 @@ describe('messenger-email-address', () => {
 
   it('Can check is a messenger exists (exists)', async () => {
     const messengerValue = 'username@example.org'
-    await emailAddressCreate(sub, messengerValue)
+    const messengerId = await emailAddressCreate(sub, messengerValue)
     const { token } = mocks.notifyClient.mock.calls[0].arguments[0].data
-    await emailAddressrVerifyToken(sub, token)
+    await emailAddressrVerifyToken(sub, token, messengerId)
     const user = await emailAddressExists(messengerValue)
     ok(user)
   })
@@ -156,9 +156,9 @@ describe('messenger-email-address', () => {
 
   it('Can lookup a messenger { value } (exists)', async () => {
     const messengerValue = 'username@example.org'
-    await emailAddressCreate(sub, messengerValue)
+    const messengerId = await emailAddressCreate(sub, messengerValue)
     const { token } = mocks.notifyClient.mock.calls[0].arguments[0].data
-    await emailAddressrVerifyToken(sub, token)
+    await emailAddressrVerifyToken(sub, token, messengerId)
     const messenger = await emailAddressLookup(messengerValue)
 
     ok(messenger)

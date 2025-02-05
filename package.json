@@ -25,7 +25,7 @@
     "audit": "npm audit fix --workspaces",
     "release:sync": "npm version $npm_package_version --workspaces && find ./packages -name \"package.json\" -exec sed -i '' -E \"s|\\\"@1auth/(.*)\\\": ([^,]*)|\\\"@1auth/\\1\\\": $(npm pkg get version)|g\" {} \\;",
     "release:tag": "git tag $npm_package_version && git push --tags",
-    "release:publish": "npm publish --workspaces",
+    "release:publish": "npm publish --workspaces && npm update",
     "release:publish:next": "npm publish --tag next --workspaces"
   },
   "repository": {

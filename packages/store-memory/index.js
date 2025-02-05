@@ -1,3 +1,5 @@
+import { randomBytes } from 'node:crypto'
+
 const db = {}
 
 const options = {
@@ -79,7 +81,7 @@ export const insert = async (table, values = {}) => {
       values.expire + options.timeToLiveExpireOffset
   }
   values = structuredClone(values)
-
+  values.id ??= __randomId()
   db[table].push(values)
   return values.id
 }
@@ -90,9 +92,10 @@ export const insertList = async (table, list = []) => {
   }
   db[table] ??= []
   const ids = []
-  for (const params of list) {
-    db[table].push(params)
-    ids.push(params.id)
+  for (const values of list) {
+    values.id ??= __randomId()
+    db[table].push(values)
+    ids.push(values.id)
   }
   return ids
 }
@@ -139,6 +142,9 @@ const matchFilter = (item, filters) => {
   return found
 }
 
+const __randomId = () => {
+  return randomBytes(32).toString('base64')
+}
 // For testing only
 export const __table = async (table) => {
   if (options.log) {

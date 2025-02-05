@@ -77,7 +77,7 @@ describe('messenger', () => {
     ok(messengerDB.digest)
     ok(!messengerDB.verify)
 
-    await messengerVerifyToken(messengerType, sub, token)
+    await messengerVerifyToken(messengerType, sub, token, messengerId)
 
     // notify
     equal(mocks.notifyClient.mock.calls.length, 1)
@@ -96,7 +96,7 @@ describe('messenger', () => {
       '@username.00'
     )
     const { token } = mocks.notifyClient.mock.calls[0].arguments[0].data
-    await messengerVerifyToken(messengerType, sub, token)
+    await messengerVerifyToken(messengerType, sub, token, messengerId)
     await messengerRemove(messengerType, sub, messengerId)
 
     // notify
@@ -161,9 +161,13 @@ describe('messenger', () => {
   it('Can check is a messenger exists (exists)', async () => {
     const messengerType = 'signal'
     const messengerValue = '@username.00'
-    await messengerCreate(messengerType, sub, messengerValue)
+    const messengerId = await messengerCreate(
+      messengerType,
+      sub,
+      messengerValue
+    )
     const { token } = mocks.notifyClient.mock.calls[0].arguments[0].data
-    await messengerVerifyToken(messengerType, sub, token)
+    await messengerVerifyToken(messengerType, sub, token, messengerId)
     const user = await messengerExists(messengerType, messengerValue)
     ok(user)
   })
@@ -176,9 +180,13 @@ describe('messenger', () => {
   it('Can lookup a messenger { value } (exists)', async () => {
     const messengerType = 'signal'
     const messengerValue = '@username.00'
-    await messengerCreate(messengerType, sub, messengerValue)
+    const messengerId = await messengerCreate(
+      messengerType,
+      sub,
+      messengerValue
+    )
     const { token } = mocks.notifyClient.mock.calls[0].arguments[0].data
-    await messengerVerifyToken(messengerType, sub, token)
+    await messengerVerifyToken(messengerType, sub, token, messengerId)
     const messenger = await messengerLookup(messengerType, messengerValue)
 
     equal(messenger.value, messengerValue) // unencrypted

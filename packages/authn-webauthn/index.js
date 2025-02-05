@@ -90,10 +90,11 @@ const challenge = {
     )
     if (!verified) throw new Error('Failed verifyAuthenticationResponse')
     value.authenticator.credential.counter = authenticationInfo.newCounter
-    value.authenticator = jsonEncodeSecret(value.authenticator)
+    // value.authenticator = jsonEncodeSecret(value.authenticator)
     return true
   },
   cleanup: async (sub, value, { sourceId } = {}) => {
+    // update counter on secret
     const now = nowInSeconds()
     const { encryptionKey } = await options.store.select(
       options.table,
@@ -101,8 +102,9 @@ const challenge = {
       ['encryptionKey']
     )
 
-    await authnUpdate(options.secret, sub, {
+    await authnUpdate(options.secret, {
       id: sourceId,
+      sub,
       encryptedKey: encryptionKey,
       value: value.authenticator,
       update: now,
@@ -114,6 +116,7 @@ const defaults = {
   id,
   origin: undefined, // with https://
   name: undefined,
+  userVerification: 'preferred',
   secret,
   token,
   challenge
@@ -203,7 +206,7 @@ const createToken = async (sub) => {
     excludeCredentials,
     // PassKey
     residentKey: 'discouraged', // https://fy.blackhats.net.au/blog/2023-02-02-how-hype-will-turn-your-security-key-into-junk/
-    userVerification: 'preferred'
+    userVerification: options.userVerification
     // extras?
     // timeout
     // pubKeyCredParams: [
@@ -258,6 +261,7 @@ export const createChallenge = async (sub) => {
   if (options.log) {
     options.log('@1auth/authn-webauthn createChallenge(', sub, ')')
   }
+  // TODO remove previous challenges
   // const challenge = options.challenge.create();
   const now = nowInSeconds()
 
@@ -279,7 +283,7 @@ export const createChallenge = async (sub) => {
   const authenticationOptions = {
     rpID: new URL(options.origin).hostname,
     allowCredentials,
-    userVerification: 'preferred'
+    userVerification: options.userVerification
   }
   const secret = await generateAuthenticationOptions(authenticationOptions)
 
@@ -329,6 +333,7 @@ export const select = async (sub, id) => {
 }
 
 const jsonEncodeSecret = (value) => {
+  if (!value) return value
   // value.credential.id = credentialNormalize(value.credential.id);
   value.credential.publicKey = credentialNormalize(value.credential.publicKey)
   value.attestationObject = credentialNormalize(value.attestationObject)

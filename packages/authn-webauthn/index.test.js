@@ -51,7 +51,8 @@ authn({
   store,
   notify,
   usernameExists: [accountUsernameExists],
-  encryptedFields: ['value', 'name']
+  encryptedFields: ['value', 'name'],
+  authenticationDuration: 0
 })
 const name = '1Auth'
 const origin = 'http://localhost'
@@ -92,6 +93,9 @@ describe('authn-webauthn', () => {
     deepEqual(registrationOptions.authenticatorSelection, {
       residentKey: 'preferred',
       userVerification: 'preferred',
+      // TODO explore why preferred
+      // residentKey: 'discouraged',
+      // userVerification: 'preferred',
       requireResidentKey: false
     })
     deepEqual(registrationOptions.excludeCredentials, [])

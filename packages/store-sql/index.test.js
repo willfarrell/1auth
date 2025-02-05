@@ -14,7 +14,8 @@ sqliteQuery(sqlTable(table))
 
 store.default({
   log: (...args) => mocks.log(...args),
-  query: (...args) => mocks.query(...args)
+  query: (...args) => mocks.query(...args),
+  placeholder: '?'
 })
 
 const mocks = {
@@ -130,12 +131,13 @@ describe('store-sql', () => {
     equal(mocks.log.mock.calls.length, 3)
   })
 
-  describe('makeSqlParts', () => {
+  describe('makeSqlParts (SQLite)', () => {
     it('Should format {select} properly', async (t) => {
       const filters = {}
       const values = {}
       const fields = ['a', 'b']
 
+      store.default({ placeholder: '?' })
       const { select, parameters } = store.makeSqlParts(
         filters,
         values,
@@ -151,6 +153,7 @@ describe('store-sql', () => {
       const values = {}
       const fields = []
 
+      store.default({ placeholder: '?' })
       const { select, parameters } = store.makeSqlParts(
         filters,
         values,
@@ -165,9 +168,10 @@ describe('store-sql', () => {
       const filters = {}
       const values = { a: 'a', b: 'b' }
 
+      store.default({ placeholder: '?' })
       const { insert, parameters } = store.makeSqlParts(filters, values)
 
-      equal(insert, '("a", "b") VALUES (?, ?)')
+      equal(insert, '("a", "b") VALUES (?,?)')
       deepEqual(parameters, ['a', 'b'])
     })
 
@@ -175,6 +179,7 @@ describe('store-sql', () => {
       const filters = {}
       const values = { a: 'a', b: 'b' }
 
+      store.default({ placeholder: '?' })
       const { update, parameters } = store.makeSqlParts(filters, values)
 
       equal(update, '"a" = ?, "b" = ?')
@@ -184,9 +189,75 @@ describe('store-sql', () => {
     it('Should format {where} properly', async (t) => {
       const filters = { a: 'a', bc: ['b', 'c'], d: 'd' }
 
+      store.default({ placeholder: '?' })
       const { where, parameters } = store.makeSqlParts(filters)
 
       equal(where, 'WHERE "a" = ? AND "bc" IN (?,?) AND "d" = ?')
+      deepEqual(parameters, ['a', 'b', 'c', 'd'])
+    })
+  })
+  describe('makeSqlParts (PostgreSQL)', () => {
+    it('Should format {select} properly', async (t) => {
+      const filters = {}
+      const values = {}
+      const fields = ['a', 'b']
+
+      store.default({ placeholder: '$' })
+      const { select, parameters } = store.makeSqlParts(
+        filters,
+        values,
+        fields
+      )
+
+      equal(select, '"a", "b"')
+      deepEqual(parameters, [])
+    })
+
+    it('Should format {select} to *', async (t) => {
+      const filters = {}
+      const values = {}
+      const fields = []
+
+      store.default({ placeholder: '$' })
+      const { select, parameters } = store.makeSqlParts(
+        filters,
+        values,
+        fields
+      )
+
+      equal(select, '*')
+      deepEqual(parameters, [])
+    })
+
+    it('Should format {insert} properly', async (t) => {
+      const filters = {}
+      const values = { a: 'a', b: 'b' }
+
+      store.default({ placeholder: '$' })
+      const { insert, parameters } = store.makeSqlParts(filters, values)
+
+      equal(insert, '("a", "b") VALUES ($1,$2)')
+      deepEqual(parameters, ['a', 'b'])
+    })
+
+    it('Should format {update} properly', async (t) => {
+      const filters = {}
+      const values = { a: 'a', b: 'b' }
+
+      store.default({ placeholder: '$' })
+      const { update, parameters } = store.makeSqlParts(filters, values)
+
+      equal(update, '"a" = $1, "b" = $2')
+      deepEqual(parameters, ['a', 'b'])
+    })
+
+    it('Should format {where} properly', async (t) => {
+      const filters = { a: 'a', bc: ['b', 'c'], d: 'd' }
+
+      store.default({ placeholder: '$' })
+      const { where, parameters } = store.makeSqlParts(filters)
+
+      equal(where, 'WHERE "a" = $1 AND "bc" IN ($2,$3) AND "d" = $4')
       deepEqual(parameters, ['a', 'b', 'c', 'd'])
     })
   })

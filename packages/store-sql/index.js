@@ -176,7 +176,7 @@ export const makeSqlParts = (
     idx++
   }
   const insert =
-    '("' + keys.join('", "') + '") VALUES (' + insertParts.join(', ') + ')'
+    '("' + keys.join('", "') + '") VALUES (' + insertParts.join(',') + ')'
   const update = updateParts.join(', ')
   parameters = parameters.concat(Object.values(values))
 
@@ -184,8 +184,7 @@ export const makeSqlParts = (
   where = where
     .map((key) => {
       if (Array.isArray(filters[key])) {
-        // let sql = filters[key].map((v, vidx) => "$" + idx++).join(",");
-        let sql = filters[key].map((_, idx) => getPlaceholder(idx++)).join(',')
+        let sql = filters[key].map(() => getPlaceholder(idx++)).join(',')
         sql &&= '"' + key + '" IN (' + sql + ')'
         parameters = parameters.concat(filters[key])
         return sql

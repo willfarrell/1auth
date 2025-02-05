@@ -17,7 +17,7 @@ const defaults = {
   idGenerate: true,
   idPrefix: 'authn',
   randomId: { ...randomId },
-  authenticationDuration: 500, // minimum duration authentication should take (ms)
+  authenticationDuration: 100, // minimum duration authentication should take (ms)
   usernameExists: [], // hooks to allow what to be used as a username
   encryptedFields: ['value']
 }
@@ -150,18 +150,20 @@ export const update = async (
   const now = nowInSeconds()
   // const type = makeType(credentialOptions);
 
-  const encryptedData = await credentialOptions.encode(
-    value,
-    encryptionKey,
-    encryptedKey,
-    sub
+  const encodedValue = await credentialOptions.encode(value)
+
+  const encryptedValues = symmetricEncryptFields(
+    { ...values, value: encodedValue },
+    { encryptionKey, encryptedKey, sub },
+    options.encryptedFields
   )
+
   return options.store.update(
     options.table,
     { sub, id },
     {
       ...values,
-      value: encryptedData,
+      value: encryptedValues,
       update: now
     }
   )
@@ -225,22 +227,19 @@ export const authenticate = async (credentialOptions, username, secret) => {
     if (valid) {
       const { id, otp } = credential
       if (otp) {
-        await options.store.update(
-          options.table,
-          { id, sub },
-          { update: now, expire: now, lastused: now }
-        )
-      } else if (credentialOptions.clean) {
-        await credentialOptions.clean(sub, value, values)
+        await expire(credentialOptions, sub, id, { lastused: now })
       } else {
         const now = nowInSeconds()
         await options.store.update(
           options.table,
           { id, sub },
-          { update: now, lastused: now }
+          { lastused: now }
         )
       }
-
+      // TODO
+      // if (credentialOptions.cleanup) {
+      //   await credentialOptions.cleanup(sub, value, values)
+      // }
       break
     }
   }
@@ -269,6 +268,7 @@ export const verifySecret = async (credentialOptions, sub, id) => {
   )
 }
 
+// TODO add in sourceId as filter for messengers
 export const verify = async (credentialOptions, sub, input) => {
   const timeout = setTimeout(options.authenticationDuration)
   const type = makeType(credentialOptions)
@@ -307,7 +307,7 @@ export const verify = async (credentialOptions, sub, input) => {
     if (valid) {
       const { id, otp } = credential
       if (otp) {
-        await options.store.remove(options.table, { id, sub })
+        await remove(credentialOptions, sub, id)
       }
       break
     }
@@ -328,12 +328,12 @@ export const verify = async (credentialOptions, sub, input) => {
   return { ...credential, ...valid }
 }
 
-export const expire = async (credentialOptions, sub, id) => {
+export const expire = async (credentialOptions, sub, id, values) => {
   // const type = makeType(credentialOptions);
   await options.store.update(
     options.table,
     { sub, id },
-    { expire: nowInSeconds() - 1 }
+    { ...values, expire: nowInSeconds() - 1 }
   )
 }
 

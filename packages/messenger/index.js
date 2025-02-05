@@ -145,7 +145,7 @@ export const create = async (type, sub, value, values) => {
 }
 
 export const createToken = async (type, sub, sourceId) => {
-  // await authnRemove(options.token, sub, sourceId);
+  // remove previous tokens
   await authnGetOptions().store.remove(authnGetOptions().table, {
     sub,
     sourceId
@@ -168,7 +168,7 @@ export const createToken = async (type, sub, sourceId) => {
   return id
 }
 
-export const verifyToken = async (type, sub, token) => {
+export const verifyToken = async (type, sub, token, sourceId) => {
   const messengers = await list(type, sub).then((items) => {
     const messengers = []
     for (let i = items.length; i--;) {
@@ -180,7 +180,11 @@ export const verifyToken = async (type, sub, token) => {
     }
     return messengers
   })
-  const { sourceId } = await authnVerify(options.token, sub, token)
+  const credential = await authnVerify(options.token, sub, token)
+  if (credential.sourceId !== sourceId) {
+    // Should never happen, race condition
+    throw new Error('401 Unauthorized', { cause: 'invalid' })
+  }
   await options.store.update(
     options.table,
     { sub, id: sourceId },
