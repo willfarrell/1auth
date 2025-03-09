@@ -4,7 +4,7 @@ import {
   lookup as accountLookup
 } from '@1auth/account'
 
-import { createEncryptedDigest, symmetricDecryptFields } from '@1auth/crypto'
+import { createSeasonedDigest, symmetricDecryptFields } from '@1auth/crypto'
 
 // Only allow characters that are safe to encode
 // . not allowed because it can be used to declare and extension
@@ -26,7 +26,7 @@ export default (params) => {
 
 export const exists = async (username) => {
   const usernameSanitized = sanitize(username)
-  const usernameDigest = createEncryptedDigest(usernameSanitized)
+  const usernameDigest = createSeasonedDigest(usernameSanitized)
   return options.store.exists(options.table, {
     digest: usernameDigest
   })
@@ -34,7 +34,7 @@ export const exists = async (username) => {
 
 export const lookup = async (username) => {
   const usernameSanitized = sanitize(username)
-  const usernameDigest = createEncryptedDigest(usernameSanitized)
+  const usernameDigest = createSeasonedDigest(usernameSanitized)
 
   let item = await options.store.select(options.table, {
     digest: usernameDigest
@@ -55,14 +55,16 @@ export const create = async (sub, username) => {
   const usernameSanitized = sanitize(username)
   const usernameValidate = validate(usernameSanitized)
   if (usernameValidate !== true) {
-    throw new Error(`${usernameValidate} invalid username`)
+    throw new Error(usernameValidate, {
+      cause: { username, usernameSanitized }
+    })
   }
-  const usernameDigest = createEncryptedDigest(usernameSanitized)
+  const usernameDigest = createSeasonedDigest(usernameSanitized)
   const usernameExists = await options.store.exists(options.table, {
     digest: usernameDigest
   })
   if (usernameExists) {
-    throw new Error('409 Conflict')
+    throw new Error('409 Conflict', { cause: { username, usernameSanitized } })
   }
 
   await accountUpdate(sub, {
@@ -99,7 +101,7 @@ export const validate = (value) => {
 
 export const validateLength = (value) => {
   if (value.length < 1 && options.maxLength < value.length) {
-    return '400'
+    return '400 Bad Request'
   }
   return true
 }
@@ -107,14 +109,14 @@ export const validateLength = (value) => {
 export const validateAllowedChar = (value) => {
   // TODO URL encode compare
   if (!options.allowedCharRegExp.test(value)) {
-    return '400'
+    return '400 Bad Request'
   }
   return true
 }
 
 export const validateBlacklist = (value) => {
   if (usernameBlacklistRegExp?.test(value)) {
-    return '409'
+    return '409 Conflict'
   }
   return true
 }

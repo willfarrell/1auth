@@ -6,7 +6,7 @@ import {
   deepEqual,
   notDeepEqual
 } from 'node:assert/strict'
-
+import { randomBytes } from 'node:crypto'
 import crypto, {
   entropyToCharacterLength,
   charactersAlphaNumeric,
@@ -15,16 +15,19 @@ import crypto, {
   randomNumeric,
   randomId,
   createDigest,
-  createEncryptedDigest,
+  createSaltedDigest,
+  createPepperedDigest,
+  createSeasonedDigest,
   createSecretHash,
   verifySecretHash,
+  symmetricRandomEncryptionKey,
   symmetricGenerateEncryptionKey,
   symmetricEncryptFields,
   symmetricEncrypt,
   symmetricDecryptFields,
   symmetricDecrypt,
   symmetricDecryptKey,
-  symmetricGenerateSignatureSecret,
+  symmetricRandomSignatureSecret,
   symmetricSignatureSign,
   symmetricSignatureVerify,
   symmetricRotation,
@@ -35,21 +38,33 @@ import crypto, {
 } from '../crypto/index.js'
 
 crypto({
-  symmetricEncryptionKey: 'K6u9kqw3u+w/VxR48wYT21hUY56gDIWgxzL5uPTK9zw=',
-  symmetricSignatureSecret: 'B6u9kqw3u+w/VxR48wYT21hUY56gDIWgxzL5uPTK9zw='
+  symmetricEncryptionKey: Buffer.from(
+    'K6u9kqw3u+w/VxR48wYT21hUY56gDIWgxzL5uPTK9zw=',
+    'base64'
+  ), // symmetricRandomEncryptionKey()
+  symmetricSignatureSecret: Buffer.from(
+    'B6u9kqw3u+w/VxR48wYT21hUY56gDIWgxzL5uPTK9zw=',
+    'base64'
+  ), // symmetricRandomSignatureSecret()
+  digestChecksumSalt: Buffer.from(
+    'ViB9S/dvoJUB7lcNU9oA97/hT+kUvD2FLat7lXudF34=',
+    'base64'
+  ), // randomChecksumSalt()
+  digestChecksumPepper: Buffer.from('yTJifrFGweECzlse', 'base64') // randomChecksumPepper()
 })
+
+/*
+ASVS v5.0 (bits)
+2.6.2: 112
+2.6.4: 20
+2.7.6: 20
+2.7.7: 64
+2.9.2: 64
+3.2.2: 128
+*/
 
 describe('crypto', () => {
   describe('entropy', () => {
-    /*
-  ASVS v5.0 (bits)
-  2.6.2: 112
-  2.6.4: 20
-  2.7.6: 20
-  2.7.7: 64
-  2.9.2: 64
-  3.2.2: 128
-  */
     it('alphaNumeric', async () => {
       for (const [bits, chars] of Object.entries({
         128: 22,
@@ -111,17 +126,19 @@ describe('crypto', () => {
   describe('digest', () => {
     it('createDigest', async () => {
       const digest = createDigest('1auth', { algorithm: 'sha3-256' })
-      equal(
-        digest,
-        'sha3-256:d2e213575f360fa8a0a07dc2adc8a163e7c5acdd6cff56909588c9a023a3843b'
-      )
+      equal(digest, 'sha3-256:0uITV182D6igoH3CrcihY+fFrN1s/1aQlYjJoCOjhDs=')
     })
-    it('createEncryptedDigest', async () => {
-      const digest = createEncryptedDigest('1auth', { algorithm: 'sha3-256' })
-      equal(
-        digest,
-        'K6u9kqw3u+w/VxR4IzZ1O3eJ9tn9H4E3oqzBtw==AzrU/3YXzMTFoVWvHkbcnPuWp2qAHuYOQ0Jn7fl0+11lCpoRtYhOoKfXHqSPcPQ8/1kxNLPJn5qM2jijLw/TOUw44nBRWa9r0g==.I+bLbDcYlllomzoHd50/Cwxmoy2gr2dugC93PQW3g7vqPg1uzsnCH6g8uM9QDGDX'
-      )
+    it('createSaltedDigest', async () => {
+      const digest = createSaltedDigest('1auth', { algorithm: 'sha3-256' })
+      equal(digest, 'sha3-256:8aVqzzAf/gWlLblIWvvNVO/2ct5LGq8jK/MPi0q/ZZ8=')
+    })
+    it('createPepperedDigest', async () => {
+      const digest = createPepperedDigest('1auth', { algorithm: 'sha3-256' })
+      equal(digest, 'sha3-256:r9VPCMbABiWVy/xTFYwHtJ3SyUhZcu5cNSIhYI7Awtg=')
+    })
+    it('createSeasonedDigest', async () => {
+      const digest = createSeasonedDigest('1auth', { algorithm: 'sha3-256' })
+      equal(digest, 'sha3-256:9zAIe3Jee2+s+AFK18LERL6OiwVaGZgE2xtM7eB2TfA=')
     })
   })
 
@@ -167,13 +184,36 @@ describe('crypto', () => {
 
       const { encryptedKey, encryptionKey } =
         symmetricGenerateEncryptionKey(sub)
+      equal(Buffer.from(encryptionKey).length, randomBytes(32).length)
 
-      equal(
-        symmetricDecryptKey(encryptedKey, { sub }),
-        encryptionKey.toString('base64')
-      )
+      const decryptedKey = symmetricDecryptKey(encryptedKey, { sub })
+      equal(Buffer.from(decryptedKey).length, randomBytes(32).length)
+      equal(decryptedKey.toString('base64'), encryptionKey.toString('base64'))
     })
-    it('Can encrypt and decrypt a string using encryption key', async () => {
+    it('Can make encryptionKey/encryptedKey pair (override options)', async () => {
+      const sub = 'sub_000000'
+
+      const overrideEncryptionKey = symmetricRandomEncryptionKey()
+      const overrideSignatureSecret = symmetricRandomSignatureSecret()
+
+      const { encryptedKey, encryptionKey } = symmetricGenerateEncryptionKey(
+        sub,
+        {
+          encryptionKey: overrideEncryptionKey,
+          signatureSecret: overrideSignatureSecret
+        }
+      )
+      equal(Buffer.from(encryptionKey).length, randomBytes(32).length)
+
+      const decryptedKey = symmetricDecryptKey(encryptedKey, {
+        sub,
+        encryptionKey: overrideEncryptionKey,
+        signatureSecret: overrideSignatureSecret
+      })
+      equal(Buffer.from(decryptedKey).length, randomBytes(32).length)
+      equal(decryptedKey.toString('base64'), encryptionKey.toString('base64'))
+    })
+    it('Can encrypt and decrypt a string using encryptionKey', async () => {
       const sub = 'sub_000000'
 
       const { encryptionKey } = symmetricGenerateEncryptionKey(sub)
@@ -183,10 +223,26 @@ describe('crypto', () => {
         encryptionKey,
         sub
       })
-      // t.not(encryptedValue, value) // TODO
       notEqual(encryptedValue, value)
       const decryptedValue = symmetricDecrypt(encryptedValue, {
         encryptionKey,
+        sub
+      })
+      equal(decryptedValue, value)
+    })
+    it('Can encrypt and decrypt a string using encryptedKey', async () => {
+      const sub = 'sub_000000'
+
+      const { encryptedKey } = symmetricGenerateEncryptionKey(sub)
+
+      const value = '1auth'
+      const encryptedValue = symmetricEncrypt(value, {
+        encryptedKey,
+        sub
+      })
+      notEqual(encryptedValue, value)
+      const decryptedValue = symmetricDecrypt(encryptedValue, {
+        encryptedKey,
         sub
       })
       equal(decryptedValue, value)
@@ -201,7 +257,6 @@ describe('crypto', () => {
         encryptionKey,
         sub
       })
-      // t.not(encryptedValue, value) // TODO
       equal(encryptedValue, value)
       const decryptedValue = symmetricDecrypt(encryptedValue, {
         encryptionKey,
@@ -217,7 +272,7 @@ describe('crypto', () => {
         symmetricGenerateEncryptionKey(sub)
 
       equal(
-        symmetricDecryptKey(encryptedKey, { sub }),
+        symmetricDecryptKey(encryptedKey, { sub }).toString('base64'),
         encryptionKey.toString('base64')
       )
 
@@ -275,97 +330,279 @@ describe('crypto', () => {
   describe('symmetric signatures', () => {
     it('Should be able to sign using a encryption key and verify using encryption key', async () => {
       const data = '1auth'
-      const signatureSecret = 'secret'
+      const signatureSecret = Buffer.from('secret')
       const signedData = symmetricSignatureSign(data, signatureSecret)
       const valid = symmetricSignatureVerify(signedData, signatureSecret)
       ok(valid)
     })
     it('Should NOT be able to sign using a encryption key and verify using another encryption key', async () => {
       const data = '1auth'
-      const signatureSecret = 'secret'
+      const signatureSecret = Buffer.from('secret')
       const signedData = symmetricSignatureSign(data, signatureSecret)
       const valid = symmetricSignatureVerify(
         signedData,
-        'not' + signatureSecret
+        Buffer.from('not' + signatureSecret)
       )
       ok(!valid)
     })
     it('Should NOT be able to sign using a encryption key and verify when input is undefined', async () => {
-      const signatureSecret = 'secret'
+      const signatureSecret = Buffer.from('secret')
       const valid = symmetricSignatureVerify(undefined, signatureSecret)
       ok(!valid)
     })
   })
 
   describe('symmetric rotation', () => {
-    it('Should be able to rotate the encryption key', async () => {
+    it('Should be able to rotate the values encryptionKey', async () => {
       // setup
       const sub = 'sub_000000'
       const fields = ['name']
 
-      const { encryptedKey: oldEncryptionKey } =
-        symmetricGenerateEncryptionKey(sub)
-      const { encryptedKey: newEncryptionKey } =
-        symmetricGenerateEncryptionKey(sub)
+      const oldOptions = { sub }
+      const oldFields = fields
+      const newOptions = { sub }
+      const newFields = fields
 
-      const oldOptions = { encryptedKey: oldEncryptionKey, sub }
-      const newOptions = { encryptedKey: newEncryptionKey, sub }
-
-      const values = { name: 'pii', create: '2000-01-01' }
+      const { encryptionKey, encryptedKey } = symmetricGenerateEncryptionKey(
+        sub,
+        oldOptions
+      )
+      const values = {
+        name: 'pii',
+        create: '2000-01-01',
+        encryptionKey: encryptedKey
+      }
       const oldEncryptedValues = symmetricEncryptFields(
         values,
-        oldOptions,
-        fields
+        { ...oldOptions, encryptionKey, encryptedKey },
+        oldFields
       )
 
       // start
       const newEncryptedValues = symmetricRotation(
         oldEncryptedValues,
         oldOptions,
+        oldFields,
         newOptions,
-        fields
+        newFields
       )
 
+      // test
       const decryptedValues = symmetricDecryptFields(
         newEncryptedValues,
         newOptions,
-        fields
+        newFields
       )
+      delete values.encryptionKey
+      delete decryptedValues.encryptionKey
       deepEqual(decryptedValues, values)
     })
-    it('Should be able to rotate the signature secret', async () => {
+    it('Should be able to rotate the fields', async () => {
+      // setup
+      const sub = 'sub_000000'
+
+      const oldOptions = { sub }
+      const oldFields = ['oldName']
+      const newOptions = { sub }
+      const newFields = ['newName']
+
+      const { encryptionKey, encryptedKey } = symmetricGenerateEncryptionKey(
+        sub,
+        oldOptions
+      )
+      const values = {
+        oldName: 'pii',
+        newName: 'pii',
+        create: '2000-01-01',
+        encryptionKey: encryptedKey
+      }
+      const oldEncryptedValues = symmetricEncryptFields(
+        values,
+        { ...oldOptions, encryptionKey, encryptedKey },
+        oldFields
+      )
+
+      notEqual(oldEncryptedValues.oldName, values.oldName)
+      equal(oldEncryptedValues.newName, values.newName)
+
+      // start
+      const newEncryptedValues = symmetricRotation(
+        oldEncryptedValues,
+        oldOptions,
+        oldFields,
+        newOptions,
+        newFields
+      )
+      equal(newEncryptedValues.oldName, values.oldName)
+      notEqual(newEncryptedValues.newName, values.newName)
+
+      // test
+      const decryptedValues = symmetricDecryptFields(
+        newEncryptedValues,
+        newOptions,
+        newFields
+      )
+      delete values.encryptionKey
+      delete decryptedValues.encryptionKey
+
+      deepEqual(decryptedValues, values)
+    })
+    it('Should be able to rotate the config encryptionKey', async () => {
       // setup
       const sub = 'sub_000000'
       const fields = ['name']
 
-      const { signatureSecret: oldSignatureSecret } =
-        symmetricGenerateSignatureSecret(sub)
-      const { signatureSecret: newSignatureSecret } =
-        symmetricGenerateSignatureSecret(sub)
+      const oldEncryptionKey = symmetricRandomEncryptionKey()
+      const newEncryptionKey = symmetricRandomEncryptionKey()
 
-      const oldOptions = { signatureSecret: oldSignatureSecret, sub }
-      const newOptions = { signatureSecret: newSignatureSecret, sub }
+      const oldOptions = {
+        encryptionKey: oldEncryptionKey,
+        sub
+      }
+      const oldFields = fields
+      const newOptions = {
+        encryptionKey: newEncryptionKey,
+        sub
+      }
+      const newFields = fields
 
-      const values = { name: 'pii', create: '2000-01-01' }
+      const { encryptionKey, encryptedKey } = symmetricGenerateEncryptionKey(
+        sub,
+        oldOptions
+      )
+      const values = {
+        name: 'pii',
+        create: '2000-01-01',
+        encryptionKey: encryptedKey
+      }
       const oldEncryptedValues = symmetricEncryptFields(
         values,
-        oldOptions,
-        fields
+        { ...oldOptions, encryptionKey, encryptedKey },
+        oldFields
       )
 
       // start
       const newEncryptedValues = symmetricRotation(
         oldEncryptedValues,
         oldOptions,
+        oldFields,
         newOptions,
-        fields
+        newFields
       )
 
+      // test
       const decryptedValues = symmetricDecryptFields(
         newEncryptedValues,
         newOptions,
-        fields
+        newFields
       )
+      delete values.encryptionKey
+      delete decryptedValues.encryptionKey
+      deepEqual(decryptedValues, values)
+    })
+    it('Should be able to rotate the config signatureSecret', async () => {
+      // setup
+      const sub = 'sub_000000'
+      const fields = ['name']
+
+      const oldSignatureSecret = symmetricRandomSignatureSecret()
+      const newSignatureSecret = symmetricRandomSignatureSecret()
+
+      const oldOptions = { signatureSecret: oldSignatureSecret, sub }
+      const oldFields = fields
+      const newOptions = { signatureSecret: newSignatureSecret, sub }
+      const newFields = fields
+
+      const { encryptionKey, encryptedKey } = symmetricGenerateEncryptionKey(
+        sub,
+        oldOptions
+      )
+      const values = {
+        name: 'pii',
+        create: '2000-01-01',
+        encryptionKey: encryptedKey
+      }
+      const oldEncryptedValues = symmetricEncryptFields(
+        values,
+        { ...oldOptions, encryptionKey, encryptedKey },
+        oldFields
+      )
+
+      // start
+      const newEncryptedValues = symmetricRotation(
+        oldEncryptedValues,
+        oldOptions,
+        oldFields,
+        newOptions,
+        newFields
+      )
+
+      // test
+      const decryptedValues = symmetricDecryptFields(
+        newEncryptedValues,
+        newOptions,
+        newFields
+      )
+      delete values.encryptionKey
+      delete decryptedValues.encryptionKey
+      deepEqual(decryptedValues, values)
+    })
+    it('Should be able to rotate all cryptography', async () => {
+      // setup
+      const sub = 'sub_000000'
+      const fields = ['name']
+
+      const oldEncryptionKey = symmetricRandomEncryptionKey()
+      const oldSignatureSecret = symmetricRandomSignatureSecret()
+      const newEncryptionKey = symmetricRandomEncryptionKey()
+      const newSignatureSecret = symmetricRandomSignatureSecret()
+
+      const oldOptions = {
+        encryptionKey: oldEncryptionKey,
+        signatureSecret: oldSignatureSecret,
+        sub
+      }
+      const oldFields = fields
+      const newOptions = {
+        encryptionKey: newEncryptionKey,
+        signatureSecret: newSignatureSecret,
+        sub
+      }
+      const newFields = fields
+
+      // setup
+      const { encryptionKey, encryptedKey } = symmetricGenerateEncryptionKey(
+        sub,
+        oldOptions
+      )
+      const values = {
+        name: 'pi',
+        create: '2000-01-01',
+        encryptionKey: encryptedKey
+      }
+      const oldEncryptedValues = symmetricEncryptFields(
+        values,
+        { ...oldOptions, encryptionKey, encryptedKey },
+        oldFields
+      )
+
+      // start
+      const newEncryptedValues = symmetricRotation(
+        oldEncryptedValues,
+        oldOptions,
+        oldFields,
+        newOptions,
+        newFields
+      )
+
+      // test
+      const decryptedValues = symmetricDecryptFields(
+        newEncryptedValues,
+        newOptions,
+        newFields
+      )
+      delete values.encryptionKey
+      delete decryptedValues.encryptionKey
       deepEqual(decryptedValues, values)
     })
   })

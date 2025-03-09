@@ -2,7 +2,7 @@ import {
   charactersAlphaNumeric,
   entropyToCharacterLength,
   randomAlphaNumeric,
-  createEncryptedDigest,
+  createSeasonedDigest,
   symmetricGenerateEncryptionKey,
   symmetricEncrypt,
   symmetricDecrypt,
@@ -53,7 +53,7 @@ export default (opt = {}) => {
 export const getOptions = () => options
 
 export const lookup = async (sid, value = {}) => {
-  const digest = createEncryptedDigest(sid)
+  const digest = createSeasonedDigest(sid)
   const session = await options.store.select(options.table, { digest })
   if (session) {
     const now = nowInSeconds()
@@ -117,7 +117,7 @@ export const create = async (sub, value = {}) => {
   }
   const now = nowInSeconds()
   const sid = await options.randomSessionId.create()
-  const digest = createEncryptedDigest(sid)
+  const digest = createSeasonedDigest(sid)
   const params = {
     digest,
     sub,
@@ -145,7 +145,7 @@ export const create = async (sub, value = {}) => {
 }
 
 // Before creating a new session, check if metadata is new
-export const check = async (sub, value) => {
+export const check = async (sub, value = {}) => {
   const encodedValue = options.encode(value)
   const sessions = await options.store.selectList(options.table, { sub })
   for (const session of sessions) {

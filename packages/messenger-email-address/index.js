@@ -58,7 +58,9 @@ export const create = async (sub, emailAddress) => {
   const emailAddressSanitized = sanitize(emailAddress)
   const emailAddressValidate = validate(emailAddressSanitized)
   if (emailAddressValidate !== true) {
-    throw new Error(`${emailAddressValidate} invalid emailAddress`)
+    throw new Error(emailAddressValidate, {
+      cause: { emailAddress, emailAddressSanitized }
+    })
   }
 
   return await messengerCreate(options.id, sub, emailAddressSanitized)
@@ -108,14 +110,14 @@ const regexp =
 export const validate = (emailAddress) => {
   const [, domain] = emailAddress.split('@')
   if (!regexp.test(emailAddress)) {
-    return 400
+    return '400 Bad Request'
   }
   if (
     options.usernameBlacklist.filter(
       (username) => `${username}@${domain}` === emailAddress
     ).length
   ) {
-    return 401
+    return '409 Conflict'
   }
   return true
 }

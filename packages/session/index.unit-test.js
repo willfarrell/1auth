@@ -1,6 +1,7 @@
 import { test, describe, it } from 'node:test'
 import { ok, equal, deepEqual } from 'node:assert/strict'
 
+// *** Setup Start *** //
 import * as notify from '../notify-console/index.js'
 import * as storeMemory from '../store-memory/index.js'
 import * as storeSQL from '../store-sql/index.js'
@@ -15,7 +16,9 @@ import sessionDynamoDBTable from './table/dynamodb.js'
 
 import crypto, {
   symmetricRandomEncryptionKey,
-  symmetricRandomSignatureSecret
+  symmetricRandomSignatureSecret,
+  randomChecksumSalt,
+  randomChecksumPepper
 } from '../crypto/index.js'
 
 import account, {
@@ -30,7 +33,6 @@ import accountUsername, {
 } from '../account-username/index.js'
 
 import authn, { getOptions as authnGetOptions } from '../authn/index.js'
-import recoveryCodes from '../authn-recovery-codes/index.js'
 
 import session, {
   getOptions as sessionGetOptions,
@@ -43,13 +45,11 @@ import session, {
   remove as sessionRemove
 } from '../session/index.js'
 
-const mocks = {
-  notifyClient: () => {}
-}
-
 crypto({
   symmetricEncryptionKey: symmetricRandomEncryptionKey(),
-  symmetricSignatureSecret: symmetricRandomSignatureSecret()
+  symmetricSignatureSecret: symmetricRandomSignatureSecret(),
+  digestChecksumSalt: randomChecksumSalt(),
+  digestChecksumPepper: randomChecksumPepper()
 })
 notify.default({
   client: (id, sub, params) => {
@@ -75,9 +75,6 @@ const stores = {
   dynamodb: { store: storeDynamoDB, table: sessionDynamoDBTable }
 }
 
-let sub
-const username = 'username'
-
 account({
   store: storeMemory,
   notify,
@@ -91,7 +88,14 @@ authn({
   usernameExists: [accountUsernameExists],
   encryptedFields: ['value', 'name']
 })
-recoveryCodes()
+// *** Setup End *** //
+
+const mocks = {
+  notifyClient: () => {}
+}
+
+let sub
+const username = 'username'
 
 describe('session', () => {
   for (const storeKey of Object.keys(stores)) {

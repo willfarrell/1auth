@@ -5,7 +5,9 @@ import * as notify from '../notify-console/index.js'
 import * as store from '../store-memory/index.js'
 import crypto, {
   symmetricRandomEncryptionKey,
-  symmetricRandomSignatureSecret
+  symmetricRandomSignatureSecret,
+  randomChecksumSalt,
+  randomChecksumPepper
 } from '../crypto/index.js'
 
 import authn, { getOptions as authnGetOptions } from '../authn/index.js'
@@ -22,7 +24,9 @@ import messenger, {
 
 crypto({
   symmetricEncryptionKey: symmetricRandomEncryptionKey(),
-  symmetricSignatureSecret: symmetricRandomSignatureSecret()
+  symmetricSignatureSecret: symmetricRandomSignatureSecret(),
+  digestChecksumSalt: randomChecksumSalt(),
+  digestChecksumPepper: randomChecksumPepper()
 })
 store.default({ log: false })
 notify.default({

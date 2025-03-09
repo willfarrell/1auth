@@ -2,7 +2,9 @@ import * as notify from '../packages/notify-console/index.js'
 import * as store from '../packages/store-memory/index.js'
 import crypto, {
   symmetricRandomEncryptionKey,
-  symmetricRandomSignatureSecret
+  symmetricRandomSignatureSecret,
+  randomChecksumSalt,
+  randomChecksumPepper
 } from '../packages/crypto/index.js'
 
 import account, { create as accountCreate } from '../packages/account/index.js'
@@ -21,7 +23,9 @@ import accessToken, {
 
 crypto({
   symmetricEncryptionKey: symmetricRandomEncryptionKey(),
-  symmetricSignatureSecret: symmetricRandomSignatureSecret()
+  symmetricSignatureSecret: symmetricRandomSignatureSecret(),
+  digestChecksumSalt: randomChecksumSalt(),
+  digestChecksumPepper: randomChecksumPepper()
 })
 store.default({ log: false })
 notify.default({

@@ -1,11 +1,14 @@
 import { test, describe, it } from 'node:test'
 import { ok, equal, notEqual, deepEqual } from 'node:assert/strict'
 
+// ** Setup Start *** //
 import * as notify from '../notify-console/index.js'
 import * as store from '../store-memory/index.js'
 import crypto, {
   symmetricRandomEncryptionKey,
-  symmetricRandomSignatureSecret
+  symmetricRandomSignatureSecret,
+  randomChecksumSalt,
+  randomChecksumPepper
 } from '../crypto/index.js'
 
 import account, {
@@ -24,7 +27,9 @@ import accountUsername, {
 
 crypto({
   symmetricEncryptionKey: symmetricRandomEncryptionKey(),
-  symmetricSignatureSecret: symmetricRandomSignatureSecret()
+  symmetricSignatureSecret: symmetricRandomSignatureSecret(),
+  digestChecksumSalt: randomChecksumSalt(),
+  digestChecksumPepper: randomChecksumPepper()
 })
 store.default({ log: false })
 notify.default({
@@ -34,8 +39,10 @@ notify.default({
 })
 account({ store, notify, encryptedFields: ['name', 'username', 'privateKey'] })
 accountUsername({
+  maxLength: 100,
   usernameBlacklist: ['admin']
 })
+// *** Setup End *** //
 
 const mocks = {
   notifyClient: () => {}
@@ -117,18 +124,61 @@ describe('account-username', () => {
     })
   })
 
-  it('Should allow username with upper case, and accentent char', async () => {
-    const usernameValue = 'USERnaméﬁ'
+  it('Should allow username with number charaters', async () => {
+    const usernameValue = 'number_1234567890'
     await accountUsernameCreate(sub, usernameValue)
     const user = await accountUsernameExists(usernameValue)
     ok(user)
   })
-  it('Should throw when username @ from email', async () => {
+  it('Should allow username with lower case charaters', async () => {
+    const usernameValue = 'lower_username'
+    await accountUsernameCreate(sub, usernameValue)
+    const user = await accountUsernameExists(usernameValue)
+    ok(user)
+  })
+  it('Should allow username with upper case charaters', async () => {
+    const usernameValue = 'UPPER_USERNAME'
+    await accountUsernameCreate(sub, usernameValue)
+    const user = await accountUsernameExists(usernameValue)
+    ok(user)
+  })
+  it('Should allow username with lower case accented charaters', async () => {
+    const usernameValue =
+      'lower_accented_ŵèéêëěẽēėęřțťýŷÿùúûüǔũūűůìíîïǐĩīįòóôöǒõōàáâäǎãåāşșśšďğġķļľźžżçćčċñńņň'
+    await accountUsernameCreate(sub, usernameValue)
+    const user = await accountUsernameExists(usernameValue)
+    ok(user)
+  })
+  it('Should allow username with upper case accented charaters', async () => {
+    const usernameValue =
+      'UPPER_ACCENTED_ŴÈÉÊËĚẼĒĖĘŘȚŤÝŶŸÙÚÛÜǓŨŪŰŮÌÍÎÏǏĨĪİĮÒÓÔÖǑÕŌÀÁÂÄǍÃÅĀŚŠŞȘĎĞĠĻĽŹŽŻÇĆČĊÑŃŅŇ'
+    await accountUsernameCreate(sub, usernameValue)
+    const user = await accountUsernameExists(usernameValue)
+    ok(user)
+  })
+  it('Should throw when username has ligature charaters', async () => {
+    const usernameValue = 'þœøæßdðħł'
+    try {
+      await accountUsernameCreate(sub, usernameValue)
+    } catch (e) {
+      equal(e.message, '400 Bad Request')
+    }
+  })
+  // ﬀ
+  it('Should throw when username has `@` from email', async () => {
     const usernameValue = 'username@domain.tld'
     try {
       await accountUsernameCreate(sub, usernameValue)
     } catch (e) {
-      equal(e.message, '400 invalid username')
+      equal(e.message, '400 Bad Request')
+    }
+  })
+  it('Should throw when username has ` `', async () => {
+    const usernameValue = 'user name'
+    try {
+      await accountUsernameCreate(sub, usernameValue)
+    } catch (e) {
+      equal(e.message, '400 Bad Request')
     }
   })
   it('Should throw when username is too short', async () => {
@@ -136,15 +186,16 @@ describe('account-username', () => {
     try {
       await accountUsernameCreate(sub, usernameValue)
     } catch (e) {
-      equal(e.message, '400 invalid username')
+      equal(e.message, '400 Bad Request')
     }
   })
   it('Should throw when username is too long', async () => {
-    const usernameValue = '000000000111111111122222222223333'
+    const usernameValue =
+      '0000000001111111111222222222211111111112222222222111111111122222222221111111111222222222211111111112222222222'
     try {
       await accountUsernameCreate(sub, usernameValue)
     } catch (e) {
-      equal(e.message, '400 invalid username')
+      equal(e.message, '400 Bad Request')
     }
   })
   it('Should throw when username contains invalid chars', async () => {
@@ -152,7 +203,7 @@ describe('account-username', () => {
     try {
       await accountUsernameCreate(sub, usernameValue)
     } catch (e) {
-      equal(e.message, '400 invalid username')
+      equal(e.message, '400 Bad Request')
     }
   })
   it('Should throw when username contains a black liisted word', async () => {
@@ -160,7 +211,7 @@ describe('account-username', () => {
     try {
       await accountUsernameCreate(sub, usernameValue)
     } catch (e) {
-      equal(e.message, '409 invalid username')
+      equal(e.message, '409 Conflict')
     }
   })
   it('Should throw when username already exists', async () => {

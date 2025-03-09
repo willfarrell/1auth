@@ -5,9 +5,6 @@ import * as store from '../store-sql/index.js'
 
 import { sqlTable } from './table/sql.js'
 import { query as sqliteQuery } from './mock.sqlite.js'
-// import Database from "better-sqlite3";
-// const db = new Database("test.db", { verbose: () => {} });
-// db.pragma("journal_mode = WAL");
 
 const table = 'test'
 sqliteQuery(sqlTable(table))

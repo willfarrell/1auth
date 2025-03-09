@@ -5,7 +5,9 @@ import * as notify from '../notify-console/index.js'
 import * as store from '../store-memory/index.js'
 import crypto, {
   symmetricRandomEncryptionKey,
-  symmetricRandomSignatureSecret
+  symmetricRandomSignatureSecret,
+  randomChecksumSalt,
+  randomChecksumPepper
 } from '../crypto/index.js'
 
 import account, {
@@ -19,7 +21,9 @@ import account, {
 
 crypto({
   symmetricEncryptionKey: symmetricRandomEncryptionKey(),
-  symmetricSignatureSecret: symmetricRandomSignatureSecret()
+  symmetricSignatureSecret: symmetricRandomSignatureSecret(),
+  digestChecksumSalt: randomChecksumSalt(),
+  digestChecksumPepper: randomChecksumPepper()
 })
 store.default({ log: false })
 notify.default({

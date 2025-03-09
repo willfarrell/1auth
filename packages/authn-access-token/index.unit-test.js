@@ -1,11 +1,14 @@
 import { test, describe, it } from 'node:test'
 import { ok, equal, deepEqual } from 'node:assert/strict'
 
+// *** Setup Start *** //
 import * as notify from '../notify-console/index.js'
 import * as store from '../store-memory/index.js'
 import crypto, {
   symmetricRandomEncryptionKey,
-  symmetricRandomSignatureSecret
+  symmetricRandomSignatureSecret,
+  randomChecksumSalt,
+  randomChecksumPepper
 } from '../crypto/index.js'
 
 import account, {
@@ -32,7 +35,9 @@ import accessToken, {
 
 crypto({
   symmetricEncryptionKey: symmetricRandomEncryptionKey(),
-  symmetricSignatureSecret: symmetricRandomSignatureSecret()
+  symmetricSignatureSecret: symmetricRandomSignatureSecret(),
+  digestChecksumSalt: randomChecksumSalt(),
+  digestChecksumPepper: randomChecksumPepper()
 })
 store.default({ log: false })
 notify.default({
@@ -52,6 +57,7 @@ authn({
   authenticationDuration: 0
 })
 accessToken()
+// *** Setup End *** //
 
 const mocks = {
   notifyClient: () => {}

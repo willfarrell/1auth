@@ -5,7 +5,7 @@ import {
   createSecretHash,
   verifySecretHash,
   randomId,
-  createEncryptedDigest,
+  createSeasonedDigest,
   symmetricGenerateEncryptionKey,
   symmetricEncryptFields,
   symmetricDecryptFields
@@ -50,7 +50,7 @@ export default (opt = {}) => {
 export const getOptions = () => options
 
 export const exists = async (type, value) => {
-  const valueDigest = createEncryptedDigest(value)
+  const valueDigest = createSeasonedDigest(value)
   return options.store.exists(options.table, {
     type,
     digest: valueDigest
@@ -58,7 +58,7 @@ export const exists = async (type, value) => {
 }
 
 export const lookup = async (type, value) => {
-  const valueDigest = createEncryptedDigest(value)
+  const valueDigest = createSeasonedDigest(value)
   const res = await options.store.select(options.table, {
     type,
     digest: valueDigest
@@ -92,7 +92,7 @@ export const list = async (type, sub) => {
 }
 
 export const create = async (type, sub, value, values) => {
-  const digest = createEncryptedDigest(value)
+  const digest = createSeasonedDigest(value)
   const valueExists = await options.store.select(
     options.table,
     {

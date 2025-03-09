@@ -94,7 +94,7 @@ const challenge = {
     return true
   },
   cleanup: async (sub, value, { sourceId } = {}) => {
-    // update counter on secret
+    // update counter & lastused on secret
     const now = nowInSeconds()
     const { encryptionKey } = await options.store.select(
       options.table,
@@ -278,6 +278,10 @@ export const createChallenge = async (sub) => {
       id: authenticator.credential.id,
       type: 'public-key'
     })
+  }
+
+  if (!allowCredentials.length) {
+    return {}
   }
 
   const authenticationOptions = {

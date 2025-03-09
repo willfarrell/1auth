@@ -6,6 +6,8 @@ import * as store from '../store-memory/index.js'
 import crypto, {
   symmetricRandomEncryptionKey,
   symmetricRandomSignatureSecret,
+  randomChecksumSalt,
+  randomChecksumPepper,
   symmetricEncrypt,
   symmetricDecrypt
 } from '../crypto/index.js'
@@ -35,7 +37,9 @@ import webauthn, {
 
 crypto({
   symmetricEncryptionKey: symmetricRandomEncryptionKey(),
-  symmetricSignatureSecret: symmetricRandomSignatureSecret()
+  symmetricSignatureSecret: symmetricRandomSignatureSecret(),
+  digestChecksumSalt: randomChecksumSalt(),
+  digestChecksumPepper: randomChecksumPepper()
 })
 store.default({ log: false })
 notify.default({
@@ -189,6 +193,13 @@ describe('authn-webauthn', () => {
       equal(e.message, '401 Unauthorized')
       deepEqual(e.message, '401 Unauthorized', { cause: 'missing' })
     }
+  })
+
+  it('Can NOT create a challenge before a credential is verified', async () => {
+    await webauthnCreate(sub)
+    const { secret } = await webauthnCreateChallenge(sub)
+
+    equal(secret, undefined)
   })
   it('Can NOT remove WebAuthn from someone elses account', async () => {
     const secret = await webauthnCreate(sub)

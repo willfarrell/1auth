@@ -1,13 +1,17 @@
 import { test, describe, it } from 'node:test'
 import { ok, equal, deepEqual } from 'node:assert/strict'
 
+// *** Setup Start *** //
 import * as notify from '../notify-console/index.js'
 import * as store from '../store-memory/index.js'
 import crypto, {
   symmetricRandomEncryptionKey,
-  symmetricRandomSignatureSecret
+  symmetricRandomSignatureSecret,
+  randomChecksumSalt,
+  randomChecksumPepper
 } from '../crypto/index.js'
 
+import account, { create as accountCreate } from '../account/index.js'
 import authn, { getOptions as authnGetOptions } from '../authn/index.js'
 
 import messenger, {
@@ -18,13 +22,15 @@ import emailAddress, {
   lookup as emailAddressLookup,
   list as emailAddressList,
   create as emailAddressCreate,
-  verifyToken as emailAddressrVerifyToken,
-  remove as emailAddressrRemove
+  verifyToken as emailAddressVerifyToken,
+  remove as emailAddressRemove
 } from '../messenger-email-address/index.js'
 
 crypto({
   symmetricEncryptionKey: symmetricRandomEncryptionKey(),
-  symmetricSignatureSecret: symmetricRandomSignatureSecret()
+  symmetricSignatureSecret: symmetricRandomSignatureSecret(),
+  digestChecksumSalt: randomChecksumSalt(),
+  digestChecksumPepper: randomChecksumPepper()
 })
 store.default({ log: false })
 notify.default({
@@ -33,14 +39,16 @@ notify.default({
   }
 })
 
+account({ store, notify, encryptedFields: ['name', 'username', 'privateKey'] })
 authn({ store, notify, authenticationDuration: 0 })
 messenger({ store, notify })
 emailAddress()
+// *** Setup End *** //
 
 const mocks = {
   notifyClient: () => {}
 }
-const sub = 'sub_000000'
+const sub = await accountCreate()
 test.beforeEach(async (t) => {
   t.mock.method(mocks, 'notifyClient')
 })
@@ -75,7 +83,7 @@ describe('messenger-email-address', () => {
     ok(messengerDB.digest)
     ok(!messengerDB.verify)
 
-    await emailAddressrVerifyToken(sub, token, messengerId)
+    await emailAddressVerifyToken(sub, token, messengerId)
 
     // notify
     equal(mocks.notifyClient.mock.calls.length, 1)
@@ -89,8 +97,8 @@ describe('messenger-email-address', () => {
   it('Can remove a verified messenger on an account', async () => {
     const messengerId = await emailAddressCreate(sub, 'username@example.org')
     const { token } = mocks.notifyClient.mock.calls[0].arguments[0].data
-    await emailAddressrVerifyToken(sub, token, messengerId)
-    await emailAddressrRemove(sub, messengerId)
+    await emailAddressVerifyToken(sub, token, messengerId)
+    await emailAddressRemove(sub, messengerId)
 
     // notify
     deepEqual(mocks.notifyClient.mock.calls[1].arguments[0], {
@@ -121,7 +129,7 @@ describe('messenger-email-address', () => {
   })
   it('Can remove an unverified messenger on an account', async () => {
     const messengerId = await emailAddressCreate(sub, 'username@example.org')
-    await emailAddressrRemove(sub, messengerId)
+    await emailAddressRemove(sub, messengerId)
 
     // notify
     equal(mocks.notifyClient.mock.calls.length, 1)
@@ -135,7 +143,7 @@ describe('messenger-email-address', () => {
   it('Can NOT remove a messenger of someone elses account', async () => {
     const messengerId = await emailAddressCreate(sub, 'username@example.org')
     try {
-      await emailAddressrRemove('sub_111111', messengerId)
+      await emailAddressRemove('sub_111111', messengerId)
     } catch (e) {
       equal(e.message, '403 Unauthorized')
     }
@@ -145,7 +153,7 @@ describe('messenger-email-address', () => {
     const messengerValue = 'username@example.org'
     const messengerId = await emailAddressCreate(sub, messengerValue)
     const { token } = mocks.notifyClient.mock.calls[0].arguments[0].data
-    await emailAddressrVerifyToken(sub, token, messengerId)
+    await emailAddressVerifyToken(sub, token, messengerId)
     const user = await emailAddressExists(messengerValue)
     ok(user)
   })
@@ -158,7 +166,7 @@ describe('messenger-email-address', () => {
     const messengerValue = 'username@example.org'
     const messengerId = await emailAddressCreate(sub, messengerValue)
     const { token } = mocks.notifyClient.mock.calls[0].arguments[0].data
-    await emailAddressrVerifyToken(sub, token, messengerId)
+    await emailAddressVerifyToken(sub, token, messengerId)
     const messenger = await emailAddressLookup(messengerValue)
 
     ok(messenger)

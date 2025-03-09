@@ -1,6 +1,6 @@
-import Database from 'better-sqlite3'
-const db = new Database('test.db', { verbose: () => {} })
-db.pragma('journal_mode = WAL')
+import { DatabaseSync } from 'node:sqlite'
+const db = new DatabaseSync('test.db', {})
+// db.pragma('journal_mode = WAL')
 
 // const defaults = {
 //   log: true,

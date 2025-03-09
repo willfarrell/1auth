@@ -4,7 +4,7 @@ import {
   randomAlphaNumeric,
   createSecretHash,
   verifySecretHash,
-  createEncryptedDigest
+  createSeasonedDigest
 } from '@1auth/crypto'
 import {
   getOptions as authnGetOptions,
@@ -48,12 +48,12 @@ export const authenticate = async (username, secret) => {
 }
 
 export const exists = async (secret) => {
-  const digest = createEncryptedDigest(secret)
+  const digest = createSeasonedDigest(secret)
   return options.store.exists(options.table, { digest })
 }
 
 export const lookup = async (secret) => {
-  const digest = createEncryptedDigest(secret)
+  const digest = createSeasonedDigest(secret)
   return await options.store.select(options.table, { digest })
 }
 
@@ -73,7 +73,7 @@ export const list = async (sub) => {
 export const create = async (sub, values = {}) => {
   const secretToken = await options.secret.create()
   const secret = options.prefix + '-' + secretToken
-  const digest = createEncryptedDigest(secret)
+  const digest = createSeasonedDigest(secret)
   const now = nowInSeconds()
   const { id, expire } = await authnCreate(options.secret, sub, {
     ...values,

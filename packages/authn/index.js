@@ -236,10 +236,10 @@ export const authenticate = async (credentialOptions, username, secret) => {
           { lastused: now }
         )
       }
-      // TODO
-      // if (credentialOptions.cleanup) {
-      //   await credentialOptions.cleanup(sub, value, values)
-      // }
+
+      if (credentialOptions.cleanup) {
+        await credentialOptions.cleanup(sub, value, values)
+      }
       break
     }
   }
