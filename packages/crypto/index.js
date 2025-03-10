@@ -504,10 +504,8 @@ export const symmetricRotation = (
   oldOptions.encryptionKey = symmetricDecryptKey(oldEncryptedKey, oldOptions)
 
   // decrypt
-  const data = symmetricDecryptFields(
-    oldEncryptedValues,
-    oldOptions,
-    oldFields
+  const data = transform(
+    symmetricDecryptFields(oldEncryptedValues, oldOptions, oldFields)
   )
 
   // rotate encryptionKey

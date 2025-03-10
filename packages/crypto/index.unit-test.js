@@ -397,7 +397,58 @@ describe('crypto', () => {
       delete decryptedValues.encryptionKey
       deepEqual(decryptedValues, values)
     })
-    it('Should be able to rotate the fields', async () => {
+    it('Should be able to rotate the values with transform', async () => {
+      // setup
+      const sub = 'sub_000000'
+      const fields = ['name']
+
+      const oldOptions = { sub }
+      const oldFields = fields
+      const newOptions = { sub }
+      const newFields = fields
+
+      const now = Date.now()
+      const transform = (data) => {
+        data.rotate = now
+        return data
+      }
+
+      const { encryptionKey, encryptedKey } = symmetricGenerateEncryptionKey(
+        sub,
+        oldOptions
+      )
+      const values = {
+        name: 'pii',
+        create: '2000-01-01',
+        encryptionKey: encryptedKey
+      }
+      const oldEncryptedValues = symmetricEncryptFields(
+        values,
+        { ...oldOptions, encryptionKey, encryptedKey },
+        oldFields
+      )
+
+      // start
+      const newEncryptedValues = symmetricRotation(
+        oldEncryptedValues,
+        oldOptions,
+        oldFields,
+        newOptions,
+        newFields,
+        transform
+      )
+
+      // test
+      const decryptedValues = symmetricDecryptFields(
+        newEncryptedValues,
+        newOptions,
+        newFields
+      )
+      delete values.encryptionKey
+      delete decryptedValues.encryptionKey
+      equal(decryptedValues.rotate, now)
+    })
+    it('Should be able to rotate the values encrypted fields', async () => {
       // setup
       const sub = 'sub_000000'
 
