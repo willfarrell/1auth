@@ -176,21 +176,27 @@ export const randomChecksumPepper = () => {
   return randomIV() // 96
 }
 
-export const createSaltedValue = (value) => {
-  if (!options.digestChecksumSalt) {
+export const createSaltedValue = (value, { checksumSalt } = {}) => {
+  checksumSalt ??= options.digestChecksumSalt
+  if (!checksumSalt) {
     return value
   }
-  const newValue = value + options.digestChecksumSalt
+  const newValue = value + checksumSalt
   return newValue
 }
-export const createPepperedValue = (value) => {
-  if (!options.digestChecksumPepper) {
+export const createPepperedValue = (
+  value,
+  { checksumPepper, encryptionKey } = {}
+) => {
+  checksumPepper ??= options.digestChecksumPepper
+  encryptionKey ??= options.symmetricEncryptionKey
+  if (!checksumPepper || !encryptionKey) {
     return value
   }
   const newValue = symmetricEncrypt(value, {
-    encryptionKey: options.symmetricEncryptionKey,
+    encryptionKey,
     sub: '',
-    iv: options.digestChecksumPepper
+    iv: checksumPepper
   })
   return newValue
 }
@@ -200,11 +206,19 @@ export const createChecksum = (value, { algorithm, encoding } = {}) => {
   encoding ??= options.digestChecksumEncoding
   return createHash(algorithm).update(value).digest(encoding)
 }
-export const createSeasonedChecksum = (value, { algorithm, encoding } = {}) => {
-  return createChecksum(createPepperedValue(createSaltedValue(value)), {
-    algorithm,
-    encoding
-  })
+export const createSeasonedChecksum = (
+  value,
+  { algorithm, encoding, checksumSalt, checksumPepper } = {}
+) => {
+  return createChecksum(
+    createPepperedValue(createSaltedValue(value, { checksumSalt }), {
+      checksumPepper
+    }),
+    {
+      algorithm,
+      encoding
+    }
+  )
 }
 
 export const createDigest = (value, { algorithm, encoding } = {}) => {
@@ -212,27 +226,42 @@ export const createDigest = (value, { algorithm, encoding } = {}) => {
   const checksum = createChecksum(value, { algorithm, encoding })
   return `${algorithm}:${checksum}`
 }
-export const createSaltedDigest = (value, { algorithm, encoding } = {}) => {
+export const createSaltedDigest = (
+  value,
+  { algorithm, encoding, checksumSalt } = {}
+) => {
   algorithm ??= options.digestChecksumAlgorithm
-  const checksum = createChecksum(createSaltedValue(value), {
+  const checksum = createChecksum(createSaltedValue(value, { checksumSalt }), {
     algorithm,
     encoding
   })
   return `${algorithm}:${checksum}`
 }
-export const createPepperedDigest = (value, { algorithm, encoding } = {}) => {
+export const createPepperedDigest = (
+  value,
+  { algorithm, encoding, checksumPepper, encryptionKey } = {}
+) => {
   algorithm ??= options.digestChecksumAlgorithm
-  const checksum = createChecksum(createPepperedValue(value), {
-    algorithm,
-    encoding
-  })
+  const checksum = createChecksum(
+    createPepperedValue(value, { checksumPepper, encryptionKey }),
+    {
+      algorithm,
+      encoding
+    }
+  )
   return `${algorithm}:${checksum}`
 }
-export const createSeasonedDigest = (value, { algorithm, encoding } = {}) => {
+export const createSeasonedDigest = (
+  value,
+  { algorithm, encoding, checksumSalt, checksumPepper, encryptionKey } = {}
+) => {
   algorithm ??= options.digestChecksumAlgorithm
   const checksum = createSeasonedChecksum(value, {
     algorithm,
-    encoding
+    encoding,
+    checksumSalt,
+    checksumPepper,
+    encryptionKey
   })
   return `${algorithm}:${checksum}`
 }
