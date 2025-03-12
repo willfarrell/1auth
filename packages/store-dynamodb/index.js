@@ -220,7 +220,7 @@ export const update = async (table, filters = {}, values = {}) => {
     ExpressionAttributeValues,
     KeyConditionExpression
   } = makeQueryParams(params)
-  console.log('BatchWriteItemCommand', {
+  options.log('BatchWriteItemCommand', {
     TableName: table,
     Key: marshall(filters, marshallOptions),
     ExpressionAttributeNames,
