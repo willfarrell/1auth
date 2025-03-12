@@ -162,8 +162,7 @@ export const update = async (
     options.table,
     { sub, id },
     {
-      ...values,
-      value: encryptedValues,
+      ...encryptedValues,
       update: now
     }
   )
