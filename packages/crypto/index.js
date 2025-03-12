@@ -508,7 +508,7 @@ export const symmetricSignatureVerify = (
   if (lastIndexOf < 0) {
     lastIndexOf = signedData.length
   }
-  const data = signedData.slice(0, lastIndexOf)
+  const data = signedData.substring(0, lastIndexOf)
   const signedDataExpected = symmetricSignatureSign(data, {
     hashAlgorithm,
     signatureSecret
