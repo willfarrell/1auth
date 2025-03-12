@@ -125,19 +125,35 @@ describe('crypto', () => {
 
   describe('digest', () => {
     it('createDigest', async () => {
-      const digest = createDigest('1auth', { algorithm: 'sha3-256' })
+      let digest = createDigest('1auth', { hashAlgorithm: 'sha3-256' })
+      equal(digest, 'sha3-256:0uITV182D6igoH3CrcihY+fFrN1s/1aQlYjJoCOjhDs=')
+      digest = createDigest('1auth', { hashAlgorithm: 'sha3-256' })
       equal(digest, 'sha3-256:0uITV182D6igoH3CrcihY+fFrN1s/1aQlYjJoCOjhDs=')
     })
     it('createSaltedDigest', async () => {
-      const digest = createSaltedDigest('1auth', { algorithm: 'sha3-256' })
+      let digest = createSaltedDigest('1auth', { hashAlgorithm: 'sha3-256' })
+      equal(digest, 'sha3-256:8aVqzzAf/gWlLblIWvvNVO/2ct5LGq8jK/MPi0q/ZZ8=')
+      digest = createSaltedDigest('1auth', { hashAlgorithm: 'sha3-256' })
       equal(digest, 'sha3-256:8aVqzzAf/gWlLblIWvvNVO/2ct5LGq8jK/MPi0q/ZZ8=')
     })
     it('createPepperedDigest', async () => {
-      const digest = createPepperedDigest('1auth', { algorithm: 'sha3-256' })
+      let digest = createPepperedDigest('1auth', {
+        hashAlgorithm: 'sha3-256'
+      })
+      equal(digest, 'sha3-256:r9VPCMbABiWVy/xTFYwHtJ3SyUhZcu5cNSIhYI7Awtg=')
+      digest = createPepperedDigest('1auth', {
+        hashAlgorithm: 'sha3-256'
+      })
       equal(digest, 'sha3-256:r9VPCMbABiWVy/xTFYwHtJ3SyUhZcu5cNSIhYI7Awtg=')
     })
     it('createSeasonedDigest', async () => {
-      const digest = createSeasonedDigest('1auth', { algorithm: 'sha3-256' })
+      let digest = createSeasonedDigest('1auth', {
+        hashAlgorithm: 'sha3-256'
+      })
+      equal(digest, 'sha3-256:9zAIe3Jee2+s+AFK18LERL6OiwVaGZgE2xtM7eB2TfA=')
+      digest = createSeasonedDigest('1auth', {
+        hashAlgorithm: 'sha3-256'
+      })
       equal(digest, 'sha3-256:9zAIe3Jee2+s+AFK18LERL6OiwVaGZgE2xtM7eB2TfA=')
     })
   })
@@ -331,29 +347,34 @@ describe('crypto', () => {
     it('Should be able to sign using a encryption key and verify using encryption key', async () => {
       const data = '1auth'
       const signatureSecret = Buffer.from('secret')
-      const signedData = symmetricSignatureSign(data, signatureSecret)
-      const valid = symmetricSignatureVerify(signedData, signatureSecret)
+      const signedData = symmetricSignatureSign(data, { signatureSecret })
+      const valid = symmetricSignatureVerify(signedData, { signatureSecret })
       ok(valid)
     })
     it('Should NOT be able to sign using a encryption key and verify using another encryption key', async () => {
       const data = '1auth'
       const signatureSecret = Buffer.from('secret')
-      const signedData = symmetricSignatureSign(data, signatureSecret)
-      const valid = symmetricSignatureVerify(
-        signedData,
-        Buffer.from('not' + signatureSecret)
-      )
+      const signedData = symmetricSignatureSign(data, { signatureSecret })
+      const valid = symmetricSignatureVerify(signedData, {
+        signatureSecret: Buffer.from('not' + signatureSecret)
+      })
       ok(!valid)
     })
     it('Should NOT be able to sign using a encryption key and verify when input is undefined', async () => {
       const signatureSecret = Buffer.from('secret')
-      const valid = symmetricSignatureVerify(undefined, signatureSecret)
+      const valid = symmetricSignatureVerify(undefined, { signatureSecret })
+      ok(!valid)
+    })
+    it('Should NOT be able to sign using a encryption key and verify when input is unsigned', async () => {
+      const data = '1auth'
+      const signatureSecret = Buffer.from('secret')
+      const valid = symmetricSignatureVerify(data, { signatureSecret })
       ok(!valid)
     })
   })
 
   describe('symmetric rotation', () => {
-    it('Should be able to rotate the values encryptionKey', async () => {
+    it('Should be able to rotate the values encryptionKey (x1)', async () => {
       // setup
       const sub = 'sub_000000'
       const fields = ['name']
@@ -374,7 +395,7 @@ describe('crypto', () => {
       }
       const oldEncryptedValues = symmetricEncryptFields(
         values,
-        { ...oldOptions, encryptionKey, encryptedKey },
+        { ...oldOptions, encryptionKey },
         oldFields
       )
 
@@ -390,7 +411,58 @@ describe('crypto', () => {
       // test
       const decryptedValues = symmetricDecryptFields(
         newEncryptedValues,
+        { ...newOptions, encryptedKey: newEncryptedValues.encryptionKey },
+        newFields
+      )
+      delete values.encryptionKey
+      delete decryptedValues.encryptionKey
+      deepEqual(decryptedValues, values)
+    })
+    it('Should be able to rotate the values encryptionKey (x2)', async () => {
+      // setup
+      const sub = 'sub_000000'
+      const fields = ['name']
+
+      const oldOptions = { sub }
+      const oldFields = fields
+      const newOptions = { sub }
+      const newFields = fields
+
+      const { encryptionKey, encryptedKey } = symmetricGenerateEncryptionKey(
+        sub,
+        oldOptions
+      )
+      const values = {
+        name: 'pii',
+        create: '2000-01-01',
+        encryptionKey: encryptedKey
+      }
+      const oldEncryptedValues = symmetricEncryptFields(
+        values,
+        { ...oldOptions, encryptionKey },
+        oldFields
+      )
+
+      // start
+      const nextEncryptedValues = symmetricRotation(
+        oldEncryptedValues,
+        oldOptions,
+        oldFields,
         newOptions,
+        newFields
+      )
+      const newEncryptedValues = symmetricRotation(
+        nextEncryptedValues,
+        structuredClone(oldOptions),
+        oldFields,
+        structuredClone(newOptions),
+        newFields
+      )
+
+      // test
+      const decryptedValues = symmetricDecryptFields(
+        newEncryptedValues,
+        { ...newOptions, encryptedKey: newEncryptedValues.encryptionKey },
         newFields
       )
       delete values.encryptionKey
@@ -424,7 +496,7 @@ describe('crypto', () => {
       }
       const oldEncryptedValues = symmetricEncryptFields(
         values,
-        { ...oldOptions, encryptionKey, encryptedKey },
+        { ...oldOptions, encryptionKey },
         oldFields
       )
 
@@ -441,7 +513,7 @@ describe('crypto', () => {
       // test
       const decryptedValues = symmetricDecryptFields(
         newEncryptedValues,
-        newOptions,
+        { ...newOptions, encryptedKey: newEncryptedValues.encryptionKey },
         newFields
       )
       delete values.encryptionKey
@@ -469,7 +541,7 @@ describe('crypto', () => {
       }
       const oldEncryptedValues = symmetricEncryptFields(
         values,
-        { ...oldOptions, encryptionKey, encryptedKey },
+        { ...oldOptions, encryptionKey },
         oldFields
       )
 
@@ -490,7 +562,7 @@ describe('crypto', () => {
       // test
       const decryptedValues = symmetricDecryptFields(
         newEncryptedValues,
-        newOptions,
+        { ...newOptions, encryptedKey: newEncryptedValues.encryptionKey },
         newFields
       )
       delete values.encryptionKey
@@ -528,7 +600,7 @@ describe('crypto', () => {
       }
       const oldEncryptedValues = symmetricEncryptFields(
         values,
-        { ...oldOptions, encryptionKey, encryptedKey },
+        { ...oldOptions, encryptionKey },
         oldFields
       )
 
@@ -542,9 +614,13 @@ describe('crypto', () => {
       )
 
       // test
+      const newRowEncryptionKey = symmetricDecryptKey(
+        newEncryptedValues.encryptionKey,
+        newOptions
+      )
       const decryptedValues = symmetricDecryptFields(
         newEncryptedValues,
-        newOptions,
+        { ...newOptions, encryptionKey: newRowEncryptionKey },
         newFields
       )
       delete values.encryptionKey
@@ -575,7 +651,7 @@ describe('crypto', () => {
       }
       const oldEncryptedValues = symmetricEncryptFields(
         values,
-        { ...oldOptions, encryptionKey, encryptedKey },
+        { ...oldOptions, encryptionKey },
         oldFields
       )
 
@@ -591,7 +667,7 @@ describe('crypto', () => {
       // test
       const decryptedValues = symmetricDecryptFields(
         newEncryptedValues,
-        newOptions,
+        { ...newOptions, encryptedKey: newEncryptedValues.encryptionKey },
         newFields
       )
       delete values.encryptionKey
@@ -633,7 +709,7 @@ describe('crypto', () => {
       }
       const oldEncryptedValues = symmetricEncryptFields(
         values,
-        { ...oldOptions, encryptionKey, encryptedKey },
+        { ...oldOptions, encryptionKey },
         oldFields
       )
 
@@ -647,9 +723,13 @@ describe('crypto', () => {
       )
 
       // test
+      const newRowEncryptionKey = symmetricDecryptKey(
+        newEncryptedValues.encryptionKey,
+        newOptions
+      )
       const decryptedValues = symmetricDecryptFields(
         newEncryptedValues,
-        newOptions,
+        { ...newOptions, encryptionKey: newRowEncryptionKey },
         newFields
       )
       delete values.encryptionKey

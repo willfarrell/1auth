@@ -27,7 +27,7 @@ const defaults = {
   asymmetricKeyNamedCurve: 'P-384', // P-512
   asymmetricSignatureHashAlgorithm: undefined, // fallback to defaultHashAlgorithm
   asymmetricSignatureEncoding: undefined, // fallback to defaultEncoding
-  digestChecksumAlgorithm: undefined, // fallback to defaultHashAlgorithm
+  digestChecksumHashAlgorithm: undefined, // fallback to defaultHashAlgorithm
   digestChecksumEncoding: undefined,
   digestChecksumSalt: undefined, // randomChecksumSalt()
   digestChecksumPepper: undefined, // randomChecksumPepper()
@@ -65,7 +65,7 @@ export default (opt = {}) => {
       '@1auth/crypto digestChecksumPepper is empty, use a stored secret made from randomBytes(12). Checksum peppering disabled.'
     )
   }
-  options.digestChecksumAlgorithm ??= options.defaultHashAlgorithm
+  options.digestChecksumHashAlgorithm ??= options.defaultHashAlgorithm
   options.digestChecksumEncoding ??= options.defaultEncoding
 
   // Lengths
@@ -201,69 +201,69 @@ export const createPepperedValue = (
   return newValue
 }
 
-export const createChecksum = (value, { algorithm, encoding } = {}) => {
-  algorithm ??= options.digestChecksumAlgorithm
+export const createChecksum = (value, { hashAlgorithm, encoding } = {}) => {
+  hashAlgorithm ??= options.digestChecksumHashAlgorithm
   encoding ??= options.digestChecksumEncoding
-  return createHash(algorithm).update(value).digest(encoding)
+  return createHash(hashAlgorithm).update(value).digest(encoding)
 }
 export const createSeasonedChecksum = (
   value,
-  { algorithm, encoding, checksumSalt, checksumPepper } = {}
+  { hashAlgorithm, encoding, checksumSalt, checksumPepper } = {}
 ) => {
   return createChecksum(
     createPepperedValue(createSaltedValue(value, { checksumSalt }), {
       checksumPepper
     }),
     {
-      algorithm,
+      hashAlgorithm,
       encoding
     }
   )
 }
 
-export const createDigest = (value, { algorithm, encoding } = {}) => {
-  algorithm ??= options.digestChecksumAlgorithm
-  const checksum = createChecksum(value, { algorithm, encoding })
-  return `${algorithm}:${checksum}`
+export const createDigest = (value, { hashAlgorithm, encoding } = {}) => {
+  hashAlgorithm ??= options.digestChecksumHashAlgorithm
+  const checksum = createChecksum(value, { hashAlgorithm, encoding })
+  return `${hashAlgorithm}:${checksum}`
 }
 export const createSaltedDigest = (
   value,
-  { algorithm, encoding, checksumSalt } = {}
+  { hashAlgorithm, encoding, checksumSalt } = {}
 ) => {
-  algorithm ??= options.digestChecksumAlgorithm
+  hashAlgorithm ??= options.digestChecksumHashAlgorithm
   const checksum = createChecksum(createSaltedValue(value, { checksumSalt }), {
-    algorithm,
+    hashAlgorithm,
     encoding
   })
-  return `${algorithm}:${checksum}`
+  return `${hashAlgorithm}:${checksum}`
 }
 export const createPepperedDigest = (
   value,
-  { algorithm, encoding, checksumPepper, encryptionKey } = {}
+  { hashAlgorithm, encoding, checksumPepper, encryptionKey } = {}
 ) => {
-  algorithm ??= options.digestChecksumAlgorithm
+  hashAlgorithm ??= options.digestChecksumHashAlgorithm
   const checksum = createChecksum(
     createPepperedValue(value, { checksumPepper, encryptionKey }),
     {
-      algorithm,
+      hashAlgorithm,
       encoding
     }
   )
-  return `${algorithm}:${checksum}`
+  return `${hashAlgorithm}:${checksum}`
 }
 export const createSeasonedDigest = (
   value,
-  { algorithm, encoding, checksumSalt, checksumPepper, encryptionKey } = {}
+  { hashAlgorithm, encoding, checksumSalt, checksumPepper, encryptionKey } = {}
 ) => {
-  algorithm ??= options.digestChecksumAlgorithm
+  hashAlgorithm ??= options.digestChecksumHashAlgorithm
   const checksum = createSeasonedChecksum(value, {
-    algorithm,
+    hashAlgorithm,
     encoding,
     checksumSalt,
     checksumPepper,
     encryptionKey
   })
-  return `${algorithm}:${checksum}`
+  return `${hashAlgorithm}:${checksum}`
 }
 
 // *** Hashing *** //
@@ -370,7 +370,7 @@ export const symmetricEncrypt = (
     iv.toString(encoding) + authTag.toString(encoding) + encryptedData
 
   // add signature to end
-  return symmetricSignatureSign(encryptedDataPacket, signatureSecret)
+  return symmetricSignatureSign(encryptedDataPacket, { signatureSecret })
 }
 
 export const symmetricDecryptFields = (
@@ -428,10 +428,9 @@ export const symmetricDecrypt = (
   encoding ??= 'utf8'
 
   // remove signature when successful
-  encryptedDataPacket = symmetricSignatureVerify(
-    encryptedDataPacket,
+  encryptedDataPacket = symmetricSignatureVerify(encryptedDataPacket, {
     signatureSecret
-  )
+  })
 
   if (encryptedDataPacket === false) {
     throw new Error('Signature incorrect')
@@ -462,7 +461,7 @@ export const symmetricDecrypt = (
       authTagLength
     }
   )
-  decipher.setAAD(Buffer.from(sub, 'utf8'))
+  decipher.setAAD(sub)
 
   decipher.setAuthTag(authTag)
   const data =
@@ -486,12 +485,11 @@ export const symmetricGenerateSignatureSecret = () => {
 
 export const symmetricSignatureSign = (
   data,
-  signatureSecret,
-  { algorithm } = {}
+  { hashAlgorithm, signatureSecret } = {}
 ) => {
   signatureSecret ??= options.symmetricSignatureSecret
-  algorithm ??= options.symmetricSignatureHashAlgorithm
-  const signature = createHmac(algorithm, signatureSecret)
+  hashAlgorithm ??= options.symmetricSignatureHashAlgorithm
+  const signature = createHmac(hashAlgorithm, signatureSecret)
     .update(data)
     .digest(options.symmetricSignatureEncoding)
     .replace(/=+$/, '')
@@ -502,13 +500,18 @@ export const symmetricSignatureSign = (
 
 export const symmetricSignatureVerify = (
   signedData,
-  signatureSecret,
-  { algorithm } = {}
+  { hashAlgorithm, signatureSecret } = {}
 ) => {
   if (typeof signedData !== 'string') return false
-  const data = signedData.slice(0, signedData.lastIndexOf('.'))
-  const signedDataExpected = symmetricSignatureSign(data, signatureSecret, {
-    algorithm
+  let lastIndexOf = signedData.lastIndexOf('.')
+  // Test for unsigned
+  if (lastIndexOf < 0) {
+    lastIndexOf = signedData.length
+  }
+  const data = signedData.slice(0, lastIndexOf)
+  const signedDataExpected = symmetricSignatureSign(data, {
+    hashAlgorithm,
+    signatureSecret
   })
   return safeEqual(signedData, signedDataExpected) && data
 }
@@ -519,28 +522,40 @@ export const symmetricRotation = (
   oldOptions, // { encryptionKey, signatureSecret, sub, decoding, encoding }, // old
   oldFields = [],
   newOptions, // { encryptionKey, signatureSecret, sub, decoding, encoding }, // new
-  newFields = [],
+  newFields,
   transform = (data) => {
     return data
   }
 ) => {
+  newOptions ??= oldOptions
+  newFields ??= oldFields
+
   if (oldOptions.sub !== newOptions.sub) throw new Error('Mismatching `sub`')
+
+  oldEncryptedValues = structuredClone(oldEncryptedValues)
+  // Don't use structuredClone, converts Buffer to Uint8Array ...
+  oldOptions = { ...oldOptions }
+  newOptions = { ...newOptions }
 
   // decrypt old encryption key
   const { encryptionKey: oldEncryptedKey } = oldEncryptedValues
   delete oldEncryptedValues.encryptionKey
 
-  oldOptions.encryptionKey = symmetricDecryptKey(oldEncryptedKey, oldOptions)
+  const oldEncryptionKey = symmetricDecryptKey(oldEncryptedKey, oldOptions)
+  oldOptions.encryptionKey = oldEncryptionKey
 
   // decrypt
   const data = transform(
-    symmetricDecryptFields(oldEncryptedValues, oldOptions, oldFields)
+    symmetricDecryptFields(
+      oldEncryptedValues,
+      { ...oldOptions, encryptionKey: oldEncryptionKey },
+      oldFields
+    )
   )
 
   // rotate encryptionKey
   const { encryptionKey: newEncryptionKey, encryptedKey: newEncryptedKey } =
-    symmetricGenerateEncryptionKey(oldOptions.sub, newOptions)
-
+    symmetricGenerateEncryptionKey(newOptions.sub, newOptions)
   newOptions.encryptionKey = newEncryptionKey
 
   // encrypt
@@ -578,10 +593,10 @@ export const makeAsymmetricKeys = async () => {
 export const makeAsymmetricSignature = async (
   data,
   privateKey,
-  { algorithm } = {}
+  { hashAlgorithm } = {}
 ) => {
-  algorithm ??= options.asymmetricSignatureHashAlgorithm
-  return (await sign(algorithm, Buffer.from(data), privateKey)).toString(
+  hashAlgorithm ??= options.asymmetricSignatureHashAlgorithm
+  return (await sign(hashAlgorithm, Buffer.from(data), privateKey)).toString(
     options.asymmetricSignatureEncoding
   )
 }
@@ -589,11 +604,11 @@ export const verifyAsymmetricSignature = async (
   data,
   publicKey,
   signature,
-  { algorithm } = {}
+  { hashAlgorithm } = {}
 ) => {
-  algorithm ??= options.asymmetricSignatureHashAlgorithm
+  hashAlgorithm ??= options.asymmetricSignatureHashAlgorithm
   return await verify(
-    algorithm,
+    hashAlgorithm,
     Buffer.from(data),
     publicKey,
     Buffer.from(signature, options.asymmetricSignatureEncoding)
