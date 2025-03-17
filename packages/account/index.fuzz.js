@@ -17,6 +17,8 @@ import account, {
 crypto({
   symmetricEncryptionKey: symmetricRandomEncryptionKey(),
   symmetricSignatureSecret: symmetricRandomSignatureSecret(),
+  digestChecksumSalt: randomChecksumSalt(),
+  digestChecksumPepper: randomChecksumPepper(),
 });
 store.default({ log: false });
 notify.default({
