@@ -63,16 +63,16 @@ describe("store-sql", () => {
   it("`insert`/`update`/`select` Should return object when something found", async () => {
     const row = { id: 1, sub: "sub_000", value: "a" };
     await store.insert(table, row);
-    let result = await store.select(table, { id: row.id });
+    //let result = await store.select(table, { id: row.id });
     row.value = "b";
     await store.update(
       table,
       { sub: "sub_000", id: row.id },
       { value: row.value },
     );
-    result = await store.select(table, { id: row.id });
+    let result = await store.select(table, { id: row.id });
     equal(JSON.stringify(result), JSON.stringify(row)); // sqlite uses Object.create(null)
-    equal(mocks.log.mock.calls.length, 4);
+    equal(mocks.log.mock.calls.length, 3);
   });
   it("`selectList` Should return [] when nothing found", async () => {
     const result = await store.selectList(table, { id: 1 });
