@@ -75,7 +75,7 @@ const sub = await accountCreate();
 const { sid } = await sessionCreate(sub, {});
 
 test("fuzz sessionLookup w/ `object`", async () => {
-  fc.assert(
+  await fc.assert(
     fc.asyncProperty(fc.object(), async (currentDevice) => {
       await sessionLookup(sid, currentDevice);
     }),
@@ -88,7 +88,7 @@ test("fuzz sessionLookup w/ `object`", async () => {
 });
 
 test("fuzz sessionCheck w/ `object`", async () => {
-  fc.assert(
+  await fc.assert(
     fc.asyncProperty(fc.object(), async (currentDevice) => {
       await sessionCheck(sub, currentDevice);
     }),
@@ -101,7 +101,7 @@ test("fuzz sessionCheck w/ `object`", async () => {
 });
 
 // test('fuzz sessionCreate w/ `object`', async () => {
-//   fc.assert(
+//   await fc.assert(
 //     fc.asyncProperty(fc.object(), async (currentDevice) => {
 //       await sessionCreate(sub, currentDevice)
 //     }),

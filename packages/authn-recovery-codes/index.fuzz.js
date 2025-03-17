@@ -68,7 +68,7 @@ const catchError = (input, e) => {
 };
 
 test("fuzz recoveryCodesAuthenticate w/ `string`", async () => {
-  fc.assert(
+  await fc.assert(
     fc.asyncProperty(fc.string(), async (secret) => {
       try {
         await recoveryCodesAuthenticate(username, secret);

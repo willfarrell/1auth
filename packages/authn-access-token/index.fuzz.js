@@ -1,4 +1,5 @@
 import { test } from "node:test";
+import { equal, ok } from "node:assert";
 import fc from "fast-check";
 
 // *** Setup Start *** //
@@ -57,7 +58,7 @@ const sub = await accountCreate();
 const username = "username";
 
 await accountUsernameCreate(sub, username);
-await accessTokenCreate(sub);
+//await accessTokenCreate(sub)
 
 const catchError = (input, e) => {
   if (e.message === "401 Unauthorized") {
@@ -67,8 +68,25 @@ const catchError = (input, e) => {
   throw e;
 };
 
-test("fuzz accessTokenAuthenticate w/ `string`", async () => {
-  fc.assert(
+test("fuzz accessTokenAuthenticate w/ `string`, `string`", async () => {
+  await fc.assert(
+    fc.asyncProperty(fc.string(), fc.string(), async (username, secret) => {
+      try {
+        await accessTokenAuthenticate(username, secret);
+      } catch (e) {
+        catchError({ username, secret }, e);
+      }
+    }),
+    {
+      numRuns: 100_000,
+      verbose: 2,
+      examples: [],
+    },
+  );
+});
+
+test("fuzz accessTokenAuthenticate w/ username, `string`", async () => {
+  await fc.assert(
     fc.asyncProperty(fc.string(), async (secret) => {
       try {
         await accessTokenAuthenticate(username, secret);

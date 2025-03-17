@@ -31,7 +31,7 @@ account({ store, notify, encryptedFields: ["name", "username", "privateKey"] });
 const sub = await accountCreate();
 
 test("fuzz accountUpdate unencrypted value w/ `string`", async () => {
-  fc.assert(
+  await fc.assert(
     fc.asyncProperty(fc.string(), async (notPersonalInformation) => {
       await accountUpdate(sub, { notPersonalInformation });
     }),
@@ -44,7 +44,7 @@ test("fuzz accountUpdate unencrypted value w/ `string`", async () => {
 });
 
 test("fuzz accountUpdate encrypted value w/ `string`", async () => {
-  fc.assert(
+  await fc.assert(
     fc.asyncProperty(fc.string(), async (name) => {
       await accountUpdate(sub, { name });
     }),
