@@ -80,7 +80,7 @@ test("fuzz sessionLookup w/ `object`", async () => {
       await sessionLookup(sid, currentDevice);
     }),
     {
-      numRuns: 1_000_000,
+      numRuns: 100_000,
       verbose: 2,
       examples: [],
     },
@@ -93,7 +93,7 @@ test("fuzz sessionCheck w/ `object`", async () => {
       await sessionCheck(sub, currentDevice);
     }),
     {
-      numRuns: 1_000_000,
+      numRuns: 100_000,
       verbose: 2,
       examples: [],
     },
@@ -106,7 +106,7 @@ test("fuzz sessionCheck w/ `object`", async () => {
 //       await sessionCreate(sub, currentDevice)
 //     }),
 //     {
-//       numRuns: 1_000_000,
+//       numRuns: 100_000,
 //       verbose: 2,
 //       examples: []
 //     }

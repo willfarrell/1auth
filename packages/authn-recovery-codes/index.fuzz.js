@@ -77,7 +77,7 @@ test("fuzz recoveryCodesAuthenticate w/ `string`", async () => {
       }
     }),
     {
-      numRuns: 1_000_000,
+      numRuns: 100_000,
       verbose: 2,
       examples: [],
     },

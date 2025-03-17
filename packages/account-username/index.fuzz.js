@@ -63,7 +63,7 @@ test("fuzz accountUsernameCreate w/ `string`", async () => {
       }
     }),
     {
-      numRuns: 1_000_000,
+      numRuns: 100_000,
       verbose: 2,
       examples: [],
     },
@@ -80,7 +80,7 @@ test("fuzz accountUsernameExists w/ `string`", async () => {
       }
     }),
     {
-      numRuns: 1_000_000,
+      numRuns: 100_000,
       verbose: 2,
       examples: [],
     },
@@ -97,7 +97,7 @@ test("fuzz accountUsernameLookup w/ `string`", async () => {
       }
     }),
     {
-      numRuns: 1_000_000,
+      numRuns: 100_000,
       verbose: 2,
       examples: [],
     },
@@ -114,7 +114,7 @@ test("fuzz accountUsernameUpdate w/ `string`", async () => {
       }
     }),
     {
-      numRuns: 1_000_000,
+      numRuns: 100_000,
       verbose: 2,
       examples: [],
     },

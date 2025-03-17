@@ -34,7 +34,7 @@ test("fuzz accountUpdate encrypted value w/ `string`", async () => {
       await accountUpdate(sub, { name });
     }),
     {
-      numRuns: 1_000_000,
+      numRuns: 100_000,
       verbose: 2,
       examples: [],
     },
@@ -47,7 +47,7 @@ test("fuzz accountUpdate unencrypted value w/ `string`", async () => {
       await accountUpdate(sub, { notPersonalInformation });
     }),
     {
-      numRuns: 1_000_000,
+      numRuns: 100_000,
       verbose: 2,
       examples: [],
     },

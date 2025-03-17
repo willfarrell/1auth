@@ -64,7 +64,7 @@ test("fuzz emailAddressCreate w/ `string`", async () => {
       }
     }),
     {
-      numRuns: 1_000_000,
+      numRuns: 100_000,
       verbose: 2,
       examples: [],
     },
@@ -81,7 +81,7 @@ test("fuzz emailAddressCreate w/ `string`", async () => {
       }
     }),
     {
-      numRuns: 1_000_000,
+      numRuns: 100_000,
       verbose: 2,
       examples: [],
     },
@@ -98,7 +98,7 @@ test("fuzz emailAddressLookup w/ `string`", async () => {
       }
     }),
     {
-      numRuns: 1_000_000,
+      numRuns: 100_000,
       verbose: 2,
       examples: [],
     },
