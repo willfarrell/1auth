@@ -317,12 +317,12 @@ export const makeQueryParams = (filters = {}, select = []) => {
   keyConditionExpression = keyConditionExpression.join(" and ");
   updateExpression = `SET ${updateExpression.join(", ")}`;
 
-  let projectionExpression = [];
+  //let projectionExpression = [];
   for (const key of select) {
     expressionAttributeNames[`#${key}`] = key;
-    projectionExpression.push(`#${key}`);
+    //projectionExpression.push(`#${key}`);
   }
-  projectionExpression = [...new Set(projectionExpression)].join(", ");
+  //projectionExpression = [...new Set(projectionExpression)].join(", ");
   return {
     // ProjectionExpression: projectionExpression, // return keys
     ExpressionAttributeNames: expressionAttributeNames,
