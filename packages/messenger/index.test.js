@@ -73,7 +73,7 @@ describe("messenger", () => {
     });
 
     let messengerDB = await store.select(messengerGetOptions().table, { sub });
-    let authnDB = await store.select(authnGetOptions().table, { sub });
+    //let authnDB = await store.select(authnGetOptions().table, { sub });
 
     equal(messengerDB.id, messengerId);
     equal(messengerDB.type, messengerType);
@@ -87,7 +87,7 @@ describe("messenger", () => {
     equal(mocks.notifyClient.mock.calls.length, 1);
 
     messengerDB = await store.select(messengerGetOptions().table, { sub });
-    authnDB = await store.select(authnGetOptions().table, { sub });
+    let authnDB = await store.select(authnGetOptions().table, { sub });
     ok(messengerDB.verify);
     ok(!authnDB);
   });
