@@ -1,1 +1,1 @@
-export default (table) => table
+export default (table) => table;

@@ -1,4 +1,4 @@
-export default (table = 'sessions') => {
+export default (table = "sessions") => {
   return `
   CREATE TABLE IF NOT EXISTS ${table}
   (
@@ -18,5 +18,5 @@ export default (table = 'sessions') => {
     CONSTRAINT ${table}_pkey PRIMARY KEY ("id")
     CONSTRAINT ${table}_ukey UNIQUE ("digest")
   );
-  `
-}
+  `;
+};

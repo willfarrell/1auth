@@ -1,42 +1,42 @@
-import { assign } from 'xstate'
+import { assign } from "xstate";
 
 export const states = {
   input: {
     on: {
-      submit: { target: 'create' }
-    }
+      submit: { target: "create" },
+    },
   },
   create: {
     invoke: {
-      id: 'create',
+      id: "create",
       src: () => {},
-      onError: 'input',
-      onDone: 'enterSecret'
-    }
+      onError: "input",
+      onDone: "enterSecret",
+    },
   },
   enterSecret: {
     on: {
-      submit: { target: 'verifySecret' }
-    }
+      submit: { target: "verifySecret" },
+    },
   },
   verifySecret: {
     invoke: {
-      id: 'verifySecret',
+      id: "verifySecret",
       src: () => {},
-      onError: 'enterSecret',
-      onDone: 'success'
-    }
+      onError: "enterSecret",
+      onDone: "success",
+    },
   },
   success: {
-    type: 'final',
+    type: "final",
     exit: [
       assign({
-        webauthn: (context) => (context.webauthn ?? 0) + 1
-      })
-    ]
-  }
-}
+        webauthn: (context) => (context.webauthn ?? 0) + 1,
+      }),
+    ],
+  },
+};
 
-export const guard = (context) => (context.webauthn ?? 0) < 1
+export const guard = (context) => (context.webauthn ?? 0) < 1;
 
-export default { states, guard }
+export default { states, guard };

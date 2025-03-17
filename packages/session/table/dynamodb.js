@@ -1,69 +1,69 @@
-export default (table = 'sessions', { timeToLiveKey } = {}) => {
-  timeToLiveKey ??= 'remove'
+export default (table = "sessions", { timeToLiveKey } = {}) => {
+  timeToLiveKey ??= "remove";
   return {
     TableName: table,
     AttributeDefinitions: [
       {
-        AttributeName: 'sub',
-        AttributeType: 'S'
+        AttributeName: "sub",
+        AttributeType: "S",
       },
       {
-        AttributeName: 'id',
-        AttributeType: 'S'
+        AttributeName: "id",
+        AttributeType: "S",
       },
       {
-        AttributeName: 'digest',
-        AttributeType: 'S'
-      }
+        AttributeName: "digest",
+        AttributeType: "S",
+      },
     ],
     KeySchema: [
       {
-        AttributeName: 'sub',
-        KeyType: 'HASH'
+        AttributeName: "sub",
+        KeyType: "HASH",
       },
       {
-        AttributeName: 'id',
-        KeyType: 'RANGE'
-      }
+        AttributeName: "id",
+        KeyType: "RANGE",
+      },
     ],
     GlobalSecondaryIndexes: [
       {
-        IndexName: 'sub',
+        IndexName: "sub",
         KeySchema: [
           {
-            AttributeName: 'sub',
-            KeyType: 'HASH'
-          }
+            AttributeName: "sub",
+            KeyType: "HASH",
+          },
         ],
         Projection: {
-          ProjectionType: 'INCLUDE',
-          NonKeyAttributes: ['encryptionKey', 'value', 'create', 'expire']
-        }
+          ProjectionType: "INCLUDE",
+          NonKeyAttributes: ["encryptionKey", "value", "create", "expire"],
+        },
       },
       {
-        IndexName: 'digest',
+        IndexName: "digest",
         KeySchema: [
           {
-            AttributeName: 'digest',
-            KeyType: 'HASH'
-          }
+            AttributeName: "digest",
+            KeyType: "HASH",
+          },
         ],
         Projection: {
-          ProjectionType: 'INCLUDE',
+          ProjectionType: "INCLUDE",
           NonKeyAttributes: [
-            'sub',
-            'encryptionKey',
-            'value',
-            'create',
-            'expire'
-          ]
-        }
-      }
+            "sub",
+            "encryptionKey",
+            "value",
+            "create",
+            "expire",
+          ],
+        },
+      },
     ],
     TimeToLiveSpecification: {
       Enabled: true,
-      AttributeName: timeToLiveKey
+      AttributeName: timeToLiveKey,
     },
-    BillingMode: 'PAY_PER_REQUEST'
-  }
-}
+    BillingMode: "PAY_PER_REQUEST",
+  };
+};

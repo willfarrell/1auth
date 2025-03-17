@@ -1,20 +1,20 @@
 export default (table, { timeToLiveKey } = {}) => {
-  timeToLiveKey ??= 'remove'
+  timeToLiveKey ??= "remove";
   return {
     TableName: table,
     AttributeDefinitions: [
       {
-        AttributeName: 'id',
-        AttributeType: 'N'
+        AttributeName: "id",
+        AttributeType: "N",
       },
       {
-        AttributeName: 'sub',
-        AttributeType: 'S'
+        AttributeName: "sub",
+        AttributeType: "S",
       },
       {
-        AttributeName: 'digest', // account-username & session
-        AttributeType: 'S'
-      }
+        AttributeName: "digest", // account-username & session
+        AttributeType: "S",
+      },
       // {
       //   AttributeName: "expire",
       //   AttributeType: "N",
@@ -22,59 +22,59 @@ export default (table, { timeToLiveKey } = {}) => {
     ],
     KeySchema: [
       {
-        AttributeName: 'sub',
-        KeyType: 'HASH'
+        AttributeName: "sub",
+        KeyType: "HASH",
       },
       {
-        AttributeName: 'id',
-        KeyType: 'RANGE'
-      }
+        AttributeName: "id",
+        KeyType: "RANGE",
+      },
     ],
     GlobalSecondaryIndexes: [
       {
-        IndexName: 'key',
+        IndexName: "key",
         KeySchema: [
           {
-            AttributeName: 'id',
-            KeyType: 'HASH'
-          }
+            AttributeName: "id",
+            KeyType: "HASH",
+          },
         ],
         Projection: {
-          ProjectionType: 'INCLUDE',
-          NonKeyAttributes: ['value', 'create', 'expire']
-        }
+          ProjectionType: "INCLUDE",
+          NonKeyAttributes: ["value", "create", "expire"],
+        },
       },
       {
-        IndexName: 'sub',
+        IndexName: "sub",
         KeySchema: [
           {
-            AttributeName: 'sub',
-            KeyType: 'HASH'
-          }
+            AttributeName: "sub",
+            KeyType: "HASH",
+          },
         ],
         Projection: {
-          ProjectionType: 'INCLUDE',
-          NonKeyAttributes: ['value', 'create', 'expire']
-        }
+          ProjectionType: "INCLUDE",
+          NonKeyAttributes: ["value", "create", "expire"],
+        },
       },
       {
-        IndexName: 'digest',
+        IndexName: "digest",
         KeySchema: [
           {
-            AttributeName: 'digest',
-            KeyType: 'HASH'
-          }
+            AttributeName: "digest",
+            KeyType: "HASH",
+          },
         ],
         Projection: {
-          ProjectionType: 'INCLUDE',
-          NonKeyAttributes: ['value', 'create', 'expire']
-        }
-      }
+          ProjectionType: "INCLUDE",
+          NonKeyAttributes: ["value", "create", "expire"],
+        },
+      },
     ],
     TimeToLiveSpecification: {
       Enabled: true,
-      AttributeName: timeToLiveKey
+      AttributeName: timeToLiveKey,
     },
-    BillingMode: 'PAY_PER_REQUEST'
-  }
-}
+    BillingMode: "PAY_PER_REQUEST",
+  };
+};

@@ -1,37 +1,37 @@
-import { assign } from 'xstate'
+import { assign } from "xstate";
 
 export const states = {
   create: {
     invoke: {
-      id: 'create',
+      id: "create",
       src: () => {},
       // onError: "enterToken",
-      onDone: 'offlineSecret'
-    }
+      onDone: "offlineSecret",
+    },
   },
   offlineSecret: {
     on: {
-      submit: { target: 'verifySecret' }
-    }
+      submit: { target: "verifySecret" },
+    },
   },
   verifySecret: {
     invoke: {
-      id: 'verifySecret',
+      id: "verifySecret",
       src: () => {},
-      onError: 'offlineSecret',
-      onDone: 'success'
-    }
+      onError: "offlineSecret",
+      onDone: "success",
+    },
   },
   success: {
-    type: 'final',
+    type: "final",
     exit: [
       assign({
-        lookup: (context) => (context.lookup ?? 0) + 5 // TODO use var
-      })
-    ]
-  }
-}
+        lookup: (context) => (context.lookup ?? 0) + 5, // TODO use var
+      }),
+    ],
+  },
+};
 
-export const guard = (context) => (context.lookup ?? 0) < 1
+export const guard = (context) => (context.lookup ?? 0) < 1;
 
-export default { states, guard }
+export default { states, guard };

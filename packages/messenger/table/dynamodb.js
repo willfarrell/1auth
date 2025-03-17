@@ -1,24 +1,24 @@
-export default (table = 'messengers', { timeToLiveKey } = {}) => {
-  timeToLiveKey ??= 'remove'
+export default (table = "messengers", { timeToLiveKey } = {}) => {
+  timeToLiveKey ??= "remove";
   return {
     TableName: table,
     AttributeDefinitions: [
       {
-        AttributeName: 'id',
-        AttributeType: 'S'
+        AttributeName: "id",
+        AttributeType: "S",
       },
       {
-        AttributeName: 'sub',
-        AttributeType: 'S'
+        AttributeName: "sub",
+        AttributeType: "S",
       },
       {
-        AttributeName: 'type',
-        AttributeType: 'S'
+        AttributeName: "type",
+        AttributeType: "S",
       },
       {
-        AttributeName: 'digest',
-        AttributeType: 'S'
-      }
+        AttributeName: "digest",
+        AttributeType: "S",
+      },
       // {
       //   AttributeName: "expire",
       //   AttributeType: "N",
@@ -26,46 +26,46 @@ export default (table = 'messengers', { timeToLiveKey } = {}) => {
     ],
     KeySchema: [
       {
-        AttributeName: 'sub',
-        KeyType: 'HASH'
+        AttributeName: "sub",
+        KeyType: "HASH",
       },
       {
-        AttributeName: 'id',
-        KeyType: 'RANGE'
-      }
+        AttributeName: "id",
+        KeyType: "RANGE",
+      },
     ],
     GlobalSecondaryIndexes: [
       {
-        IndexName: 'sub',
+        IndexName: "sub",
         KeySchema: [
           {
-            AttributeName: 'sub',
-            KeyType: 'HASH'
-          }
+            AttributeName: "sub",
+            KeyType: "HASH",
+          },
         ],
         Projection: {
-          ProjectionType: 'INCLUDE',
-          NonKeyAttributes: ['id', 'name', 'encryptionKey', 'value', 'verify']
-        }
+          ProjectionType: "INCLUDE",
+          NonKeyAttributes: ["id", "name", "encryptionKey", "value", "verify"],
+        },
       },
       {
-        IndexName: 'digest',
+        IndexName: "digest",
         KeySchema: [
           {
-            AttributeName: 'digest',
-            KeyType: 'HASH'
-          }
+            AttributeName: "digest",
+            KeyType: "HASH",
+          },
         ],
         Projection: {
-          ProjectionType: 'INCLUDE',
-          NonKeyAttributes: ['id', 'sub', 'encryptionKey', 'value', 'verify']
-        }
-      }
+          ProjectionType: "INCLUDE",
+          NonKeyAttributes: ["id", "sub", "encryptionKey", "value", "verify"],
+        },
+      },
     ],
     TimeToLiveSpecification: {
       Enabled: true,
-      AttributeName: timeToLiveKey
+      AttributeName: timeToLiveKey,
     },
-    BillingMode: 'PAY_PER_REQUEST'
-  }
-}
+    BillingMode: "PAY_PER_REQUEST",
+  };
+};

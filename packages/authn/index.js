@@ -1,117 +1,117 @@
-import { setTimeout } from 'node:timers/promises'
+import { setTimeout } from "node:timers/promises";
 import {
   randomId,
   symmetricGenerateEncryptionKey,
   symmetricEncryptFields,
-  symmetricDecryptFields
-} from '@1auth/crypto'
+  symmetricDecryptFields,
+} from "@1auth/crypto";
 
-const id = 'authn'
+const id = "authn";
 
 const defaults = {
   id,
   log: false,
   store: undefined,
   notify: undefined,
-  table: 'authentications',
+  table: "authentications",
   idGenerate: true,
-  idPrefix: 'authn',
+  idPrefix: "authn",
   randomId: { ...randomId },
   authenticationDuration: 100, // minimum duration authentication should take (ms)
   usernameExists: [], // hooks to allow what to be used as a username
-  encryptedFields: ['value']
-}
-const options = {}
+  encryptedFields: ["value"],
+};
+const options = {};
 export default (opt = {}) => {
-  Object.assign(options, defaults, opt)
-}
-export const getOptions = () => options
+  Object.assign(options, defaults, opt);
+};
+export const getOptions = () => options;
 
 export const exists = async (credentialOptions, sub, params) => {
-  const type = makeType(credentialOptions)
+  const type = makeType(credentialOptions);
   const list = await options.store.selectList(options.table, {
     ...params,
     sub,
-    type
-  })
-  return list.length > 1
-}
+    type,
+  });
+  return list.length > 1;
+};
 
 export const count = async (credentialOptions, sub) => {
-  const type = makeType(credentialOptions)
+  const type = makeType(credentialOptions);
   const credentials = await options.store.selectList(
     options.table,
     { sub, type },
-    ['verify', 'expire']
-  )
-  let count = 0
-  const now = nowInSeconds()
-  for (let i = credentials.length; i--;) {
-    const credential = credentials[i]
+    ["verify", "expire"],
+  );
+  let count = 0;
+  const now = nowInSeconds();
+  for (let i = credentials.length; i--; ) {
+    const credential = credentials[i];
     if (credential.expire && credential.expire < now) {
-      continue
+      continue;
     }
     if (!credential.verify) {
-      continue
+      continue;
     }
-    count += 1
+    count += 1;
   }
-  return count
-}
+  return count;
+};
 
 export const list = async (credentialOptions, sub, params, fields) => {
-  const type = makeType(credentialOptions)
+  const type = makeType(credentialOptions);
   const items = await options.store.selectList(
     options.table,
     {
       ...params,
       sub,
-      type
+      type,
     },
-    fields
-  )
+    fields,
+  );
   // const now = nowInSeconds();
-  const list = []
-  for (let i = items.length; i--;) {
-    const item = items[i]
+  const list = [];
+  for (let i = items.length; i--; ) {
+    const item = items[i];
     // TODO need filter for expire
     // if (credential.expire < now) {
     //   continue;
     // }
-    const { encryptionKey: encryptedKey } = item
-    delete item.encryptionKey
+    const { encryptionKey: encryptedKey } = item;
+    delete item.encryptionKey;
     const decryptedItem = symmetricDecryptFields(
       item,
       { encryptedKey, sub },
-      options.encryptedFields
-    )
-    list.push(decryptedItem)
+      options.encryptedFields,
+    );
+    list.push(decryptedItem);
   }
-  return list
-}
+  return list;
+};
 
 const createCredential = async (
   credentialOptions,
   sub,
-  { id, value, ...values }
+  { id, value, ...values },
 ) => {
-  const now = nowInSeconds()
-  const type = makeType(credentialOptions)
-  let { otp, expire } = credentialOptions
-  expire &&= now + expire
+  const now = nowInSeconds();
+  const type = makeType(credentialOptions);
+  let { otp, expire } = credentialOptions;
+  expire &&= now + expire;
 
   if (options.idGenerate) {
-    id ??= await options.randomId.create(options.idPrefix)
+    id ??= await options.randomId.create(options.idPrefix);
   }
-  value ??= credentialOptions.create()
-  const encodedValue = await credentialOptions.encode(value)
+  value ??= credentialOptions.create();
+  const encodedValue = await credentialOptions.encode(value);
 
-  const { encryptionKey, encryptedKey } = symmetricGenerateEncryptionKey(sub)
+  const { encryptionKey, encryptedKey } = symmetricGenerateEncryptionKey(sub);
   const encryptedValues = symmetricEncryptFields(
     { ...values, value: encodedValue },
     { encryptionKey, sub },
-    options.encryptedFields
-  )
+    options.encryptedFields,
+  );
   const params = {
     ...encryptedValues,
     sub,
@@ -120,239 +120,239 @@ const createCredential = async (
     encryptionKey: encryptedKey,
     create: now,
     update: now,
-    expire
-  }
+    expire,
+  };
   if (options.idGenerate) {
-    params.id = id
+    params.id = id;
   }
-  return params
-}
+  return params;
+};
 
 export const create = async (credentialOptions, sub, values) => {
-  const params = await createCredential(credentialOptions, sub, values)
-  const row = await options.store.insert(options.table, params)
-  return { ...params, id: row.id }
-}
+  const params = await createCredential(credentialOptions, sub, values);
+  const row = await options.store.insert(options.table, params);
+  return { ...params, id: row.id };
+};
 
 export const createList = async (credentialOptions, sub, list) => {
   const rows = await Promise.all(
-    list.map((values) => createCredential(credentialOptions, sub, values))
-  )
-  const params = rows[0]
-  const res = await options.store.insertList(options.table, rows)
-  return { ...params, id: res }
-}
+    list.map((values) => createCredential(credentialOptions, sub, values)),
+  );
+  const params = rows[0];
+  const res = await options.store.insertList(options.table, rows);
+  return { ...params, id: res };
+};
 
 export const update = async (
   credentialOptions,
-  { id, sub, encryptionKey, encryptedKey, value, ...values }
+  { id, sub, encryptionKey, encryptedKey, value, ...values },
 ) => {
-  const now = nowInSeconds()
+  const now = nowInSeconds();
   // const type = makeType(credentialOptions);
 
-  const encodedValue = await credentialOptions.encode(value)
+  const encodedValue = await credentialOptions.encode(value);
 
   const encryptedValues = symmetricEncryptFields(
     { ...values, value: encodedValue },
     { encryptionKey, encryptedKey, sub },
-    options.encryptedFields
-  )
+    options.encryptedFields,
+  );
 
   return options.store.update(
     options.table,
     { sub, id },
     {
       ...encryptedValues,
-      update: now
-    }
-  )
-}
+      update: now,
+    },
+  );
+};
 
 export const subject = async (username) => {
   return Promise.all(
     options.usernameExists.map((exists) => {
-      return exists(username)
-    })
+      return exists(username);
+    }),
   ).then((identities) => {
-    return identities.filter((lookup) => lookup)?.[0]
-  })
-}
+    return identities.filter((lookup) => lookup)?.[0];
+  });
+};
 
 export const authenticate = async (credentialOptions, username, secret) => {
-  const sub = await subject(username)
+  const sub = await subject(username);
 
-  const timeout = setTimeout(options.authenticationDuration)
-  const type = makeType(credentialOptions)
+  const timeout = setTimeout(options.authenticationDuration);
+  const type = makeType(credentialOptions);
 
   const credentials = await options.store.selectList(
     options.table,
     {
       sub,
-      type
+      type,
     },
-    ['id', 'encryptionKey', 'value', 'otp', 'verify', 'expire', 'sourceId']
-  )
-  const now = nowInSeconds()
-  let valid
-  let skipIgnoredCount = 0
-  let skipExpiredCount = 0
+    ["id", "encryptionKey", "value", "otp", "verify", "expire", "sourceId"],
+  );
+  const now = nowInSeconds();
+  let valid;
+  let skipIgnoredCount = 0;
+  let skipExpiredCount = 0;
   for (const credential of credentials) {
     // non-opt credentials must be verified before use
     if (!credential.otp && !credential.verify) {
-      skipIgnoredCount += 1
-      continue
+      skipIgnoredCount += 1;
+      continue;
     }
     // skip expired
     if (credential.expire < now) {
-      skipExpiredCount += 1
-      continue
+      skipExpiredCount += 1;
+      continue;
     }
-    const { encryptionKey: encryptedKey } = credential
+    const { encryptionKey: encryptedKey } = credential;
     const decryptedCredential = symmetricDecryptFields(
       credential,
       { encryptedKey, sub },
-      options.encryptedFields
-    )
-    let { value, ...values } = decryptedCredential
-    value = await credentialOptions.decode(value)
+      options.encryptedFields,
+    );
+    let { value, ...values } = decryptedCredential;
+    value = await credentialOptions.decode(value);
     try {
-      valid = await credentialOptions.verify(secret, value, values)
+      valid = await credentialOptions.verify(secret, value, values);
     } catch (e) {
       if (options.log) {
-        options.log(e)
+        options.log(e);
       }
-      continue
+      continue;
     }
     if (valid) {
-      const { id, otp } = credential
+      const { id, otp } = credential;
       if (otp) {
-        await expire(credentialOptions, sub, id, { lastused: now })
+        await expire(credentialOptions, sub, id, { lastused: now });
       } else {
-        const now = nowInSeconds()
+        const now = nowInSeconds();
         await options.store.update(
           options.table,
           { id, sub },
-          { lastused: now }
-        )
+          { lastused: now },
+        );
       }
 
       if (credentialOptions.cleanup) {
-        await credentialOptions.cleanup(sub, value, values)
+        await credentialOptions.cleanup(sub, value, values);
       }
-      break
+      break;
     }
   }
 
-  await timeout
+  await timeout;
   if (!valid) {
-    let cause = 'invalid'
-    const credentialsCount = credentials.length - skipIgnoredCount
+    let cause = "invalid";
+    const credentialsCount = credentials.length - skipIgnoredCount;
     if (credentialsCount === 0) {
-      cause = 'missing'
+      cause = "missing";
     } else if (skipExpiredCount === credentialsCount) {
-      cause = 'expired'
+      cause = "expired";
     }
-    throw new Error('401 Unauthorized', { cause })
+    throw new Error("401 Unauthorized", { cause });
   }
-  return sub
-}
+  return sub;
+};
 
 export const verifySecret = async (credentialOptions, sub, id) => {
   // const type = makeType(credentialOptions);
-  const now = nowInSeconds()
+  const now = nowInSeconds();
   await options.store.update(
     options.table,
     { sub, id },
-    { update: now, verify: now }
-  )
-}
+    { update: now, verify: now },
+  );
+};
 
 // TODO add in sourceId as filter for messengers
 export const verify = async (credentialOptions, sub, input) => {
-  const timeout = setTimeout(options.authenticationDuration)
-  const type = makeType(credentialOptions)
+  const timeout = setTimeout(options.authenticationDuration);
+  const type = makeType(credentialOptions);
 
   const credentials = await options.store.selectList(options.table, {
     sub,
-    type
-  })
+    type,
+  });
 
-  const now = nowInSeconds()
-  let valid
-  let credential
-  let skipExpiredCount = 0
+  const now = nowInSeconds();
+  let valid;
+  let credential;
+  let skipExpiredCount = 0;
   for (credential of credentials) {
     // skip expired
     if (credential.expire < now) {
-      skipExpiredCount += 1
-      continue
+      skipExpiredCount += 1;
+      continue;
     }
-    const { encryptionKey: encryptedKey } = credential
+    const { encryptionKey: encryptedKey } = credential;
     const decryptedCredential = symmetricDecryptFields(
       credential,
       { encryptedKey, sub },
-      options.encryptedFields
-    )
-    let { value, ...values } = decryptedCredential
-    value = await credentialOptions.decode(value)
+      options.encryptedFields,
+    );
+    let { value, ...values } = decryptedCredential;
+    value = await credentialOptions.decode(value);
     try {
-      valid = await credentialOptions.verify(input, value, values)
+      valid = await credentialOptions.verify(input, value, values);
     } catch (e) {
       if (options.log) {
-        options.log(e)
+        options.log(e);
       }
-      continue
+      continue;
     }
     if (valid) {
-      const { id, otp } = credential
+      const { id, otp } = credential;
       if (otp) {
-        await remove(credentialOptions, sub, id)
+        await remove(credentialOptions, sub, id);
       }
-      break
+      break;
     }
   }
 
-  await timeout
+  await timeout;
 
   if (!valid) {
-    let cause = 'invalid'
-    const credentialsCount = credentials.length
+    let cause = "invalid";
+    const credentialsCount = credentials.length;
     if (credentialsCount === 0) {
-      cause = 'missing'
+      cause = "missing";
     } else if (skipExpiredCount === credentialsCount) {
-      cause = 'expired'
+      cause = "expired";
     }
-    throw new Error('401 Unauthorized', { cause })
+    throw new Error("401 Unauthorized", { cause });
   }
-  return { ...credential, ...valid }
-}
+  return { ...credential, ...valid };
+};
 
 export const expire = async (credentialOptions, sub, id, values) => {
   // const type = makeType(credentialOptions);
   await options.store.update(
     options.table,
     { sub, id },
-    { ...values, expire: nowInSeconds() - 1 }
-  )
-}
+    { ...values, expire: nowInSeconds() - 1 },
+  );
+};
 
 export const remove = async (credentialOptions, sub, id) => {
-  const type = makeType(credentialOptions)
-  await options.store.remove(options.table, { id, type, sub })
-}
+  const type = makeType(credentialOptions);
+  await options.store.remove(options.table, { id, type, sub });
+};
 
 export const select = async (credentialOptions, sub, id) => {
-  const type = makeType(credentialOptions)
-  const item = await options.store.select(options.table, { id, type, sub })
-  const { encryptionKey: encryptedKey } = item
-  delete item.encryptionKey
+  const type = makeType(credentialOptions);
+  const item = await options.store.select(options.table, { id, type, sub });
+  const { encryptionKey: encryptedKey } = item;
+  delete item.encryptionKey;
   const decryptedItem = symmetricDecryptFields(
     item,
     { encryptedKey, sub },
-    options.encryptedFields
-  )
-  return decryptedItem
-}
+    options.encryptedFields,
+  );
+  return decryptedItem;
+};
 
 // TODO manage onboard state
 
@@ -361,5 +361,5 @@ export const select = async (credentialOptions, sub, id) => {
 // TODO authorize management?
 
 const makeType = (credentialOptions) =>
-  credentialOptions.id + '-' + credentialOptions.type
-const nowInSeconds = () => Math.floor(Date.now() / 1000)
+  credentialOptions.id + "-" + credentialOptions.type;
+const nowInSeconds = () => Math.floor(Date.now() / 1000);

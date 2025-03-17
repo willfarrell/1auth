@@ -1,4 +1,4 @@
-export default (table = 'authentications') => {
+export default (table = "authentications") => {
   return `
   CREATE TABLE IF NOT EXISTS ${table}
   (
@@ -20,5 +20,5 @@ export default (table = 'authentications') => {
 
     CONSTRAINT ${table}_pkey PRIMARY KEY (id)
   );
-  `
-}
+  `;
+};
