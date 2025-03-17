@@ -91,7 +91,7 @@ test("fuzz accountUsernameLookup w/ `string`", async () => {
   fc.assert(
     fc.asyncProperty(fc.string(), async (username) => {
       try {
-        await accountUsernameLookup(sub, username);
+        await accountUsernameLookup(username);
       } catch (e) {
         catchError(username, e);
       }
