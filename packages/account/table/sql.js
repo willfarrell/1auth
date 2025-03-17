@@ -1,4 +1,4 @@
-export default (table = 'accounts') => {
+export default (table = "accounts") => {
   return `
   CREATE TABLE IF NOT EXISTS ${table}
   (
@@ -22,5 +22,5 @@ export default (table = 'accounts') => {
     CONSTRAINT ${table}_pkey PRIMARY KEY (sub)
     -- CONSTRAINT ${table}_ukey PRIMARY KEY (digest)
   );
-  `
-}
+  `;
+};

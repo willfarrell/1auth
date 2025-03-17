@@ -1,79 +1,79 @@
-export default (table = 'authentications', { timeToLiveKey } = {}) => {
-  timeToLiveKey ??= 'remove'
+export default (table = "authentications", { timeToLiveKey } = {}) => {
+  timeToLiveKey ??= "remove";
   return {
     TableName: table,
     AttributeDefinitions: [
       {
-        AttributeName: 'id',
-        AttributeType: 'S'
+        AttributeName: "id",
+        AttributeType: "S",
       },
       {
-        AttributeName: 'sub',
-        AttributeType: 'S'
+        AttributeName: "sub",
+        AttributeType: "S",
       },
       {
-        AttributeName: 'type',
-        AttributeType: 'S'
+        AttributeName: "type",
+        AttributeType: "S",
       },
       {
-        AttributeName: 'expire',
-        AttributeType: 'N'
-      }
+        AttributeName: "expire",
+        AttributeType: "N",
+      },
     ],
     KeySchema: [
       {
-        AttributeName: 'sub',
-        KeyType: 'HASH'
+        AttributeName: "sub",
+        KeyType: "HASH",
       },
       {
-        AttributeName: 'id',
-        KeyType: 'RANGE'
-      }
+        AttributeName: "id",
+        KeyType: "RANGE",
+      },
     ],
     GlobalSecondaryIndexes: [
       {
-        IndexName: 'sub',
+        IndexName: "sub",
         KeySchema: [
           {
-            AttributeName: 'sub',
-            KeyType: 'HASH'
-          }
+            AttributeName: "sub",
+            KeyType: "HASH",
+          },
         ],
         Projection: {
-          ProjectionType: 'INCLUDE',
+          ProjectionType: "INCLUDE",
           NonKeyAttributes: [
-            'encryptionKey',
-            'value',
-            'name',
-            'create',
-            'verify',
-            'expire',
-            'lastused'
-          ]
-        }
+            "encryptionKey",
+            "value",
+            "name",
+            "create",
+            "verify",
+            "expire",
+            "lastused",
+          ],
+        },
       },
       {
-        IndexName: 'expire',
+        IndexName: "expire",
         KeySchema: [
           {
-            AttributeName: 'type',
-            KeyType: 'HASH'
+            AttributeName: "type",
+            KeyType: "HASH",
           },
           {
-            AttributeName: 'expire',
-            KeyType: 'RANGE'
-          }
+            AttributeName: "expire",
+            KeyType: "RANGE",
+          },
         ],
         Projection: {
-          ProjectionType: 'INCLUDE',
-          NonKeyAttributes: ['sub']
-        }
-      }
+          ProjectionType: "INCLUDE",
+          NonKeyAttributes: ["sub"],
+        },
+      },
     ],
     TimeToLiveSpecification: {
       Enabled: true,
-      AttributeName: timeToLiveKey
+      AttributeName: timeToLiveKey,
     },
-    BillingMode: 'PAY_PER_REQUEST'
-  }
-}
+    BillingMode: "PAY_PER_REQUEST",
+  };
+};

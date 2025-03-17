@@ -1,4 +1,4 @@
-export default (table = 'messengers') => {
+export default (table = "messengers") => {
   return `
   CREATE TABLE IF NOT EXISTS app.messengers
   (
@@ -18,5 +18,5 @@ export default (table = 'messengers') => {
 
     CONSTRAINT ${table}_pkey PRIMARY KEY (id)
   );
-  `
-}
+  `;
+};
