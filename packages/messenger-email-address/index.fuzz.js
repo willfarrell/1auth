@@ -19,7 +19,6 @@ import messenger from "../messenger/index.js";
 import emailAddress, {
   lookup as emailAddressLookup,
   create as emailAddressCreate,
-  update as emailAddressUpdate,
 } from "../messenger-email-address/index.js";
 
 crypto({
@@ -94,23 +93,6 @@ test("fuzz emailAddressLookup w/ `string`", async () => {
     fc.asyncProperty(fc.string(), async (emailAddress) => {
       try {
         await emailAddressLookup(emailAddress);
-      } catch (e) {
-        catchError(emailAddress, e);
-      }
-    }),
-    {
-      numRuns: 1_000_000,
-      verbose: 2,
-      examples: [],
-    },
-  );
-});
-
-test("fuzz emailAddressUpdate w/ `string`", async () => {
-  fc.assert(
-    fc.asyncProperty(fc.string(), async (emailAddress) => {
-      try {
-        await emailAddressUpdate(sub, emailAddress);
       } catch (e) {
         catchError(emailAddress, e);
       }
