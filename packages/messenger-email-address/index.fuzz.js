@@ -93,7 +93,7 @@ test("fuzz emailAddressLookup w/ `string`", async () => {
   fc.assert(
     fc.asyncProperty(fc.string(), async (emailAddress) => {
       try {
-        await emailAddressLookup(sub, emailAddress);
+        await emailAddressLookup(emailAddress);
       } catch (e) {
         catchError(emailAddress, e);
       }
