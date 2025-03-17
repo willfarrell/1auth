@@ -74,7 +74,7 @@ test("fuzz accountUsernameExists w/ `string`", async () => {
   fc.assert(
     fc.asyncProperty(fc.string(), async (username) => {
       try {
-        await accountUsernameExists(sub, username);
+        await accountUsernameExists(username);
       } catch (e) {
         catchError(username, e);
       }
