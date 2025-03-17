@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 
-const db = {};
+const db = Object.create(null);
 
 const options = {
   id: "",
