@@ -27,6 +27,9 @@ jobs:
           npm ci
       - name: Fuzzing tests
         run: |
+          npm run test:dynamodb &
+          PID=$!
           npm run test:dast:fuzz
+          kill ${PID}
 
 # zaproxy Endpoint Fuzzing

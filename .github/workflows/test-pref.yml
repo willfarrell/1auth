@@ -27,4 +27,7 @@ jobs:
           npm ci
       - name: Benchmarking tests
         run: |
+          npm run test:dynamodb &
+          PID=$!
           npm run test:perf
+          kill ${PID}
