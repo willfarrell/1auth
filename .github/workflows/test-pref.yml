@@ -27,6 +27,7 @@ jobs:
           npm ci
       - name: Benchmarking tests
         run: |
+          num run test:dynamodb:update
           npm run test:dynamodb &
           PID=$!
           npm run test:perf
