@@ -1,6 +1,6 @@
 {
   "name": "@1auth/monorepo",
-  "version": "0.0.0-alpha.63",
+  "version": "0.0.0-alpha.64",
   "description": "",
   "private": true,
   "type": "module",
@@ -14,6 +14,7 @@
     "git:commit-msg": "commitlint --config commitlint.config.cjs --edit",
     "git:lint-staged": "prettier --check --log-level error",
     "git:test-staged": "node --test",
+    "preinstall": "npm link --workspaces",
     "start": "cd server && node --watch index.js",
     "test": "npm run test:lint && npm run test:unit && npm run test:sast && npm run test:perf && npm run test:dast",
     "test:lint": "prettier --write --log-level warn \"./**/*.{js,cjs,mjs,json}\"",
