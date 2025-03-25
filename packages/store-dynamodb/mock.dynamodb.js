@@ -15,4 +15,5 @@ export const client = new DynamoDBClient({
     accessKeyId: "test",
     secretAccessKey: "secret",
   },
+  maxRetries: 10,
 });

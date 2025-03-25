@@ -19,7 +19,7 @@
     "test": "npm run test:lint && npm run test:unit && npm run test:sast && npm run test:perf && npm run test:dast",
     "test:lint": "prettier --write --log-level warn \"./**/*.{js,cjs,mjs,json}\"",
     "test:lint:ci": "prettier --check --log-level error \"./**/*.{js,cjs,mjs,json}\"",
-    "test:unit": "node --test --experimental-test-coverage --test-coverage-lines=90 --test-coverage-branches=80 --test-coverage-functions=80",
+    "test:unit": "node --test --experimental-test-coverage --test-coverage-lines=91 --test-coverage-branches=84 --test-coverage-functions=90",
     "test:sast": "npm run test:sast:sandworm && npm run test:sast:semgrep && npm run test:sast:trufflehog",
     "test:sast:sandworm": "sandworm-audit --skip-all --show-tips false",
     "test:sast:semgrep": "semgrep scan --config auto",
@@ -38,7 +38,7 @@
     "update": "npm update --workspaces && npm install --workspaces",
     "outdated": "npm outdated --workspaces",
     "audit": "npm audit fix --workspaces",
-    "release:sync": "npm version $npm_package_version --workspaces && find ./packages -name \"package.json\" -exec sed -i '' -E \"s|\\\"@1auth/(.*)\\\": ([^,]*)|\\\"@1auth/\\1\\\": $(npm pkg get version)|g\" {} \\;",
+    "release:sync": "npm version $npm_package_version --workspaces && find ./packages -name \"package.json\" -exec sed -i '' -E \"s|\\\"@1auth/(.*)\\\": ([^,]*)|\\\"@1auth/\\1\\\": $(npm pkg get version)|g\" {} \\; && npm run rm:node_modules && npm run install",
     "release:tag": "git tag $npm_package_version && git push --tags",
     "release:publish": "npm publish --workspaces && npm update",
     "release:publish:next": "npm publish --tag next --workspaces"
