@@ -96,8 +96,9 @@ jobs:
           prerelease: ${{ needs.build.outputs.prerelease }}
           tag_name: ${{ needs.build.outputs.tag }}
           generate_release_notes: true
-          files: |
-            **/*.tgz
+          # Disabled, covered by GitHub Attestations & npm
+          #files: |
+          #  **/*.tgz
     outputs:
       tag: ${{ needs.build.outputs.tag }}
       prerelease: ${{ needs.build.outputs.prerelease}}
