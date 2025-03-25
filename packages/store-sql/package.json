@@ -1,6 +1,6 @@
 {
   "name": "@1auth/store-sql",
-  "version": "0.0.0-alpha.62",
+  "version": "0.0.0-alpha.63",
   "description": "",
   "type": "module",
   "engines": {
@@ -41,7 +41,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "github:willfarrell/1auth",
+    "url": "git+https://github.com/willfarrell/1auth.git",
     "directory": "packages/store-dynamodb"
   },
   "bugs": {
