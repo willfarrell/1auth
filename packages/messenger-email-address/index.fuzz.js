@@ -55,7 +55,7 @@ const catchError = (input, e) => {
 };
 
 test("fuzz emailAddressCreate w/ `string`", async () => {
-  fc.assert(
+  await fc.assert(
     fc.asyncProperty(fc.emailAddress(), async (emailAddress) => {
       try {
         await emailAddressCreate(sub, emailAddress);
@@ -72,7 +72,7 @@ test("fuzz emailAddressCreate w/ `string`", async () => {
 });
 
 test("fuzz emailAddressCreate w/ `string`", async () => {
-  fc.assert(
+  await fc.assert(
     fc.asyncProperty(fc.string(), async (emailAddress) => {
       try {
         await emailAddressCreate(sub, emailAddress);
@@ -89,7 +89,7 @@ test("fuzz emailAddressCreate w/ `string`", async () => {
 });
 
 test("fuzz emailAddressLookup w/ `string`", async () => {
-  fc.assert(
+  await fc.assert(
     fc.asyncProperty(fc.string(), async (emailAddress) => {
       try {
         await emailAddressLookup(emailAddress);

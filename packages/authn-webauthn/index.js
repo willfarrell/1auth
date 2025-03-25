@@ -1,3 +1,4 @@
+import { makeRandomConfigObject } from "@1auth/crypto";
 import {
   getOptions as authnGetOptions,
   authenticate as authnAuthenticate,
@@ -23,17 +24,14 @@ import { isoUint8Array } from "@simplewebauthn/server/helpers";
 
 const id = "WebAuthn";
 // minimumAuthenticateAllowCredentials: 3, // Add fake auth ids
-const token = {
-  id,
-  type: "token",
-  // entropy: 64, // ASVS 2.9.2
-  // minLength: entropyToCharacterLength(64, charactersAlphaNumeric.length),
-  otp: true,
-  expire: 10 * 60,
-  // create: async () => randomAlphaNumeric(secret.minLength),
-  encode: (value) => JSON.stringify(value),
-  decode: (value) => JSON.parse(value),
-  verify: async (response, value) => {
+
+export const token = ({
+  type = "token",
+  otp = true,
+  expire = 10 * 60,
+  encode = (value) => JSON.stringify(value),
+  decode = (value) => JSON.parse(value),
+  verify = async (response, value) => {
     const { verified, registrationInfo } = await verifyRegistrationResponse({
       ...value,
       response,
@@ -41,46 +39,59 @@ const token = {
     if (!verified) throw new Error("Failed verifyRegistrationResponse");
     return { registrationInfo: jsonEncodeSecret(registrationInfo) };
   },
-};
+  ...params
+} = {}) =>
+  makeRandomConfigObject({
+    id,
+    type,
+    otp,
+    expire,
+    encode,
+    decode,
+    verify,
+    ...params,
+  });
 
-const secret = {
-  id,
-  type: "secret",
-  // entropy: 64, // ASVS 2.9.2
-  // charPool: characterPoolSize.base64,
-  // minLength: entropyToCharacterLength(64, charactersAlphaNumeric.length),
-  otp: false,
-  encode: (value) => {
+export const secret = ({
+  type = "secret",
+  otp = false,
+  encode = (value) => {
     value = jsonEncodeSecret(value);
     value = JSON.stringify(value);
     return value;
   },
-  decode: (value) => {
+  decode = (value) => {
     value = JSON.parse(value);
     value = jsonParseSecret(value);
     return value;
   },
-};
+  ...params
+} = {}) =>
+  makeRandomConfigObject({
+    id,
+    type,
+    otp,
+    encode,
+    decode,
+    ...params,
+  });
 
-const challenge = {
-  id,
-  type: "challenge",
-  // entropy: 64, // ASVS 2.9.2
-  // minLength: entropyToCharacterLength(112, charactersAlphaNumeric.length),
-  otp: true,
-  expire: 10 * 60,
+export const challenge = ({
+  type = "challenge",
+  otp = true,
+  expire = 10 * 60,
   // create: () => randomAlphaNumeric(challenge.minLength),
-  encode: (value) => {
+  encode = (value) => {
     value.authenticator = jsonEncodeSecret(value.authenticator);
     value = JSON.stringify(value);
     return value;
   },
-  decode: (value) => {
+  decode = (value) => {
     value = JSON.parse(value);
     value.authenticator = jsonParseSecret(value.authenticator);
     return value;
   },
-  verify: async (response, value) => {
+  verify = async (response, value) => {
     const { verified, authenticationInfo } = await verifyAuthenticationResponse(
       {
         ...value,
@@ -93,7 +104,7 @@ const challenge = {
     // value.authenticator = jsonEncodeSecret(value.authenticator)
     return true;
   },
-  cleanup: async (sub, value, { sourceId } = {}) => {
+  cleanup = async (sub, value, { sourceId } = {}) => {
     // update counter & lastused on secret
     const now = nowInSeconds();
     const { encryptionKey } = await options.store.select(
@@ -111,15 +122,28 @@ const challenge = {
       lastused: now,
     });
   },
-};
+  ...params
+} = {}) =>
+  makeRandomConfigObject({
+    id,
+    type,
+    otp,
+    expire,
+    encode,
+    decode,
+    verify,
+    cleanup,
+    ...params,
+  });
+
 const defaults = {
   id,
   origin: undefined, // with https://
   name: undefined,
   userVerification: "preferred",
-  secret,
-  token,
-  challenge,
+  secret: secret(),
+  token: token(),
+  challenge: challenge(),
 };
 const options = {};
 export default (params) => {

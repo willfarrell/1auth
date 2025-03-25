@@ -13,7 +13,7 @@ import crypto, {
   charactersNumeric,
   randomAlphaNumeric,
   randomNumeric,
-  randomId,
+  makeRandomConfigObject,
   createDigest,
   createSaltedDigest,
   createPepperedDigest,
@@ -109,17 +109,21 @@ describe("crypto", () => {
       ok(randomNumericRegExp.test(value));
     });
     const randomIdRegExp = /^[A-Za-z0-9]+$/;
-    it("randomId.create()", async () => {
+    it("makeRandomConfigObject()", async () => {
       const prefix = "";
+      const entropy = 128;
+      const randomId = makeRandomConfigObject({ prefix, entropy });
       const value = randomId.create(prefix);
-      equal(value.length, 11);
       ok(randomIdRegExp.test(value));
+      equal(value.length, 22);
     });
-    it("randomId.create(prefix)", async () => {
-      const prefix = "prefix";
-      const value = randomId.create(prefix);
-      equal(value.length, prefix.length + 1 + 11);
-      ok(new RegExp(`^${prefix}_[A-Za-z0-9]+$`).test(value));
+    it("makeRandomConfigObject(prefix)", async () => {
+      const prefix = "prefix_";
+      const entropy = 128;
+      const randomId = makeRandomConfigObject({ prefix, entropy });
+      const value = randomId.create();
+      ok(new RegExp(`^${prefix}[A-Za-z0-9_-]+$`).test(value));
+      equal(value.length, prefix.length + 22);
     });
   });
 
@@ -165,7 +169,7 @@ describe("crypto", () => {
 
       const parts = parseSecretHash(hash);
       equal(parts.type, "argon2id");
-      equal(parts.memoryCost, 65536);
+      equal(parts.memoryCost, 32768);
       equal(parts.timeCost, 3);
       equal(parts.parallelism, 1);
       equal(parts.version, 19);
@@ -182,7 +186,7 @@ describe("crypto", () => {
 
       const parts = parseSecretHash(hash);
       equal(parts.type, "argon2id");
-      equal(parts.memoryCost, 65536);
+      equal(parts.memoryCost, 32768);
       equal(parts.timeCost, 3);
       equal(parts.parallelism, 1);
       equal(parts.version, 19);

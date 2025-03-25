@@ -22,6 +22,7 @@ import authn from "../authn/index.js";
 
 import accessToken, {
   authenticate as accessTokenAuthenticate,
+  exists as accessTokenExists,
   create as accessTokenCreate,
 } from "../authn-access-token/index.js";
 
@@ -67,11 +68,28 @@ const catchError = (input, e) => {
   throw e;
 };
 
-test("fuzz accessTokenAuthenticate w/ `string`", async () => {
-  fc.assert(
-    fc.asyncProperty(fc.string(), async (secret) => {
+test("fuzz accessTokenAuthenticate w/ `string`, `string`", async () => {
+  await fc.assert(
+    fc.asyncProperty(fc.string(), fc.string(), async (username, secret) => {
       try {
         await accessTokenAuthenticate(username, secret);
+      } catch (e) {
+        catchError({ username, secret }, e);
+      }
+    }),
+    {
+      numRuns: 10,
+      verbose: 2,
+      examples: [],
+    },
+  );
+});
+
+test("fuzz accessTokenExists w/ `string`", async () => {
+  await fc.assert(
+    fc.asyncProperty(fc.string(), async (secret) => {
+      try {
+        await accessTokenExists(secret);
       } catch (e) {
         catchError(secret, e);
       }

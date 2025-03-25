@@ -2,6 +2,7 @@ import {
   charactersAlphaNumeric,
   entropyToCharacterLength,
   randomAlphaNumeric,
+  makeRandomConfigObject,
   createSeasonedDigest,
   symmetricGenerateEncryptionKey,
   symmetricEncrypt,
@@ -12,23 +13,26 @@ import {
 } from "@1auth/crypto";
 
 const id = "session";
-const randomId = {
-  id,
-  type: "id",
-  minLength: entropyToCharacterLength(128, charactersAlphaNumeric.length), // ASVS 3.2.2
-  expire: 15 * 60,
-  create: async (prefix) =>
-    (prefix ? prefix + "_" : "") + randomAlphaNumeric(randomId.minLength),
-};
-const randomSessionId = {
-  id,
-  type: "id",
-  minLength: entropyToCharacterLength(128, charactersAlphaNumeric.length), // ASVS 3.2.2
-  expire: 15 * 60,
-  create: async (prefix) =>
-    (prefix ? prefix + "_" : "") +
-    randomAlphaNumeric(randomSessionId.minLength),
-};
+
+export const randomId = ({ prefix = "session_", ...params } = {}) =>
+  makeRandomConfigObject({
+    id,
+    prefix,
+    ...params,
+  });
+export const randomSessionId = ({
+  prefix = "sid_",
+  entropy = 128,
+  expire = 15 * 60,
+  ...params
+} = {}) =>
+  makeRandomConfigObject({
+    id,
+    prefix,
+    entropy,
+    expire,
+    ...params,
+  });
 
 const defaults = {
   id,
@@ -37,10 +41,9 @@ const defaults = {
   notify: undefined,
   table: "sessions",
   idGenerate: true, // turn off to allow DB to handle
-  idPrefix: "session",
-  randomId,
-  randomSessionId,
-  expire: randomId.expire,
+  randomId: randomId(),
+  randomSessionId: randomSessionId(),
+  expire: 15 * 60,
   // encryptedFields: ["value"],
   encode: (value) => JSON.stringify(value),
   decode: (value) => JSON.parse(value),

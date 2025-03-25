@@ -54,7 +54,7 @@ const catchError = (input, e) => {
 };
 
 test("fuzz accountUsernameCreate w/ `string`", async () => {
-  fc.assert(
+  await fc.assert(
     fc.asyncProperty(fc.string(), async (username) => {
       try {
         await accountUsernameCreate(sub, username);
@@ -71,7 +71,7 @@ test("fuzz accountUsernameCreate w/ `string`", async () => {
 });
 
 test("fuzz accountUsernameExists w/ `string`", async () => {
-  fc.assert(
+  await fc.assert(
     fc.asyncProperty(fc.string(), async (username) => {
       try {
         await accountUsernameExists(username);
@@ -88,7 +88,7 @@ test("fuzz accountUsernameExists w/ `string`", async () => {
 });
 
 test("fuzz accountUsernameLookup w/ `string`", async () => {
-  fc.assert(
+  await fc.assert(
     fc.asyncProperty(fc.string(), async (username) => {
       try {
         await accountUsernameLookup(username);
@@ -105,7 +105,7 @@ test("fuzz accountUsernameLookup w/ `string`", async () => {
 });
 
 test("fuzz accountUsernameUpdate w/ `string`", async () => {
-  fc.assert(
+  await fc.assert(
     fc.asyncProperty(fc.string(), async (username) => {
       try {
         await accountUsernameUpdate(sub, username);

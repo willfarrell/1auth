@@ -2,6 +2,7 @@ import {
   charactersAlphaNumeric,
   entropyToCharacterLength,
   randomAlphaNumeric,
+  makeRandomConfigObject,
   createSecretHash,
   verifySecretHash,
 } from "@1auth/crypto";
@@ -18,20 +19,29 @@ import {
 // aka lookup secret
 const id = "recoveryCodes";
 
-const secret = {
-  id,
-  type: "secret",
-  minLength: entropyToCharacterLength(112, charactersAlphaNumeric.length),
-  otp: true,
-  create: async () => randomAlphaNumeric(secret.minLength),
-  encode: async (value) => createSecretHash(value),
-  decode: async (value) => value,
-  verify: async (value, hash) => verifySecretHash(hash, value),
-};
+export const secret = ({
+  type = "secret",
+  entropy = 112,
+  otp = true,
+  encode = (value) => createSecretHash(value),
+  decode = (value) => value,
+  verify = (value, hash) => verifySecretHash(hash, value),
+  ...params
+} = {}) =>
+  makeRandomConfigObject({
+    id,
+    type,
+    entropy,
+    otp,
+    encode,
+    decode,
+    verify,
+    ...params,
+  });
 
 const defaults = {
   id,
-  secret,
+  secret: secret(),
   count: 5,
 };
 const options = {};

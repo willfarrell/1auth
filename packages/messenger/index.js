@@ -4,7 +4,7 @@ import {
   randomNumeric,
   createSecretHash,
   verifySecretHash,
-  randomId,
+  makeRandomConfigObject,
   createSeasonedDigest,
   symmetricGenerateEncryptionKey,
   symmetricEncryptFields,
@@ -19,17 +19,34 @@ import {
 
 const id = "messenger";
 
-const token = {
-  id,
-  type: "token",
-  minLength: entropyToCharacterLength(19, charactersNumeric.length),
-  otp: true,
-  expire: 10 * 60,
-  create: async () => randomNumeric(token.minLength),
-  encode: async (value) => createSecretHash(value),
-  decode: async (value) => value,
-  verify: async (value, hash) => verifySecretHash(hash, value),
-};
+export const randomId = ({ prefix = "messenger_", ...params } = {}) =>
+  makeRandomConfigObject({
+    id,
+    prefix,
+    ...params,
+  });
+
+export const token = ({
+  type = "token",
+  otp = true,
+  expire = 10 * 60,
+  create = () => randomNumeric(6),
+  encode = (value) => createSecretHash(value),
+  decode = (value) => value,
+  verify = (value, hash) => verifySecretHash(hash, value),
+  ...params
+} = {}) =>
+  makeRandomConfigObject({
+    id,
+    type,
+    otp,
+    expire,
+    create,
+    encode,
+    decode,
+    verify,
+    ...params,
+  });
 
 const defaults = {
   id,
@@ -37,9 +54,8 @@ const defaults = {
   notify: undefined,
   table: "messengers",
   idGenerate: true,
-  idPrefix: "messenger",
-  randomId: { ...randomId },
-  token,
+  randomId: randomId(),
+  token: token(),
   encryptedFields: ["value"],
 };
 

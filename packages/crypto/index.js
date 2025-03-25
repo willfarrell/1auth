@@ -1,6 +1,8 @@
 import { promisify } from "node:util";
 import {
   randomBytes,
+  randomInt,
+  randomUUID,
   createHash,
   createCipheriv,
   createDecipheriv,
@@ -12,6 +14,7 @@ import {
 } from "node:crypto";
 // https://github.com/napi-rs/node-rs/tree/main/packages/argon2
 import { hash as secretHash, verify as secretVerify } from "@node-rs/argon2";
+import { customAlphabet } from "nanoid";
 
 const generateKeyPair = promisify(generateKeyPairCallback);
 const sign = promisify(signCallback);
@@ -19,7 +22,7 @@ const verify = promisify(verifyCallback);
 
 const defaults = {
   symmetricEncryptionKey: undefined, // symmetricRandomEncryptionKey()
-  symmetricEncryptionAlgorithm: "chacha20-poly1305", // 2024-05: AES-256 GCM (aes-256-gcm) or ChaCha20-Poly1305 (chacha20-poly1305)
+  symmetricEncryptionAlgorithm: "chacha20-poly1305", // 2025-03: AES-256 GCM (aes-256-gcm) or ChaCha20-Poly1305 (chacha20-poly1305)
   symmetricEncryptionEncoding: undefined, // https://nodejs.org/api/buffer.html#buffers-and-character-encodings
   symmetricSignatureHashAlgorithm: undefined, // fallback to defaultHashAlgorithm
   symmetricSignatureSecret: undefined, // symmetricRandomSignatureSecret()
@@ -110,45 +113,24 @@ export const entropyToCharacterLength = (bits, characterPoolSize) => {
 }; */
 
 // *** Random generators *** //
-export const charactersAlpha = [
-  ..."ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz",
-];
-export const charactersNumeric = [..."0123456789"];
-export const charactersAlphaNumeric = charactersAlpha.concat(charactersNumeric);
+export { randomBytes, randomInt, randomUUID } from "node:crypto";
 
-// Ref: https://github.com/sindresorhus/crypto-random-string/blob/main/core.js
+export const charactersNumeric = "0123456789";
+export const charactersAlphaUpper = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+export const charactersAlphaLower = "abcdefghijklmnopqrstuvwxyz";
+export const charactersAlpha = charactersAlphaUpper + charactersAlphaLower;
+export const charactersAlphaNumeric = charactersAlpha + charactersNumeric;
+export const charactersDistinguishable = "CDEHKMPRTUWXY012458";
+
+const randomCharactersCache = {
+  charactersAlphaNumeric: customAlphabet(charactersAlphaNumeric),
+};
 export const randomCharacters = (
   length,
   characters = charactersAlphaNumeric,
 ) => {
-  // Generating entropy is faster than complex math operations, so we use the simplest way
-  const characterCount = characters.length;
-  const maxValidSelector =
-    Math.floor(0x1_00_00 / characterCount) * characterCount - 1; // Using values above this will ruin distribution when using modular division
-  const entropyLength = 2 * Math.ceil(1.1 * length); // Generating a bit more than required so chances we need more than one pass will be really low
-  let string = "";
-  let stringLength = 0;
-
-  while (stringLength < length) {
-    // In case we had many bad values, which may happen for character sets of size above 0x8000 but close to it
-    const entropy = new Uint8Array(randomBytes(entropyLength));
-    let entropyPosition = 0;
-
-    while (entropyPosition < entropyLength && stringLength < length) {
-      const entropyValue =
-        entropy[entropyPosition] + (entropy[entropyPosition + 1] << 8); // eslint-disable-line no-bitwise
-      entropyPosition += 2;
-      if (entropyValue > maxValidSelector) {
-        // Skip values which will ruin distribution when using modular division
-        continue;
-      }
-
-      string += characters[entropyValue % characterCount];
-      stringLength++;
-    }
-  }
-
-  return string;
+  randomCharactersCache[characters] ??= customAlphabet(characters);
+  return randomCharactersCache[characters](length);
 };
 
 export const randomAlphaNumeric = (characterLength) => {
@@ -156,16 +138,31 @@ export const randomAlphaNumeric = (characterLength) => {
 };
 
 export const randomNumeric = (characterLength) => {
-  return randomCharacters(characterLength, charactersNumeric);
+  let value = "";
+  for (let i = characterLength; i--; ) {
+    value += randomInt(9);
+  }
+  return value;
 };
 
 // *** configs *** //
-export const randomId = {
-  type: "id",
-  minLength: entropyToCharacterLength(64, charactersAlphaNumeric.length),
-  // TODO update to use https://github.com/jetpack-io/typeid
-  create: (prefix) =>
-    (prefix ? prefix + "_" : "") + randomAlphaNumeric(randomId.minLength),
+// Input: {id, prefix, entropy, characters, opt, expire}
+// Output: {id, type, opt, expire, create, ...}
+export const makeRandomConfigObject = ({
+  id,
+  prefix = "",
+  entropy = 64,
+  characters = charactersAlphaNumeric,
+  ...params
+} = {}) => {
+  const minLength = entropyToCharacterLength(entropy, characters.length);
+  const config = {
+    id,
+    type: "id",
+    create: () => prefix + randomCharacters(minLength, characters),
+    ...params,
+  };
+  return config;
 };
 
 // *** Digests *** //
@@ -268,13 +265,13 @@ export const createSeasonedDigest = (
 
 // *** Hashing *** //
 const hashOptions = {
-  timeCost: 3,
-  memoryCost: 2 ** 16,
+  timeCost: 3, // Default 3
+  memoryCost: 2 ** 15, // Default 2 ** 12 = 4MB
   saltLength: 16,
-  parallelism: 1,
-  outputLen: 64, // hashLength: 128
-  algorithm: 2,
-  version: 1,
+  parallelism: 1, // Default 1
+  outputLen: 64, // hashLength: 128 // Default 32
+  algorithm: 2, // Default 2 = Argon2id
+  version: 1, // Default 1 = version 19
 };
 
 export const createSecretHash = async (value, options = hashOptions) => {
