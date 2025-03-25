@@ -3,11 +3,7 @@ import fc from "fast-check";
 
 // *** Setup Start *** //
 import * as notify from "../notify-console/index.js";
-import * as store from "../store-sql/index.js"; // SQL used to prevent running out of memory
-
-import * as mockStoreSQL from "../store-sql/mock.sqlite.js";
-import accountSQLTable from "../account/table/sql.js";
-import sessionSQLTable from "../session/table/sql.js";
+import * as store from "../store-memory/index.js";
 
 import crypto, {
   symmetricRandomEncryptionKey,
@@ -40,18 +36,12 @@ crypto({
   digestChecksumSalt: randomChecksumSalt(),
   digestChecksumPepper: randomChecksumPepper(),
 });
+store.default({ log: false });
 notify.default({
   client: (id, sub, params) => {
     mocks.notifyClient(id, sub, params);
   },
 });
-
-store.default({
-  log: false, // mockStoreSQL.log,
-  query: mockStoreSQL.query,
-});
-await store.__table(accountSQLTable(accountGetOptions().table));
-await store.__table(sessionSQLTable(sessionGetOptions().table));
 
 account({
   store,
