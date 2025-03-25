@@ -1,8 +1,5 @@
 import { Bench } from "tinybench";
 import crypto, {
-  entropyToCharacterLength,
-  charactersAlphaNumeric,
-  charactersNumeric,
   randomAlphaNumeric,
   randomNumeric,
   randomChecksumSalt,
@@ -15,18 +12,11 @@ import crypto, {
   verifySecretHash,
   symmetricRandomEncryptionKey,
   symmetricGenerateEncryptionKey,
-  symmetricEncryptFields,
   symmetricEncrypt,
-  symmetricDecryptFields,
   symmetricDecrypt,
-  symmetricDecryptKey,
   symmetricRandomSignatureSecret,
   symmetricSignatureSign,
   symmetricSignatureVerify,
-  symmetricRotation,
-  makeAsymmetricKeys,
-  makeAsymmetricSignature,
-  verifyAsymmetricSignature,
   // safeEqual
 } from "../crypto/index.js";
 

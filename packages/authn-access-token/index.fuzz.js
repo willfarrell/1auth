@@ -1,5 +1,4 @@
 import { test } from "node:test";
-import { equal, ok } from "node:assert";
 import fc from "fast-check";
 
 // *** Setup Start *** //
