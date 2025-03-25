@@ -2,7 +2,7 @@ import {
   entropyToCharacterLength,
   charactersAlphaNumeric,
   randomAlphaNumeric,
-  randomId,
+  makeRandomConfigObject,
   symmetricGenerateEncryptionKey,
   makeAsymmetricKeys,
   symmetricEncryptFields,
@@ -10,12 +10,20 @@ import {
 } from "@1auth/crypto";
 
 const id = "account";
-const randomSubject = {
-  type: "id",
-  minLength: entropyToCharacterLength(64, charactersAlphaNumeric.length),
-  create: async (prefix) =>
-    (prefix ? prefix + "_" : "") + randomAlphaNumeric(randomSubject.minLength),
-};
+
+export const randomId = ({ prefix = "user_", ...params } = {}) =>
+  makeRandomConfigObject({
+    id,
+    prefix,
+    ...params,
+  });
+
+export const randomSubject = ({ prefix = "sub_", ...params } = {}) =>
+  makeRandomConfigObject({
+    id,
+    prefix,
+    ...params,
+  });
 
 const defaults = {
   id,
@@ -23,10 +31,8 @@ const defaults = {
   notify: undefined,
   table: "accounts",
   idGenerate: true,
-  idPrefix: "user",
-  subPrefix: "sub",
-  randomId,
-  randomSubject,
+  randomId: randomId(),
+  randomSubject: randomSubject(),
   encryptedFields: ["privateKey"], // TODO has encryption build-in
 };
 const options = {};

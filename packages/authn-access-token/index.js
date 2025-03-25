@@ -2,6 +2,7 @@ import {
   charactersAlphaNumeric,
   entropyToCharacterLength,
   randomAlphaNumeric,
+  makeRandomConfigObject,
   createSecretHash,
   verifySecretHash,
   createDigest,
@@ -19,22 +20,33 @@ import {
 
 const id = "accessToken";
 
-const secret = {
-  id,
-  type: "secret",
-  minLength: entropyToCharacterLength(112, charactersAlphaNumeric.length),
-  otp: false,
-  expire: 30 * 24 * 60 * 60,
-  create: async () => randomAlphaNumeric(secret.minLength),
-  encode: async (value) => createSecretHash(value),
-  decode: async (value) => value,
-  verify: async (value, hash) => verifySecretHash(hash, value),
-};
+export const secret = ({
+  type = "secret",
+  prefix = "pat-",
+  entropy = 112,
+  otp = false,
+  expire = 30 * 24 * 60 * 60,
+  encode = (value) => createSecretHash(value),
+  decode = (value) => value,
+  verify = (value, hash) => verifySecretHash(hash, value),
+  ...params
+} = {}) =>
+  makeRandomConfigObject({
+    id,
+    type,
+    prefix,
+    entropy,
+    otp,
+    expire,
+    encode,
+    decode,
+    verify,
+    ...params,
+  });
 
 const defaults = {
   id,
-  prefix: "pat", // Personal Access Token
-  secret,
+  secret: secret(),
 };
 const options = {};
 export default (opt = {}) => {
@@ -71,8 +83,7 @@ export const list = async (sub) => {
 
 // expire: expire duration (s)
 export const create = async (sub, values = {}) => {
-  const secretToken = await options.secret.create();
-  const secret = options.prefix + "-" + secretToken;
+  const secret = await options.secret.create();
   const digest = createDigest(secret);
   const now = nowInSeconds();
   const { id, expire } = await authnCreate(options.secret, sub, {

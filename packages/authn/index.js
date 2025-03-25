@@ -1,12 +1,19 @@
 import { setTimeout } from "node:timers/promises";
 import {
-  randomId,
+  makeRandomConfigObject,
   symmetricGenerateEncryptionKey,
   symmetricEncryptFields,
   symmetricDecryptFields,
 } from "@1auth/crypto";
 
 const id = "authn";
+
+export const randomId = ({ prefix = "authn_", ...params } = {}) =>
+  makeRandomConfigObject({
+    id,
+    prefix,
+    ...params,
+  });
 
 const defaults = {
   id,
@@ -15,8 +22,7 @@ const defaults = {
   notify: undefined,
   table: "authentications",
   idGenerate: true,
-  idPrefix: "authn",
-  randomId: { ...randomId },
+  randomId: randomId(),
   authenticationDuration: 100, // minimum duration authentication should take (ms)
   usernameExists: [], // hooks to allow what to be used as a username
   encryptedFields: ["value"],

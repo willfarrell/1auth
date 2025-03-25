@@ -7,6 +7,8 @@ import * as store from "../store-memory/index.js";
 import crypto, {
   symmetricRandomEncryptionKey,
   symmetricRandomSignatureSecret,
+  randomChecksumSalt,
+  randomChecksumPepper,
 } from "../crypto/index.js";
 
 import account, {

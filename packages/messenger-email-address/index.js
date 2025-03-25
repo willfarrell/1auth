@@ -7,6 +7,7 @@ import {
   lookup as messengerLookup,
   select as messengerSelect,
   list as messengerList,
+  token as messengerToken,
   getOptions as messengerOptions,
 } from "@1auth/messenger";
 
@@ -14,11 +15,15 @@ import { toASCII } from "tr46";
 
 const id = "emailAddress";
 
-const token = { ...messengerOptions().token, id };
+export const token = ({ ...params } = {}) =>
+  messengerToken({
+    id,
+    ...params,
+  });
 
 const defaults = {
   id,
-  token,
+  token: token(),
 
   // sanitize
   optionalDotDomains: [

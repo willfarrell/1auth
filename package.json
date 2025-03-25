@@ -5,7 +5,7 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": ">=23"
   },
   "engineStrict": true,
   "scripts": {
@@ -18,15 +18,15 @@
     "test": "npm run test:lint && npm run test:unit && npm run test:sast && npm run test:perf && npm run test:dast",
     "test:lint": "prettier --write --log-level warn \"./**/*.{js,cjs,mjs,json}\"",
     "test:lint:ci": "prettier --check --log-level error \"./**/*.{js,cjs,mjs,json}\"",
-    "test:unit": "node --test --experimental-test-coverage --test-coverage-functions=80",
+    "test:unit": "node --test --experimental-test-coverage --test-coverage-lines=90 --test-coverage-branches=80 --test-coverage-functions=80",
     "test:sast": "npm run test:sast:sandworm && npm run test:sast:semgrep && npm run test:sast:trufflehog",
     "test:sast:sandworm": "sandworm-audit --skip-all --show-tips false",
     "test:sast:semgrep": "semgrep scan --config auto",
     "test:sast:trufflehog": "trufflehog filesystem --only-verified --log-level=-1 ./",
     "test:perf": "node --test ./**/*.perf.js",
-    "test:dast": "npm run test:dast:fuzz",
+    "test:dast": "npm run test:dast:fuzz && npm run test:dast:zap",
     "test:dast:fuzz": "node --test ./**/*.fuzz.js",
-    "test:dast:zap": "echo TODO",
+    "test:dast:zap": "",
     "test:dynamodb:update": "docker pull amazon/dynamodb-local",
     "test:dynamodb": "docker run -p 8000:8000 amazon/dynamodb-local -jar DynamoDBLocal.jar",
     "test:postgres:update": "docker pull postgres",

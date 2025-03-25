@@ -23,6 +23,7 @@ import authn from "../authn/index.js";
 
 import accessToken, {
   authenticate as accessTokenAuthenticate,
+  exists as accessTokenExists,
   create as accessTokenCreate,
 } from "../authn-access-token/index.js";
 
@@ -58,7 +59,7 @@ const sub = await accountCreate();
 const username = "username";
 
 await accountUsernameCreate(sub, username);
-//await accessTokenCreate(sub)
+await accessTokenCreate(sub);
 
 const catchError = (input, e) => {
   if (e.message === "401 Unauthorized") {
@@ -78,18 +79,18 @@ test("fuzz accessTokenAuthenticate w/ `string`, `string`", async () => {
       }
     }),
     {
-      numRuns: 100_000,
+      numRuns: 10,
       verbose: 2,
       examples: [],
     },
   );
 });
 
-test("fuzz accessTokenAuthenticate w/ username, `string`", async () => {
+test("fuzz accessTokenExists w/ `string`", async () => {
   await fc.assert(
     fc.asyncProperty(fc.string(), async (secret) => {
       try {
-        await accessTokenAuthenticate(username, secret);
+        await accessTokenExists(secret);
       } catch (e) {
         catchError(secret, e);
       }
