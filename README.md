@@ -21,7 +21,7 @@
   <a href="https://prettier.io/"><img alt="Code style: prettier" src="https://img.shields.io/badge/code_style-prettier-ff69b4.svg"></a>
   <a href="https://conventionalcommits.org"><img alt="Conventional Commits" src="https://img.shields.io/badge/Conventional%20Commits-1.0.0-%23FE5196?logo=conventionalcommits&logoColor=white"></a>
   <a href="https://github.com/willfarrell/1auth/blob/main/package.json#L32">
-  <img alt="code coverage" src="https://img.shields.io/badge/code%20coverage-80%25-brightgreen"></a>
+  <img alt="code coverage" src="https://img.shields.io/badge/code%20coverage-86%25-brightgreen"></a>
 </p>
 <p><!--You can read the documentation at: <a href="https://github.com/willfarrell/1auth">https://github.com/willfarrell/1auth</a>--> 1Auth is like an ORM for `accounts`, `authentications`, `messengers`, `sessions` with extensibility to ensure they have a consistent API and ensure that encoding/decoding/encryption/decryption are applied in a consistent way. All while enforcing industry defaults for cryptographic algorithms with an easy method to keep them up to date.</p>
 </div>
@@ -38,6 +38,110 @@
 - Encoding: base64
 
 FIPS 140-3 Level 4 can be achieved using `aes-256-gcm`.
+
+## Quick start
+
+### Install
+
+```bash
+npm i @1auth/store-dynamodb @1auth/notify-sqs @1auth/crypto @1auth/account-username @1auth/account @1auth/messenger @1auth/messenger-email-address @1auth/authn @1auth/authn-webauthn @1auth/authn-recovery-codes @1auth/authn-access-token @1auth/session
+```
+
+### Example
+
+```javascript
+import * as store from '@1auth/store-dynamodb'
+import * as notify from '@1auth/notify-sqs'
+import crypto from '@1auth/crypto'
+
+import account from '@1auth/account'
+import accountUsername, {
+  exists as usernameExists
+} from '@1auth/account-username'
+
+import messenger from '@1auth/messenger'
+import messengerEmailAddress from '@1auth/messenger-email-address'
+
+import authn from '@1auth/authn'
+import webauthn from '@1auth/authn-webauthn'
+import recoveryCodes from '@1auth/authn-recovery-codes'
+import recoveryCode from './authn/authn-recovery-code/index.js'
+import accessToken from '@1auth/authn-access-token'
+
+import session from '@1auth/session'
+
+// 12h chosen based on OWASP ASVS
+const sessionExpire = 12 * 60 * 60
+// 10d chosen based on EFF DNT Policy
+const ttlExpire = 10 * 24 * 60 * 60
+
+store.default({
+  timeToLiveExpireOffset: ttlExpire - sessionExpire
+})
+notify.default({
+  queueName: process.env.QUEUE_NAME ?? 'notify-queue'
+})
+
+// Passed in via ENV for example only
+crypto({
+  symmetricEncryptionKey: Buffer.from(
+    process.env.SYMMETRIC_ENCRYPTION_KEY ?? '',
+    'base64'
+  ),
+  symmetricSignatureSecret: Buffer.from(
+    process.env.SYMMETRIC_SIGNATURE_SECRET ?? '',
+    'base64'
+  ),
+  digestChecksumSalt: Buffer.from(
+    process.env.DIGEST_CHECKSUM_SALT ?? '',
+    'base64'
+  ),
+  digestChecksumPepper: Buffer.from(
+    process.env.DIGEST_CHECKSUM_PEPPER ?? '',
+    'base64'
+  )
+})
+
+account({
+  store,
+  notify,
+  encryptedFields: ['name', 'locale', 'username', 'privateKey']
+})
+accountUsername({
+  usernameBlacklist: ['root', 'admin', 'sa']
+})
+
+messenger({
+  store,
+  notify,
+  encryptedFields: ['value']
+})
+messengerEmailAddress()
+
+authn({
+  store,
+  notify,
+  usernameExists: [usernameExists],
+  encryptedFields: ['value', 'name']
+})
+webauthn({
+  origin: process.env.ORIGIN,
+  name: 'Organization Name',
+  userVerification: 'preferred'
+})
+recoveryCodes()
+accessToken()
+
+session({
+  store,
+  notify,
+  expire: sessionExpire
+})
+```
+
+## Architecture
+
+![architecture diagram](docs/architecture.png)
 
 ## License
 

@@ -22,6 +22,8 @@ import crypto, {
   verifySecretHash,
   symmetricRandomEncryptionKey,
   symmetricGenerateEncryptionKey,
+  //symmetricRandomSignatureSecret,
+  symmetricGenerateSignatureSecret,
   symmetricEncryptFields,
   symmetricEncrypt,
   symmetricDecryptFields,
@@ -140,6 +142,18 @@ describe("crypto", () => {
       digest = createSaltedDigest("1auth", { hashAlgorithm: "sha3-256" });
       equal(digest, "sha3-256:8aVqzzAf/gWlLblIWvvNVO/2ct5LGq8jK/MPi0q/ZZ8=");
     });
+    it("createSaltedDigest w/o checksumSalt", async () => {
+      let digest = createSaltedDigest("1auth", {
+        hashAlgorithm: "sha3-256",
+        checksumSalt: "",
+      });
+      equal(digest, "sha3-256:0uITV182D6igoH3CrcihY+fFrN1s/1aQlYjJoCOjhDs=");
+      digest = createSaltedDigest("1auth", {
+        hashAlgorithm: "sha3-256",
+        checksumSalt: "",
+      });
+      equal(digest, "sha3-256:0uITV182D6igoH3CrcihY+fFrN1s/1aQlYjJoCOjhDs=");
+    });
     it("createPepperedDigest", async () => {
       let digest = createPepperedDigest("1auth", {
         hashAlgorithm: "sha3-256",
@@ -150,6 +164,18 @@ describe("crypto", () => {
       });
       equal(digest, "sha3-256:r9VPCMbABiWVy/xTFYwHtJ3SyUhZcu5cNSIhYI7Awtg=");
     });
+    it("createPepperedDigest w/o checksumPepper", async () => {
+      let digest = createPepperedDigest("1auth", {
+        hashAlgorithm: "sha3-256",
+        checksumPepper: "",
+      });
+      equal(digest, "sha3-256:0uITV182D6igoH3CrcihY+fFrN1s/1aQlYjJoCOjhDs=");
+      digest = createPepperedDigest("1auth", {
+        hashAlgorithm: "sha3-256",
+        checksumPepper: "",
+      });
+      equal(digest, "sha3-256:0uITV182D6igoH3CrcihY+fFrN1s/1aQlYjJoCOjhDs=");
+    });
     it("createSeasonedDigest", async () => {
       let digest = createSeasonedDigest("1auth", {
         hashAlgorithm: "sha3-256",
@@ -159,6 +185,20 @@ describe("crypto", () => {
         hashAlgorithm: "sha3-256",
       });
       equal(digest, "sha3-256:9zAIe3Jee2+s+AFK18LERL6OiwVaGZgE2xtM7eB2TfA=");
+    });
+    it("createSeasonedDigest w/o checksumSalt & checksumPepper", async () => {
+      let digest = createSeasonedDigest("1auth", {
+        hashAlgorithm: "sha3-256",
+        checksumSalt: "",
+        checksumPepper: "",
+      });
+      equal(digest, "sha3-256:0uITV182D6igoH3CrcihY+fFrN1s/1aQlYjJoCOjhDs=");
+      digest = createSeasonedDigest("1auth", {
+        hashAlgorithm: "sha3-256",
+        checksumSalt: "",
+        checksumPepper: "",
+      });
+      equal(digest, "sha3-256:0uITV182D6igoH3CrcihY+fFrN1s/1aQlYjJoCOjhDs=");
     });
   });
 
@@ -325,6 +365,27 @@ describe("crypto", () => {
       });
       equal(decryptedValue, value);
     });
+    it("Can NOT decrypt when signature is invailid", async () => {
+      const sub = "sub_000000";
+
+      const { encryptionKey, encryptedKey } =
+        symmetricGenerateEncryptionKey(sub);
+
+      const value = "1auth";
+      const encryptedValue = symmetricEncrypt(value, {
+        encryptionKey,
+        sub,
+      });
+      try {
+        symmetricDecrypt(encryptedValue, {
+          encryptedKey,
+          signatureSecret: Buffer.from("invalid"),
+          sub,
+        });
+      } catch (e) {
+        equal(e.message, "Signature incorrect");
+      }
+    });
     it("encrypt can be decrypted object fields", async () => {
       const sub = "sub_000000";
       const fields = ["name"];
@@ -350,14 +411,14 @@ describe("crypto", () => {
   describe("symmetric signatures", () => {
     it("Should be able to sign using a encryption key and verify using encryption key", async () => {
       const data = "1auth";
-      const signatureSecret = Buffer.from("secret");
+      const { signatureSecret } = symmetricGenerateSignatureSecret();
       const signedData = symmetricSignatureSign(data, { signatureSecret });
       const valid = symmetricSignatureVerify(signedData, { signatureSecret });
       ok(valid);
     });
     it("Should NOT be able to sign using a encryption key and verify using another encryption key", async () => {
       const data = "1auth";
-      const signatureSecret = Buffer.from("secret");
+      const { signatureSecret } = symmetricGenerateSignatureSecret();
       const signedData = symmetricSignatureSign(data, { signatureSecret });
       const valid = symmetricSignatureVerify(signedData, {
         signatureSecret: Buffer.from("not" + signatureSecret),
@@ -365,13 +426,13 @@ describe("crypto", () => {
       ok(!valid);
     });
     it("Should NOT be able to sign using a encryption key and verify when input is undefined", async () => {
-      const signatureSecret = Buffer.from("secret");
+      const { signatureSecret } = symmetricGenerateSignatureSecret();
       const valid = symmetricSignatureVerify(undefined, { signatureSecret });
       ok(!valid);
     });
     it("Should NOT be able to sign using a encryption key and verify when input is unsigned", async () => {
       const data = "1auth";
-      const signatureSecret = Buffer.from("secret");
+      const { signatureSecret } = symmetricGenerateSignatureSecret();
       const valid = symmetricSignatureVerify(data, { signatureSecret });
       ok(!valid);
     });
