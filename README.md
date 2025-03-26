@@ -39,6 +39,107 @@
 
 FIPS 140-3 Level 4 can be achieved using `aes-256-gcm`.
 
+## Quick start
+
+### Install
+
+```bash
+npm i @1auth/authn
+```
+
+### Example
+
+```javascript
+import * as store from '@1auth/store-dynamodb'
+import * as notify from '@1auth/notify-sqs'
+import crypto from '@1auth/crypto'
+
+import accountUsername, {
+  exists as usernameExists
+} from '@1auth/account-username'
+
+import messenger from '@1auth/messenger'
+import messengerEmailAddress from '@1auth/messenger-email-address'
+
+import authn from '@1auth/authn'
+import webauthn from '@1auth/authn-webauthn'
+import recoveryCodes from '@1auth/authn-recovery-codes'
+import recoveryCode from './authn/authn-recovery-code/index.js'
+import accessToken from '@1auth/authn-access-token'
+
+import session from '@1auth/session'
+
+// 12h chosen based on OWASP ASVS
+const sessionExpire = 12 * 60 * 60
+store.default({
+  // 10d chosen based on EFF DNT Policy
+  timeToLiveExpireOffset: 10 * 24 * 60 * 60 - sessionExpire
+})
+notify.default({
+  queueName: process.env.QUEUE_NAME ?? 'notify-queue'
+})
+
+// Passed in via ENV for example only
+crypto({
+  symmetricEncryptionKey: Buffer.from(
+    process.env.VITE_SYMMETRIC_ENCRYPTION_KEY ?? '',
+    'base64'
+  ),
+  symmetricSignatureSecret: Buffer.from(
+    process.env.VITE_SYMMETRIC_SIGNATURE_SECRET ?? '',
+    'base64'
+  ),
+  digestChecksumSalt: Buffer.from(
+    process.env.VITE_DIGEST_CHECKSUM_SALT ?? '',
+    'base64'
+  ),
+  digestChecksumPepper: Buffer.from(
+    process.env.VITE_DIGEST_CHECKSUM_PEPPER ?? '',
+    'base64'
+  )
+})
+
+account({
+  store,
+  notify,
+  encryptedFields: ['name', 'locale', 'username', 'privateKey']
+})
+accountUsername({
+  usernameBlacklist: ['root', 'admin', 'sa']
+})
+
+messenger({
+  store,
+  notify,
+  encryptedFields: ['value']
+})
+messengerEmailAddress()
+
+authn({
+  store,
+  notify,
+  usernameExists: [usernameExists],
+  encryptedFields: ['value', 'name']
+})
+webauthn({
+  origin: process.env.ORIGIN,
+  name: 'Organization Name',
+  userVerification: 'preferred'
+})
+recoveryCodes()
+accessToken()
+
+session({
+  store,
+  notify,
+  expire: sessionExpire
+})
+```
+
+## Architecture
+
+![architecture diagram](docs/architecture.png)
+
 ## License
 
 Licensed under [MIT License](LICENSE). Copyright (c) 1985-2025 [will Farrell](https://github.com/willfarrell) and all [contributors](https://github.com/willfarrell/1auth/graphs/contributors).
