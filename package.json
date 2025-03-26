@@ -29,7 +29,7 @@
     "test:dast:fuzz": "node --test ./**/*.fuzz.js",
     "test:dast:zap": "",
     "test:dynamodb:update": "docker pull amazon/dynamodb-local",
-    "test:dynamodb": "docker run -p 8000:8000 amazon/dynamodb-local -jar DynamoDBLocal.jar",
+    "test:dynamodb": "docker run -p 8000:8000 amazon/dynamodb-local",
     "test:postgres:update": "docker pull postgres",
     "test:postgres": "docker run -p 5432:5432 -e POSTGRES_PASSWORD=mysecretpassword postgres",
     "rm": "npm run rm:node_modules && npm run rm:lock",

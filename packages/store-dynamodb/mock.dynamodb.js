@@ -1,4 +1,5 @@
-import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { setTimeout } from "node:timers/promises";
+import { DynamoDBClient, ListTablesCommand } from "@aws-sdk/client-dynamodb";
 
 // const defaults = {
 //   log: true,
@@ -17,3 +18,14 @@ export const client = new DynamoDBClient({
   },
   maxRetries: 10,
 });
+
+const waitForStart = async () => {
+  try {
+    await client.send(new ListTablesCommand());
+  } catch (error) {
+    console.log("Waiting for Docker container to start...");
+    await setTimeout(500);
+    return waitForStart();
+  }
+};
+await waitForStart();
