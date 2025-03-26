@@ -373,7 +373,7 @@ describe("crypto", () => {
 
       const value = "1auth";
       const encryptedValue = symmetricEncrypt(value, {
-        encryptedKey,
+        encryptionKey,
         sub,
       });
       try {
