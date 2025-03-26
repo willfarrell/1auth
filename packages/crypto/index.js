@@ -300,9 +300,6 @@ export const symmetricGenerateEncryptionKey = (
   encryptionKey ??= options.symmetricEncryptionKey;
   signatureSecret ??= options.symemeticSignatureSecret;
 
-  if (!encryptionKey) {
-    return { encryptionKey: "", encryptedKey: "" };
-  }
   const rowEncryptionKey = symmetricRandomEncryptionKey();
   const rowEncryptedKey = symmetricEncrypt(rowEncryptionKey, {
     encryptionKey,
@@ -473,9 +470,6 @@ export const symmetricRandomSignatureSecret = () => {
 };
 
 export const symmetricGenerateSignatureSecret = () => {
-  if (!options.symmetricSignatureSecret) {
-    return { signatureSecret: "" };
-  }
   const signatureSecret = symmetricRandomSignatureSecret();
   return { signatureSecret };
 };

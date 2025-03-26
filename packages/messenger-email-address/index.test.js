@@ -93,6 +93,31 @@ describe("messenger-email-address", () => {
     ok(messengerDB.verify);
     ok(!authnDB);
   });
+  it("Can create a messenger on an account w/ optionalDotDomains", async () => {
+    await emailAddressCreate(sub, "user.name@gmail.com");
+    const exists = emailAddressExists("username@gmail.com");
+    ok(exists);
+  });
+  it("Can create a messenger on an account w/ aliasDomains", async () => {
+    await emailAddressCreate(sub, "username@proton.me");
+    const exists = emailAddressExists("username@protonmail.com");
+    ok(exists);
+  });
+
+  it("Can NOT create a messenger on an account w/ invalid email", async () => {
+    try {
+      await emailAddressCreate(sub, "username[at]example.org");
+    } catch (e) {
+      equal(e.message, "400 Bad Request");
+    }
+  });
+  it("Can NOT create a messenger on an account w/ blacklisted email", async () => {
+    try {
+      await emailAddressCreate(sub, "admin@example.org");
+    } catch (e) {
+      equal(e.message, "409 Conflict");
+    }
+  });
 
   it("Can remove a verified messenger on an account", async () => {
     const messengerId = await emailAddressCreate(sub, "username@example.org");
