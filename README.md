@@ -44,7 +44,7 @@ FIPS 140-3 Level 4 can be achieved using `aes-256-gcm`.
 ### Install
 
 ```bash
-npm i @1auth/authn
+npm i @1auth/store-dynamodb @1auth/notify-sqs @1auth/crypto @1auth/account-username @1auth/account @1auth/messenger @1auth/messenger-email-address @1auth/authn @1auth/authn-webauthn @1auth/authn-recovery-codes @1auth/authn-access-token @1auth/session
 ```
 
 ### Example
@@ -54,6 +54,7 @@ import * as store from '@1auth/store-dynamodb'
 import * as notify from '@1auth/notify-sqs'
 import crypto from '@1auth/crypto'
 
+import account from '@1auth/account'
 import accountUsername, {
   exists as usernameExists
 } from '@1auth/account-username'
@@ -71,9 +72,11 @@ import session from '@1auth/session'
 
 // 12h chosen based on OWASP ASVS
 const sessionExpire = 12 * 60 * 60
+// 10d chosen based on EFF DNT Policy
+const ttlExpire = 10 * 24 * 60 * 60
+
 store.default({
-  // 10d chosen based on EFF DNT Policy
-  timeToLiveExpireOffset: 10 * 24 * 60 * 60 - sessionExpire
+  timeToLiveExpireOffset: ttlExpire - sessionExpire
 })
 notify.default({
   queueName: process.env.QUEUE_NAME ?? 'notify-queue'
@@ -82,19 +85,19 @@ notify.default({
 // Passed in via ENV for example only
 crypto({
   symmetricEncryptionKey: Buffer.from(
-    process.env.VITE_SYMMETRIC_ENCRYPTION_KEY ?? '',
+    process.env.SYMMETRIC_ENCRYPTION_KEY ?? '',
     'base64'
   ),
   symmetricSignatureSecret: Buffer.from(
-    process.env.VITE_SYMMETRIC_SIGNATURE_SECRET ?? '',
+    process.env.SYMMETRIC_SIGNATURE_SECRET ?? '',
     'base64'
   ),
   digestChecksumSalt: Buffer.from(
-    process.env.VITE_DIGEST_CHECKSUM_SALT ?? '',
+    process.env.DIGEST_CHECKSUM_SALT ?? '',
     'base64'
   ),
   digestChecksumPepper: Buffer.from(
-    process.env.VITE_DIGEST_CHECKSUM_PEPPER ?? '',
+    process.env.DIGEST_CHECKSUM_PEPPER ?? '',
     'base64'
   )
 })
