@@ -28,8 +28,11 @@ import accessToken, {
   authenticate as accessTokenAuthenticate,
   create as accessTokenCreate,
   exists as accessTokenExists,
+  count as accessTokenCount,
   lookup as accessTokenLookup,
+  select as accessTokenSelect,
   list as accessTokenList,
+  expire as accessTokenExpire,
   remove as accessTokenRemove,
 } from "../authn-access-token/index.js";
 
@@ -56,10 +59,15 @@ authn({
   encryptedFields: ["value", "name"],
   authenticationDuration: 0,
 });
-accessToken();
+accessToken({
+  log: function () {
+    mocks.log(...arguments);
+  },
+});
 // *** Setup End *** //
 
 const mocks = {
+  log: () => {},
   notifyClient: () => {},
 };
 let sub;
@@ -88,6 +96,9 @@ describe("authn-access-token", () => {
     ok(db.digest);
     ok(db.verify);
     ok(db.expire);
+
+    let count = await accessTokenCount(sub);
+    equal(count, 1);
 
     // notify
     const { expire } = mocks.notifyClient.mock.calls[0].arguments[0].data;
@@ -146,8 +157,23 @@ describe("authn-access-token", () => {
     const row = await accessTokenLookup(secret);
     ok(row);
   });
+  it("Can lookup an access token with { secret } (expired)", async () => {
+    const { id, secret } = await accessTokenCreate(sub);
+    await accessTokenExpire(sub, id);
+    const row = await accessTokenLookup(secret);
+    ok(!row);
+  });
   it("Can lookup an access token with { secret } (not exists)", async () => {
     const row = await accessTokenLookup("pat-notfound");
+    equal(row, undefined);
+  });
+  it("Can select an access token with { id } (exists)", async () => {
+    const { id } = await accessTokenCreate(sub); // TODO id is undefined
+    const row = await accessTokenSelect(sub, id);
+    ok(row);
+  });
+  it("Can select an access token with { id } (not exists)", async () => {
+    const row = await accessTokenSelect(sub, "authn_000");
     equal(row, undefined);
   });
   it("Can list an access token with { sub } (exists)", async () => {

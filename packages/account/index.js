@@ -1,7 +1,4 @@
 import {
-  entropyToCharacterLength,
-  charactersAlphaNumeric,
-  randomAlphaNumeric,
   makeRandomConfigObject,
   symmetricGenerateEncryptionKey,
   makeAsymmetricKeys,

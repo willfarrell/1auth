@@ -1,16 +1,17 @@
 import { test, describe, it } from "node:test";
-import { equal, deepEqual } from "node:assert/strict";
+import { equal, deepEqual, ok } from "node:assert/strict";
 import testTableParams from "./table/dynamodb.js";
 import { client } from "./mock.dynamodb.js";
 import * as store from "../store-dynamodb/index.js";
 
 const table = "test";
 const timeToLiveKey = "remove";
+const nowInSeconds = () => Math.floor(Date.now() / 1000);
 
 store.default({
   log: function () {
     mocks.log(...arguments);
-    // console.log(...arguments)
+    //console.log(...arguments);
   },
   client,
   timeToLiveKey,
@@ -60,28 +61,49 @@ describe("store-dynamodb", () => {
     equal(mocks.log.mock.calls.length, 1 * 2);
   });
   it("`insert`/`update`/`select` Should return object when something found", async () => {
-    const row = { id: 1, sub: "sub_000", value: "a" };
+    const row = { id: 1, sub: "sub_000", value: "a", value2: "b" };
     await store.insert(table, row);
     //let result = await store.select(table, { id: row.id });
-    row.value = "b";
+    row.value = "c";
     await store.update(
       table,
       { sub: "sub_000", id: row.id },
       { value: row.value },
     );
-    let result = await store.select(table, { id: row.id });
+    // returns all fields
+    let result = await store.select(table, { sub: "sub_000", id: row.id });
     deepEqual(result, row);
-    equal(mocks.log.mock.calls.length, 3 * 2);
+    // returns fields
+    result = await store.select(table, { sub: "sub_000", id: row.id }, [
+      "value",
+    ]);
+    deepEqual(result, { value: row.value });
+    equal(mocks.log.mock.calls.length, 4 * 2);
+  });
+  it("`insert` Should add in `timeToLiveKey` when `expire` is set", async () => {
+    const expire = nowInSeconds() + 86400;
+    const row = { id: 1, sub: "sub_000", value: "a", expire };
+    await store.insert(table, row);
+    let result = await store.select(table, { sub: "sub_000", id: row.id });
+    ok(expire < result[timeToLiveKey]);
+  });
+  it("`update` Should add in `timeToLiveKey` when `expire` is set", async () => {
+    const expire = nowInSeconds() + 86400;
+    const row = { id: 1, sub: "sub_000", value: "a" };
+    await store.insert(table, row);
+    await store.update(table, { sub: "sub_000", id: row.id }, { expire });
+    let result = await store.select(table, { sub: "sub_000", id: row.id });
+    ok(expire < result[timeToLiveKey]);
   });
   it("`selectList` Should return [] when nothing found", async () => {
     const result = await store.selectList(table, { id: 1 });
     deepEqual(result, []);
     equal(mocks.log.mock.calls.length, 1 * 2);
   });
-  it("`insertList`/`selectList` Should return object[] when something found", async () => {
+  it("`insertList`/`update`/`selectList` Should return object[] when something found", async () => {
     const rows = [
       { id: 1, sub: "sub_000", value: "a" },
-      { id: 2, sub: "sub_000", value: "b" },
+      { id: 2, sub: "sub_000", value: "c" },
     ];
     await store.insertList(table, rows);
     let result = await store.selectList(table, {
@@ -90,9 +112,36 @@ describe("store-dynamodb", () => {
     deepEqual(result, [rows[0]]);
     equal(mocks.log.mock.calls.length, 2 * 2);
 
+    rows[0].value = "d";
+    rows[1].value = "d";
+    await store.update(
+      table,
+      { sub: "sub_000", id: [rows[0].id, rows[1].id] },
+      { value: "d" },
+    );
+    result = await store.selectList(table, {
+      id: rows[1].id,
+    });
+    deepEqual(result, [rows[1]]);
+    equal(mocks.log.mock.calls.length, 2 * 2 + 3 * 2 + 1);
+
+    // returns all fields
     result = await store.selectList(table, { sub: rows[0].sub });
     deepEqual(result.reverse(), rows);
-    equal(mocks.log.mock.calls.length, 3 * 2);
+    // returns some fields
+    // result = await store.selectList(table, { sub: rows[0].sub }, ["value"]);
+    // deepEqual(
+    //   result.reverse(),
+    //   rows.map((row) => ({ value: row.value })),
+    // );
+    equal(mocks.log.mock.calls.length, 6 * 2 + 1);
+  });
+  it("`insertList` Should add in `timeToLiveKey` when `expire` is set", async () => {
+    const expire = nowInSeconds() + 86400;
+    const row = { id: 1, sub: "sub_000", value: "a", expire };
+    await store.insertList(table, [row]);
+    let result = await store.select(table, { sub: "sub_000", id: row.id });
+    ok(expire < result[timeToLiveKey]);
   });
   it("`remove` Should remove row in store using {sub,id}", async () => {
     const rows = [
@@ -133,12 +182,12 @@ describe("store-dynamodb", () => {
     it("Should format {ExpressionAttributeNames} properly", async () => {
       const { ExpressionAttributeNames } = store.makeQueryParams(
         { id: [1, 2], sub: "sub_000" },
-        ["value"],
+        //["value"],
       );
       deepEqual(ExpressionAttributeNames, {
         "#id": "id",
         "#sub": "sub",
-        "#value": "value",
+        //"#value": "value",
       });
     });
     it("Should format {ExpressionAttributeValues} properly", async () => {

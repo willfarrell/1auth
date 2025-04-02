@@ -166,9 +166,6 @@ export const list = async (sub) => {
 };
 
 export const authenticate = async (username, input) => {
-  if (options.log) {
-    options.log("@1auth/authn-webauthn authenticate(", username, input, ")");
-  }
   return await authnAuthenticate(options.challenge, username, input);
 };
 
@@ -357,6 +354,9 @@ export const remove = async (sub, id) => {
 };
 
 export const select = async (sub, id) => {
+  if (options.log) {
+    options.log("@1auth/authn-webauthn select(", sub, id, ")");
+  }
   return await authnSelect(options.secret, sub, id);
 };
 

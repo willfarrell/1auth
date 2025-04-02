@@ -1,7 +1,4 @@
 import {
-  charactersAlphaNumeric,
-  entropyToCharacterLength,
-  randomAlphaNumeric,
   makeRandomConfigObject,
   createSeasonedDigest,
   symmetricGenerateEncryptionKey,
@@ -78,9 +75,6 @@ export const select = async (sub, id) => {
   const session = await options.store.select(options.table, { sub, id });
   const now = nowInSeconds();
   if (session) {
-    if (session.remove < now) {
-      return;
-    }
     const decryptedValue = symmetricDecrypt(session.value, {
       sub,
       encryptedKey: session.encryptionKey,
@@ -96,9 +90,6 @@ export const list = async (sub) => {
   const sessions = [];
   for (let i = items.length; i--; ) {
     const session = items[i];
-    if (session.remove < now) {
-      continue;
-    }
     const decryptedValue = symmetricDecrypt(session.value, {
       sub,
       encryptedKey: session.encryptionKey,
@@ -180,8 +171,8 @@ export const sign = (id) => {
   return symmetricSignatureSign(id);
 };
 
-export const verify = (id) => {
-  return symmetricSignatureVerify(id);
+export const verify = (idWithSignature) => {
+  return symmetricSignatureVerify(idWithSignature);
 };
 
 // guest or onboard session to authenticated

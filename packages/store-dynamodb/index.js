@@ -30,15 +30,8 @@ export const exists = async (table, filters) => {
   if (options.log) {
     options.log("@1auth/store-dynamodb exists(", table, filters, ")");
   }
-  try {
-    const item = await select(table, filters);
-    return item?.sub;
-  } catch (e) {
-    if (e.message === "No value defined: {}") {
-      return;
-    }
-    throw e;
-  }
+  const item = await select(table, filters);
+  return item?.sub;
 };
 
 export const count = async (table, filters) => {
@@ -56,7 +49,7 @@ export const select = async (table, filters = {}, fields = []) => {
     return selectList(table, filters).then((res) => res[0]);
   }
   if (options.log) {
-    options.log("@1auth/store-dynamodb select(", table, filters, ")");
+    options.log("@1auth/store-dynamodb select(", table, filters, fields, ")");
   }
   const commandParams = {
     TableName: table,
@@ -106,7 +99,8 @@ export const selectList = async (table, filters = {}, fields = []) => {
     ExpressionAttributeNames,
     ExpressionAttributeValues,
     KeyConditionExpression,
-  } = makeQueryParams(filters);
+    //AttributesToGet,
+  } = makeQueryParams(filters, fields);
   const commandParams = {
     TableName: table,
     IndexName: indexName,
@@ -114,9 +108,12 @@ export const selectList = async (table, filters = {}, fields = []) => {
     ExpressionAttributeValues,
     KeyConditionExpression,
   };
-  if (fields.length) {
-    commandParams.AttributesToGet = fields;
-  }
+  // DynamoDB dosn't support fields
+  // ValidationException: Can not use both expression and non-expression parameters in the same request: Non-expression parameters: {AttributesToGet} Expression parameters: {KeyConditionExpression}
+  // Add fields to secondary indexes instead
+  // if (fields.length) {
+  //   commandParams.AttributesToGet = AttributesToGet;
+  // }
   if (options.log) {
     options.log("@1auth/store-dynamodb QueryCommand(", commandParams, ")");
   }
@@ -175,6 +172,7 @@ export const insertList = async (table, rows = []) => {
     options.log(
       "@1auth/store-dynamodb BatchWriteItemCommand(",
       commandParams,
+      //JSON.stringify(commandParams),
       ")",
     );
   }
@@ -292,11 +290,12 @@ export const remove = async (table, filters = {}) => {
 //   await options.client.send(new BatchWriteItemCommand(commandParams))
 // }
 
-export const makeQueryParams = (filters = {}, select = []) => {
+export const makeQueryParams = (filters = {}, fields = []) => {
   const expressionAttributeNames = {};
   const expressionAttributeValues = {};
   let keyConditionExpression = [];
   let updateExpression = [];
+  //let attributesToGet = [];
   for (const key in filters) {
     const isArray = Array.isArray(filters[key]);
     if (isArray) {
@@ -318,18 +317,24 @@ export const makeQueryParams = (filters = {}, select = []) => {
   updateExpression = `SET ${updateExpression.join(", ")}`;
 
   //let projectionExpression = [];
-  for (const key of select) {
-    expressionAttributeNames[`#${key}`] = key;
-    //projectionExpression.push(`#${key}`);
-  }
+  // for (const key of fields) {
+  //   expressionAttributeNames[`#${key}`] = key;
+  //   projectionExpression.push(`:${key}`);
+  //   attributesToGet.push(`:${key}`);
+  // }
   //projectionExpression = [...new Set(projectionExpression)].join(", ");
-  return {
+
+  const commandParams = {
     // ProjectionExpression: projectionExpression, // return keys
     ExpressionAttributeNames: expressionAttributeNames,
     ExpressionAttributeValues: expressionAttributeValues,
     KeyConditionExpression: keyConditionExpression,
     UpdateExpression: updateExpression,
   };
+  // if (attributesToGet.length) {
+  //   commandParams.AttributesToGet = attributesToGet;
+  // }
+  return commandParams;
 };
 
 export const __table = async (commandParams) => {

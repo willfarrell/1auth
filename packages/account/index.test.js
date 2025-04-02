@@ -15,6 +15,7 @@ import account, {
   exists as accountExists,
   lookup as accountLookup,
   update as accountUpdate,
+  expire as accountExpire,
   remove as accountRemove,
   getOptions as accountGetOptions,
 } from "../account/index.js";
@@ -32,9 +33,17 @@ notify.default({
   },
 });
 
-account({ store, notify, encryptedFields: ["name", "username", "privateKey"] });
+account({
+  store,
+  notify,
+  encryptedFields: ["name", "username", "privateKey"],
+  log: function () {
+    mocks.log(...arguments);
+  },
+});
 
 const mocks = {
+  log: () => {},
   notifyClient: () => {},
 };
 
@@ -98,7 +107,13 @@ describe("account", () => {
     const db = await store.select(accountGetOptions().table, { sub });
     equal(db.alias, user.alias); // unencrypted
   });
-  it("Can delete an account", async () => {
+  it("Can expire an account", async () => {
+    const sub = await accountCreate();
+    await accountExpire(sub);
+    const user = await store.select(accountGetOptions().table, { sub });
+    ok(user.expire);
+  });
+  it("Can remove an account", async () => {
     const sub = await accountCreate();
     await accountRemove(sub);
     const user = await store.select(accountGetOptions().table, { sub });

@@ -1,6 +1,4 @@
 import {
-  entropyToCharacterLength,
-  charactersNumeric,
   randomNumeric,
   createSecretHash,
   verifySecretHash,
@@ -116,17 +114,17 @@ export const create = async (type, sub, value, values) => {
     },
     ["id", "sub", "verify"],
   );
-  if (valueExists?.sub !== sub && valueExists?.verify) {
+  if (valueExists?.sub === sub) {
+    await createToken(type, sub, valueExists.id);
+    return valueExists.id;
+  } else if (valueExists?.sub !== sub && valueExists?.verify) {
     await options.notify.trigger(
       `messenger-${type}-exists`,
-      sub,
+      valueExists?.sub,
       {},
       { messengers: [{ id: valueExists.id }] },
     );
     return;
-  } else if (valueExists?.sub === sub) {
-    await createToken(type, sub, valueExists.id);
-    return valueExists.id;
   }
   const now = nowInSeconds();
 
@@ -196,11 +194,7 @@ export const verifyToken = async (type, sub, token, sourceId) => {
     }
     return messengers;
   });
-  const credential = await authnVerify(options.token, sub, token);
-  if (credential.sourceId !== sourceId) {
-    // Should never happen, race condition
-    throw new Error("401 Unauthorized", { cause: "invalid" });
-  }
+  await authnVerify(options.token, sub, token);
   await options.store.update(
     options.table,
     { sub, id: sourceId },

@@ -2,7 +2,6 @@ import { promisify } from "node:util";
 import {
   randomBytes,
   randomInt,
-  randomUUID,
   createHash,
   createCipheriv,
   createDecipheriv,
@@ -44,28 +43,28 @@ export default (opt = {}) => {
 
   // Check options, set defaults
   if (!options.symmetricEncryptionKey) {
-    console.warn(
+    throw new Error(
       "@1auth/crypto symmetricEncryptionKey is empty, use a stored secret made from randomBytes(32) Encryption disabled.",
     );
   }
   options.symmetricEncryptionEncoding ??= options.defaultEncoding;
   options.symmetricSignatureHashAlgorithm ??= options.defaultHashAlgorithm;
   if (!options.symmetricSignatureSecret) {
-    console.warn(
-      "@1auth/crypto symmetricSignatureSecret is empty, use a stored secret made from randomBytes(32). Signature disabled.",
+    throw new Error(
+      "@1auth/crypto symmetricSignatureSecret is empty, use a stored secret made from randomBytes(32) Signature disabled.",
     );
   }
   options.symmetricSignatureEncoding ??= options.defaultEncoding;
   options.asymmetricSignatureHashAlgorithm ??= options.defaultHashAlgorithm;
   options.asymmetricSignatureEncoding ??= options.defaultEncoding;
   if (!options.digestChecksumSalt) {
-    console.warn(
-      "@1auth/crypto digestChecksumSalt is empty, use a stored secret made from randomBytes(32). Checksum salting disabled.",
+    throw new Error(
+      "@1auth/crypto digestChecksumSalt is empty, use a stored secret made from randomBytes(32) Checksum salting disabled.",
     );
   }
   if (!options.digestChecksumPepper) {
-    console.warn(
-      "@1auth/crypto digestChecksumPepper is empty, use a stored secret made from randomBytes(12). Checksum peppering disabled.",
+    throw new Error(
+      "@1auth/crypto digestChecksumPepper is empty, use a stored secret made from randomBytes(12) Checksum peppering disabled.",
     );
   }
   options.digestChecksumHashAlgorithm ??= options.defaultHashAlgorithm;

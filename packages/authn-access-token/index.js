@@ -1,7 +1,4 @@
 import {
-  charactersAlphaNumeric,
-  entropyToCharacterLength,
-  randomAlphaNumeric,
   makeRandomConfigObject,
   createSecretHash,
   verifySecretHash,
@@ -61,28 +58,53 @@ export const authenticate = async (username, secret) => {
 
 export const exists = async (secret) => {
   const digest = createDigest(secret);
+  if (options.log) {
+    options.log("@1auth/authn-access-token exists(", digest, ")");
+  }
   return options.store.exists(options.table, { digest });
+};
+
+export const count = async (sub) => {
+  if (options.log) {
+    options.log("@1auth/authn-access-token count(", sub, ")");
+  }
+  return await authnCount(options.secret, sub);
 };
 
 export const lookup = async (secret) => {
   const digest = createDigest(secret);
-  return await options.store.select(options.table, { digest });
-};
-
-export const count = async (sub) => {
-  return await authnCount(options.secret, sub);
+  if (options.log) {
+    options.log("@1auth/authn-access-token lookup(", digest, ")");
+  }
+  const authn = await options.store.select(options.table, { digest });
+  if (authn) {
+    const now = nowInSeconds();
+    if (authn.expire < now) {
+      return;
+    }
+    return authn;
+  }
 };
 
 export const select = async (sub, id) => {
+  if (options.log) {
+    options.log("@1auth/authn-access-token select(", sub, id, ")");
+  }
   return await authnSelect(options.secret, sub, id);
 };
 
 export const list = async (sub) => {
+  if (options.log) {
+    options.log("@1auth/authn-access-token list(", sub, ")");
+  }
   return await authnList(options.secret, sub);
 };
 
 // expire: expire duration (s)
 export const create = async (sub, values = {}) => {
+  if (options.log) {
+    options.log("@1auth/authn-access-token create(", sub, values, ")");
+  }
   const secret = await options.secret.create();
   const digest = createDigest(secret);
   const now = nowInSeconds();
@@ -100,11 +122,17 @@ export const create = async (sub, values = {}) => {
 };
 
 export const expire = async (sub, id) => {
+  if (options.log) {
+    options.log("@1auth/authn-access-token expire(", sub, id, ")");
+  }
   await authnExpire(options.secret, sub, id);
   await options.notify.trigger("authn-access-token-expire", sub);
 };
 
 export const remove = async (sub, id) => {
+  if (options.log) {
+    options.log("@1auth/authn-access-token remove(", sub, id, ")");
+  }
   await authnRemove(options.secret, sub, id);
   await options.notify.trigger("authn-access-token-remove", sub);
 };

@@ -43,6 +43,8 @@ import session, {
   list as sessionList,
   expire as sessionExpire,
   remove as sessionRemove,
+  sign as sessionSign,
+  verify as sessionVerify,
 } from "../session/index.js";
 
 crypto({
@@ -91,6 +93,7 @@ authn({
 // *** Setup End *** //
 
 const mocks = {
+  log: () => {},
   notifyClient: () => {},
 };
 
@@ -105,7 +108,13 @@ describe("session", () => {
         const config = stores[storeKey];
         store = config.store;
         table = config.table;
-        session({ store, notify });
+        session({
+          store,
+          notify,
+          log: function () {
+            mocks.log(...arguments);
+          },
+        });
 
         await store.__table(table(sessionGetOptions().table));
         sub = await accountCreate();
@@ -225,6 +234,14 @@ describe("session", () => {
         await sessionRemove(sub, id);
         const session = await sessionLookup(sid, currentDevice);
         equal(session, undefined);
+      });
+
+      it("Can `sign`/`verify` a sid", async () => {
+        const currentDevice = { os: "MacOS" };
+        const { sid } = await sessionCreate(sub, currentDevice);
+        const cookie = sessionSign(sid);
+        const verify = sessionVerify(cookie);
+        ok(verify);
       });
     });
   }

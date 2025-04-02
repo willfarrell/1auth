@@ -1,7 +1,4 @@
 import {
-  charactersAlphaNumeric,
-  entropyToCharacterLength,
-  randomAlphaNumeric,
   makeRandomConfigObject,
   createSecretHash,
   verifySecretHash,
@@ -9,6 +6,7 @@ import {
 import {
   getOptions as authnGetOptions,
   count as authnCount,
+  //select as authnSelect,
   list as authnList,
   // create as authnCreate,
   createList as authnCreateList,
@@ -55,6 +53,13 @@ export const count = async (sub) => {
   }
   return await authnCount(options.secret, sub);
 };
+
+// export const select = async (sub, id) => {
+//   if (options.log) {
+//     options.log("@1auth/authn-recovery-codes select(", sub, id, ")");
+//   }
+//   return await authnSelect(options.secret, sub, id);
+// };
 
 export const list = async (sub) => {
   if (options.log) {

@@ -83,10 +83,6 @@ export const remove = async (sub, id) => {
   await messengerRemove(options.id, sub, id);
 };
 
-export const createToken = async (sub, id) => {
-  return messengerCreateToken(options.id, sub, id);
-};
-
 export const verifyToken = async (sub, token, sourceId) => {
   await messengerVerifyToken(options.id, sub, token, sourceId);
 };

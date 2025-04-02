@@ -41,10 +41,14 @@ account({ store, notify, encryptedFields: ["name", "username", "privateKey"] });
 accountUsername({
   maxLength: 100,
   usernameBlacklist: ["admin"],
+  log: function () {
+    mocks.log(...arguments);
+  },
 });
 // *** Setup End *** //
 
 const mocks = {
+  log: () => {},
   notifyClient: () => {},
 };
 let sub;
@@ -164,7 +168,7 @@ describe("account-username", () => {
       equal(e.message, "400 Bad Request");
     }
   });
-  // ﬀ
+
   it("Should throw when username has `@` from email", async () => {
     const usernameValue = "username@domain.tld";
     try {
@@ -206,7 +210,7 @@ describe("account-username", () => {
       equal(e.message, "400 Bad Request");
     }
   });
-  it("Should throw when username contains a black liisted word", async () => {
+  it("Should throw when username contains a black listed word", async () => {
     const usernameValue = "user_admin_name";
     try {
       await accountUsernameCreate(sub, usernameValue);

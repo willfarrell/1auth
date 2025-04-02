@@ -20,6 +20,7 @@ import messenger, {
 import emailAddress, {
   exists as emailAddressExists,
   lookup as emailAddressLookup,
+  select as emailAddressSelect,
   list as emailAddressList,
   create as emailAddressCreate,
   verifyToken as emailAddressVerifyToken,
@@ -42,10 +43,15 @@ notify.default({
 account({ store, notify, encryptedFields: ["name", "username", "privateKey"] });
 authn({ store, notify, authenticationDuration: 0 });
 messenger({ store, notify });
-emailAddress();
+emailAddress({
+  log: function () {
+    mocks.log(...arguments);
+  },
+});
 // *** Setup End *** //
 
 const mocks = {
+  log: () => {},
   notifyClient: () => {},
 };
 const sub = await accountCreate();
@@ -93,6 +99,59 @@ describe("messenger-email-address", () => {
     ok(messengerDB.verify);
     ok(!authnDB);
   });
+
+  it("Can create a 2nd messenger on an account, others notified", async () => {
+    const messengerId = await emailAddressCreate(sub, "username@example.org");
+    const notifyCall0 = mocks.notifyClient.mock.calls[0].arguments[0].data;
+
+    await emailAddressVerifyToken(sub, notifyCall0.token, messengerId);
+
+    await emailAddressCreate(sub, "username@example.org");
+    const notifyCall1 = mocks.notifyClient.mock.calls[1].arguments[0].data;
+
+    await emailAddressVerifyToken(sub, notifyCall1.token, messengerId);
+
+    // notify additional messenger
+    const notifyCall2 = mocks.notifyClient.mock.calls[2].arguments[0];
+    deepEqual(notifyCall2, {
+      data: undefined,
+      id: "messenger-emailAddress-create",
+      options: {
+        messengers: [
+          {
+            id: messengerId,
+          },
+        ],
+      },
+      sub,
+    });
+  });
+  it("Can create a messenger, on a nth attempt, on an account", async () => {
+    let messengerId = await emailAddressCreate(sub, "username@example.org");
+
+    let messengerDB = await store.select(messengerGetOptions().table, { sub });
+    //let authnDB = await store.select(authnGetOptions().table, { sub });
+
+    equal(messengerDB.id, messengerId);
+    equal(messengerDB.type, "emailAddress");
+    ok(messengerDB.value);
+    ok(messengerDB.digest);
+    ok(!messengerDB.verify);
+
+    await emailAddressCreate(sub, "username@example.org");
+
+    const { token } = mocks.notifyClient.mock.calls[1].arguments[0].data;
+
+    await emailAddressVerifyToken(sub, token, messengerId);
+
+    // notify
+    equal(mocks.notifyClient.mock.calls.length, 2);
+
+    messengerDB = await store.select(messengerGetOptions().table, { sub });
+    let authnDB = await store.select(authnGetOptions().table, { sub });
+    ok(messengerDB.verify);
+    ok(!authnDB);
+  });
   it("Can create a messenger on an account w/ optionalDotDomains", async () => {
     await emailAddressCreate(sub, "user.name@gmail.com");
     const exists = emailAddressExists("username@gmail.com");
@@ -103,7 +162,47 @@ describe("messenger-email-address", () => {
     const exists = emailAddressExists("username@protonmail.com");
     ok(exists);
   });
+  it("Can create a messenger on an account when already attempted by anther account", async () => {
+    const subOther = "sub_111111";
+    await emailAddressCreate(subOther, "username@example.org");
 
+    const messengerId = await emailAddressCreate(sub, "username@example.org");
+    const { token } = mocks.notifyClient.mock.calls[1].arguments[0].data;
+    await emailAddressVerifyToken(sub, token, messengerId);
+
+    let messengerDB = await store.select(messengerGetOptions().table, { sub });
+    ok(messengerDB.verify);
+  });
+
+  it("Can NOT create a messenger on an account when already connected to anther account", async () => {
+    const subOther = "sub_111111";
+    let messengerIdOther = await emailAddressCreate(
+      subOther,
+      "username@example.org",
+    );
+    const { token } = mocks.notifyClient.mock.calls[0].arguments[0].data;
+    await emailAddressVerifyToken(subOther, token, messengerIdOther);
+
+    const messengerIdNew = await emailAddressCreate(
+      sub,
+      "username@example.org",
+    );
+
+    equal(messengerIdNew, undefined);
+    const notify = mocks.notifyClient.mock.calls[1].arguments[0];
+    deepEqual(notify, {
+      data: {},
+      id: "messenger-emailAddress-exists",
+      options: {
+        messengers: [
+          {
+            id: messengerIdOther,
+          },
+        ],
+      },
+      sub: subOther,
+    });
+  });
   it("Can NOT create a messenger on an account w/ invalid email", async () => {
     try {
       await emailAddressCreate(sub, "username[at]example.org");
@@ -206,6 +305,25 @@ describe("messenger-email-address", () => {
   it("Can lookup a messenger { value } (not exists)", async () => {
     const messengerValue = "username@example.org";
     const messenger = await emailAddressLookup(messengerValue);
+    equal(messenger, undefined);
+  });
+  it("Can select a messenger { id } (unverified)", async () => {
+    const messengerValue = "username@example.org";
+    const messengerId = await emailAddressCreate(sub, messengerValue);
+    const messenger = await emailAddressSelect(sub, messengerId);
+    equal(messenger, undefined);
+  });
+  it("Can select a messenger { id } (exists)", async () => {
+    const messengerValue = "username@example.org";
+    const messengerId = await emailAddressCreate(sub, messengerValue);
+    const { token } = mocks.notifyClient.mock.calls[0].arguments[0].data;
+    await emailAddressVerifyToken(sub, token, messengerId);
+    const messenger = await emailAddressSelect(sub, messengerId);
+    equal(messenger.value, messengerValue);
+  });
+  it("Can select a messenger { value } (not exists)", async () => {
+    const messengerId = "unknown";
+    const messenger = await emailAddressSelect(sub, messengerId);
     equal(messenger, undefined);
   });
   it("Can list messengers with { sub }", async () => {
