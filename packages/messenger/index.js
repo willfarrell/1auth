@@ -1,6 +1,4 @@
 import {
-  entropyToCharacterLength,
-  charactersNumeric,
   randomNumeric,
   createSecretHash,
   verifySecretHash,

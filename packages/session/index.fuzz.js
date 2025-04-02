@@ -12,10 +12,7 @@ import crypto, {
   randomChecksumPepper,
 } from "../crypto/index.js";
 
-import account, {
-  getOptions as accountGetOptions,
-  create as accountCreate,
-} from "../account/index.js";
+import account, { create as accountCreate } from "../account/index.js";
 
 import accountUsername, {
   exists as accountUsernameExists,
@@ -24,7 +21,6 @@ import accountUsername, {
 import authn from "../authn/index.js";
 
 import session, {
-  getOptions as sessionGetOptions,
   create as sessionCreate,
   check as sessionCheck,
   lookup as sessionLookup,

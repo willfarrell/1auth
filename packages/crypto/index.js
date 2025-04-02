@@ -2,7 +2,6 @@ import { promisify } from "node:util";
 import {
   randomBytes,
   randomInt,
-  randomUUID,
   createHash,
   createCipheriv,
   createDecipheriv,

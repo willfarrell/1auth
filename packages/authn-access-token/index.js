@@ -1,7 +1,4 @@
 import {
-  charactersAlphaNumeric,
-  entropyToCharacterLength,
-  randomAlphaNumeric,
   makeRandomConfigObject,
   createSecretHash,
   verifySecretHash,
