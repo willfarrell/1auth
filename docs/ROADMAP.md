@@ -23,8 +23,8 @@
 
 ## Testing
 
-- [ ] improve unit tests 85% -> 100%
-- [ ] Add in more perf tests (cyrpto)
+- [ ] improve unit tests 95% -> 100%
+- [ ] Add in more perf tests (crypto)
 - [ ] Demo + DAST
 
 ## Planned Updates

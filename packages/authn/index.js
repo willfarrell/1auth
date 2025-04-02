@@ -33,15 +33,15 @@ export default (opt = {}) => {
 };
 export const getOptions = () => options;
 
-export const exists = async (credentialOptions, sub, params) => {
-  const type = makeType(credentialOptions);
-  const list = await options.store.selectList(options.table, {
-    ...params,
-    sub,
-    type,
-  });
-  return list.length > 1;
-};
+// export const exists = async (credentialOptions, sub, params) => {
+//   const type = makeType(credentialOptions);
+//   const list = await options.store.selectList(options.table, {
+//     ...params,
+//     sub,
+//     type,
+//   });
+//   return list.length > 1;
+// };
 
 export const count = async (credentialOptions, sub) => {
   const type = makeType(credentialOptions);

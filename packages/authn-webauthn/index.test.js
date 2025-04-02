@@ -60,6 +60,9 @@ authn({
   usernameExists: [accountUsernameExists],
   encryptedFields: ["value", "name"],
   authenticationDuration: 0,
+  log: function () {
+    mocks.log(...arguments);
+  },
 });
 const name = "1Auth";
 const origin = "http://localhost";
@@ -119,6 +122,8 @@ describe("authn-webauthn", () => {
     ok(token.expire);
 
     await overrideCreateChallenge(sub, token);
+    let count = await webauthnCount(sub);
+    equal(count, 0);
 
     await webauthnVerify(sub, registrationResponse, { name: "PassKey" });
 
@@ -137,7 +142,7 @@ describe("authn-webauthn", () => {
     equal(secret.value.length, 1741);
     equal(secret.expire, undefined);
 
-    let count = await webauthnCount(sub);
+    count = await webauthnCount(sub);
     equal(count, 1);
 
     // Authentication
