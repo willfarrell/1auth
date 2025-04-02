@@ -136,8 +136,8 @@ const createCredential = async (
 
 export const create = async (credentialOptions, sub, values) => {
   const params = await createCredential(credentialOptions, sub, values);
-  const row = await options.store.insert(options.table, params);
-  return { ...params, id: row.id };
+  const id = await options.store.insert(options.table, params);
+  return { ...params, id };
 };
 
 export const createList = async (credentialOptions, sub, list) => {
@@ -350,6 +350,7 @@ export const remove = async (credentialOptions, sub, id) => {
 export const select = async (credentialOptions, sub, id) => {
   const type = makeType(credentialOptions);
   const item = await options.store.select(options.table, { id, type, sub });
+  if (!item) return item;
   const { encryptionKey: encryptedKey } = item;
   delete item.encryptionKey;
   const decryptedItem = symmetricDecryptFields(

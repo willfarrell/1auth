@@ -7,12 +7,13 @@ import {
 import { createSeasonedDigest, symmetricDecryptFields } from "@1auth/crypto";
 
 // Only allow characters that are safe to encode
-// . not allowed because it can be used to declare and extension
+// not allowed because it can be used to declare and extension
 let usernameBlacklistRegExp;
 const options = {
   id: "username",
   allowedCharRegExp: /^[a-z0-9_-]*$/,
   usernameBlacklist: [],
+  minLength: 1,
   maxLength: 32,
 };
 export default (params) => {
@@ -100,7 +101,7 @@ export const validate = (value) => {
 };
 
 export const validateLength = (value) => {
-  if (value.length < 1 && options.maxLength < value.length) {
+  if (value.length < options.minLength || options.maxLength < value.length) {
     return "400 Bad Request";
   }
   return true;

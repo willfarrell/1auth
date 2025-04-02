@@ -39,6 +39,7 @@ authn({ store, notify });
 messenger({ store, notify });
 
 const mocks = {
+  log: () => {},
   notifyClient: () => {},
 };
 const sub = "sub_000000";

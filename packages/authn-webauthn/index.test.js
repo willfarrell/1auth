@@ -31,7 +31,10 @@ import webauthn, {
   create as webauthnCreate,
   verify as webauthnVerify,
   createChallenge as webauthnCreateChallenge,
+  count as webauthnCount,
+  select as webauthnSelect,
   list as webauthnList,
+  expire as webauthnExpire,
   remove as webauthnRemove,
 } from "../authn-webauthn/index.js";
 
@@ -61,12 +64,15 @@ authn({
 const name = "1Auth";
 const origin = "http://localhost";
 webauthn({
-  // log: console.log,
   name,
   origin,
+  log: function () {
+    mocks.log(...arguments);
+  },
 });
 
 const mocks = {
+  log: () => {},
   notifyClient: () => {},
 };
 let sub;
@@ -131,6 +137,9 @@ describe("authn-webauthn", () => {
     equal(secret.value.length, 1741);
     equal(secret.expire, undefined);
 
+    let count = await webauthnCount(sub);
+    equal(count, 1);
+
     // Authentication
     const { secret: authenticationOptions } =
       await webauthnCreateChallenge(sub);
@@ -166,7 +175,21 @@ describe("authn-webauthn", () => {
     authnDB = authnDB.filter((item) => item.expire === undefined);
     equal(authnDB.length, 1);
   });
+  it("Can create a 2nd WebAuthn on an account", async () => {
+    await webauthnCreate(sub);
+    const db0 = await store.selectList(authnGetOptions().table, { sub });
+    await overrideCreateChallenge(sub, db0[0]);
+    await webauthnVerify(sub, registrationResponse, { name: "PassKey" });
 
+    // TODO finish
+    // await webauthnCreate(sub);
+    // const [token] = await store.selectList(authnGetOptions().table, { sub });
+    // await overrideCreateChallenge(sub, token);
+    // await webauthnVerify(sub, registrationResponse, { name: "Yubikey" });
+
+    // let count = await webauthnCount(sub);
+    // equal(count, 2);
+  });
   it("Can remove WebAuthn on an account", async () => {
     await webauthnCreate(sub);
     const [token] = await store.selectList(authnGetOptions().table, { sub });
@@ -212,6 +235,24 @@ describe("authn-webauthn", () => {
 
     ok(authnDB);
     equal(authnDB.length, 1);
+  });
+  it("Can select an WebAuthn with { id } (exists)", async () => {
+    await webauthnCreate(sub); // TODO id is undefined
+    const [token] = await store.selectList(authnGetOptions().table, { sub });
+    await overrideCreateChallenge(sub, token);
+    const { id } = await webauthnVerify(
+      sub,
+      registrationResponse,
+      { name: "PassKey" },
+      false,
+    );
+
+    const row = await webauthnSelect(sub, id);
+    ok(row);
+  });
+  it("Can select an WebAuthn with { id } (not exists)", async () => {
+    const row = await webauthnSelect(sub, "authn_000");
+    equal(row, undefined);
   });
 
   it("Can list an WebAuthn with { sub } (exists)", async () => {

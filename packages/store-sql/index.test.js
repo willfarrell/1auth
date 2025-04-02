@@ -62,7 +62,8 @@ describe("store-sql", () => {
   });
   it("`insert`/`update`/`select` Should return object when something found", async () => {
     const row = { id: 1, sub: "sub_000", value: "a" };
-    await store.insert(table, row);
+    const id = await store.insert(table, row);
+    equal(id, row.id);
     //let result = await store.select(table, { id: row.id });
     row.value = "b";
     await store.update(

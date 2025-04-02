@@ -27,9 +27,11 @@ import authn, { getOptions as authnGetOptions } from "../authn/index.js";
 import recoveryCodes, {
   authenticate as recoveryCodesAuthenticate,
   create as recoveryCodesCreate,
+  count as recoveryCodesCount,
   // exists as recoveryCodesExists,
   // lookup as recoveryCodesLookup,
-  // list as recoveryCodesList,
+  // select as recoveryCodesSelect,
+  list as recoveryCodesList,
   update as recoveryCodesUpdate,
   remove as recoveryCodesRemove,
 } from "../authn-recovery-codes/index.js";
@@ -57,10 +59,15 @@ authn({
   encryptedFields: ["value", "name"],
   authenticationDuration: 0,
 });
-recoveryCodes();
+recoveryCodes({
+  log: function () {
+    mocks.log(...arguments);
+  },
+});
 // *** Setup End *** //
 
 const mocks = {
+  log: () => {},
   notifyClient: () => {},
 };
 let sub;
@@ -90,6 +97,8 @@ describe("authn-recovery-codes", () => {
     ok(!authnDB.digest);
     ok(!authnDB.expire);
 
+    let count = await recoveryCodesCount(sub);
+    equal(count, 5);
     // notify
     deepEqual(mocks.notifyClient.mock.calls[0].arguments[0], {
       id: "authn-recovery-codes-create",
@@ -99,6 +108,8 @@ describe("authn-recovery-codes", () => {
     });
     const userSub = await recoveryCodesAuthenticate(username, secrets[0].value);
     equal(userSub, sub);
+    count = await recoveryCodesCount(sub);
+    equal(count, 4);
   });
   it("Can update recovery codes on an account", async () => {
     const secrets = await recoveryCodesCreate(sub);
@@ -191,14 +202,23 @@ describe("authn-recovery-codes", () => {
   it("Can lookup an recovery codes with { secret } (not exists)", async () => {
     const row = await recoveryCodesLookup("pat-notfound");
     equal(row, undefined);
-  });
+  });*/
+  // it("Can select an recovery codes with { id } (exists)", async () => {
+  //   const {id} = await recoveryCodesCreate(sub);
+  //   const row = await recoveryCodesSelect(sub, id);
+  //   ok(row);
+  // });
+  // it("Can select an recovery codes with { id } (not exists)", async () => {
+  //   const row = await recoveryCodesSelect(sub, "session_000");
+  //   equal(row, undefined);
+  // });
   it("Can list an recovery codes with { sub } (exists)", async () => {
     const secrets = await recoveryCodesCreate(sub);
     const row = await recoveryCodesList(sub);
-    equal(row.length, 1);
+    equal(row.length, 5);
   });
   it("Can list an recovery codes with { sub } (not exists)", async () => {
     const row = await recoveryCodesList(sub);
     equal(row.length, 0);
-    }); */
+  });
 });

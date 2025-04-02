@@ -14,6 +14,8 @@ import crypto, {
   randomAlphaNumeric,
   randomNumeric,
   makeRandomConfigObject,
+  randomChecksumSalt,
+  randomChecksumPepper,
   createDigest,
   createSaltedDigest,
   createPepperedDigest,
@@ -22,14 +24,13 @@ import crypto, {
   verifySecretHash,
   symmetricRandomEncryptionKey,
   symmetricGenerateEncryptionKey,
-  //symmetricRandomSignatureSecret,
+  symmetricRandomSignatureSecret,
   symmetricGenerateSignatureSecret,
   symmetricEncryptFields,
   symmetricEncrypt,
   symmetricDecryptFields,
   symmetricDecrypt,
   symmetricDecryptKey,
-  symmetricRandomSignatureSecret,
   symmetricSignatureSign,
   symmetricSignatureVerify,
   symmetricRotation,
@@ -823,6 +824,58 @@ describe("crypto", () => {
         signature,
       );
       ok(!valid);
+    });
+  });
+
+  describe("options", () => {
+    it("Should fail when missing symmetricEncryptionKey", () => {
+      try {
+        crypto({
+          //symmetricEncryptionKey: symmetricRandomEncryptionKey(),
+          symmetricSignatureSecret: symmetricRandomSignatureSecret(),
+          digestChecksumSalt: randomChecksumSalt(),
+          digestChecksumPepper: randomChecksumPepper(),
+        });
+      } catch (e) {
+        ok(e.message.includes("symmetricEncryptionKey"));
+      }
+    });
+    it("Should fail when missing symmetricSignatureSecret", () => {
+      try {
+        crypto({
+          symmetricEncryptionKey: symmetricRandomEncryptionKey(),
+          // symmetricSignatureSecret: symmetricRandomSignatureSecret(),
+          digestChecksumSalt: randomChecksumSalt(),
+          digestChecksumPepper: randomChecksumPepper(),
+        });
+      } catch (e) {
+        ok(e.message.includes("symmetricSignatureSecret"));
+      }
+    });
+    it("Should fail when missing digestChecksumSalt", () => {
+      try {
+        crypto({
+          symmetricEncryptionKey: symmetricRandomEncryptionKey(),
+          symmetricSignatureSecret: symmetricRandomSignatureSecret(),
+          // digestChecksumSalt: randomChecksumSalt(),
+          digestChecksumPepper: randomChecksumPepper(),
+        });
+      } catch (e) {
+        ok(e.message.includes("digestChecksumSalt"));
+      }
+    });
+    it("Should fail when missing digestChecksumPepper", () => {
+      try {
+        crypto({
+          symmetricEncryptionKey: symmetricRandomEncryptionKey(),
+          symmetricSignatureSecret: symmetricRandomSignatureSecret(),
+          digestChecksumSalt: randomChecksumSalt(),
+          // digestChecksumPepper: randomChecksumPepper(),
+        });
+      } catch (e) {
+        console.log(e);
+        ok(e.message.includes("digestChecksumPepper"));
+      }
     });
   });
 });
