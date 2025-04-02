@@ -106,7 +106,7 @@ describe("messenger-email-address", () => {
 
     await emailAddressVerifyToken(sub, notifyCall0.token, messengerId);
 
-    const messengerId2 = await emailAddressCreate(sub, "username@example.org");
+    await emailAddressCreate(sub, "username@example.org");
     const notifyCall1 = mocks.notifyClient.mock.calls[1].arguments[0].data;
 
     await emailAddressVerifyToken(sub, notifyCall1.token, messengerId);
@@ -128,7 +128,6 @@ describe("messenger-email-address", () => {
   });
   it("Can create a messenger, on a nth attempt, on an account", async () => {
     let messengerId = await emailAddressCreate(sub, "username@example.org");
-    const notifyCall0 = mocks.notifyClient.mock.calls[0].arguments[0].data;
 
     let messengerDB = await store.select(messengerGetOptions().table, { sub });
     //let authnDB = await store.select(authnGetOptions().table, { sub });
@@ -141,8 +140,7 @@ describe("messenger-email-address", () => {
 
     await emailAddressCreate(sub, "username@example.org");
 
-    const { token, expire } =
-      mocks.notifyClient.mock.calls[1].arguments[0].data;
+    const { token } = mocks.notifyClient.mock.calls[1].arguments[0].data;
 
     await emailAddressVerifyToken(sub, token, messengerId);
 
@@ -166,14 +164,10 @@ describe("messenger-email-address", () => {
   });
   it("Can create a messenger on an account when already attempted by anther account", async () => {
     const subOther = "sub_111111";
-    let messengerIdOther = await emailAddressCreate(
-      subOther,
-      "username@example.org",
-    );
+    await emailAddressCreate(subOther, "username@example.org");
 
     const messengerId = await emailAddressCreate(sub, "username@example.org");
-    const { token, expire } =
-      mocks.notifyClient.mock.calls[1].arguments[0].data;
+    const { token } = mocks.notifyClient.mock.calls[1].arguments[0].data;
     await emailAddressVerifyToken(sub, token, messengerId);
 
     let messengerDB = await store.select(messengerGetOptions().table, { sub });
@@ -186,8 +180,7 @@ describe("messenger-email-address", () => {
       subOther,
       "username@example.org",
     );
-    const { token, expire } =
-      mocks.notifyClient.mock.calls[0].arguments[0].data;
+    const { token } = mocks.notifyClient.mock.calls[0].arguments[0].data;
     await emailAddressVerifyToken(subOther, token, messengerIdOther);
 
     const messengerIdNew = await emailAddressCreate(

@@ -295,7 +295,7 @@ export const makeQueryParams = (filters = {}, fields = []) => {
   const expressionAttributeValues = {};
   let keyConditionExpression = [];
   let updateExpression = [];
-  let attributesToGet = [];
+  //let attributesToGet = [];
   for (const key in filters) {
     const isArray = Array.isArray(filters[key]);
     if (isArray) {

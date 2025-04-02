@@ -99,7 +99,6 @@ const mocks = {
 
 let sub;
 const username = "username";
-const nowInSeconds = () => Math.floor(Date.now() / 1000);
 
 describe("session", () => {
   for (const storeKey of Object.keys(stores)) {
@@ -239,7 +238,7 @@ describe("session", () => {
 
       it("Can `sign`/`verify` a sid", async () => {
         const currentDevice = { os: "MacOS" };
-        const { id, sid } = await sessionCreate(sub, currentDevice);
+        const { sid } = await sessionCreate(sub, currentDevice);
         const cookie = sessionSign(sid);
         const verify = sessionVerify(cookie);
         ok(verify);
