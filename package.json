@@ -1,6 +1,6 @@
 {
   "name": "@1auth/monorepo",
-  "version": "0.0.0-alpha.68",
+  "version": "0.0.0-alpha.69",
   "description": "",
   "private": true,
   "type": "module",
@@ -39,9 +39,7 @@
     "outdated": "npm outdated --workspaces",
     "audit": "npm audit fix --workspaces",
     "release:sync": "npm version $npm_package_version --workspaces && find ./packages -name \"package.json\" -exec sed -i '' -E \"s|\\\"@1auth/(.*)\\\": ([^,]*)|\\\"@1auth/\\1\\\": $(npm pkg get version)|g\" {} \\; && npm run rm:node_modules && npm link --workspaces && npm install",
-    "release:tag": "git tag $npm_package_version && git push --tags",
-    "release:publish": "npm publish --workspaces && npm update",
-    "release:publish:next": "npm publish --tag next --workspaces"
+    "release:tag": "git tag $npm_package_version && git push --tags"
   },
   "repository": {
     "type": "git",
