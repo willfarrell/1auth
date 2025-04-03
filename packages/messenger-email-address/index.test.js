@@ -23,6 +23,7 @@ import emailAddress, {
   select as emailAddressSelect,
   list as emailAddressList,
   create as emailAddressCreate,
+  createToken as emailAddressCreateToken,
   verifyToken as emailAddressVerifyToken,
   remove as emailAddressRemove,
 } from "../messenger-email-address/index.js";
@@ -93,6 +94,42 @@ describe("messenger-email-address", () => {
 
     // notify
     equal(mocks.notifyClient.mock.calls.length, 1);
+
+    messengerDB = await store.select(messengerGetOptions().table, { sub });
+    let authnDB = await store.select(authnGetOptions().table, { sub });
+    ok(messengerDB.verify);
+    ok(!authnDB);
+  });
+
+  it("Can create a messenger on an account with a re-created token", async () => {
+    const messengerId = await emailAddressCreate(sub, "username@example.org");
+    await emailAddressCreateToken(sub, messengerId);
+    const { token, expire } =
+      mocks.notifyClient.mock.calls[1].arguments[0].data;
+
+    // notify
+    deepEqual(mocks.notifyClient.mock.calls[1].arguments[0], {
+      id: "messenger-emailAddress-verify",
+      sub,
+      data: { token, expire },
+      options: {
+        messengers: [{ id: messengerId }],
+      },
+    });
+
+    let messengerDB = await store.select(messengerGetOptions().table, { sub });
+    //let authnDB = await store.select(authnGetOptions().table, { sub });
+
+    equal(messengerDB.id, messengerId);
+    equal(messengerDB.type, "emailAddress");
+    ok(messengerDB.value);
+    ok(messengerDB.digest);
+    ok(!messengerDB.verify);
+
+    await emailAddressVerifyToken(sub, token, messengerId);
+
+    // notify
+    equal(mocks.notifyClient.mock.calls.length, 2);
 
     messengerDB = await store.select(messengerGetOptions().table, { sub });
     let authnDB = await store.select(authnGetOptions().table, { sub });

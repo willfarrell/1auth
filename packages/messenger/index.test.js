@@ -17,6 +17,7 @@ import messenger, {
   lookup as messengerLookup,
   list as messengerList,
   create as messengerCreate,
+  createToken as messengerCreateToken,
   verifyToken as messengerVerifyToken,
   remove as messengerRemove,
   getOptions as messengerGetOptions,
@@ -86,6 +87,47 @@ describe("messenger", () => {
 
     // notify
     equal(mocks.notifyClient.mock.calls.length, 1);
+
+    messengerDB = await store.select(messengerGetOptions().table, { sub });
+    let authnDB = await store.select(authnGetOptions().table, { sub });
+    ok(messengerDB.verify);
+    ok(!authnDB);
+  });
+
+  it("Can create a messenger on an account after re-creating a token", async () => {
+    const messengerType = "signal";
+    const messengerId = await messengerCreate(
+      messengerType,
+      sub,
+      "@username.00",
+    );
+    await messengerCreateToken("signal", sub, messengerId);
+    const { token, expire } =
+      mocks.notifyClient.mock.calls[1].arguments[0].data;
+
+    // notify
+    deepEqual(mocks.notifyClient.mock.calls[1].arguments[0], {
+      id: `messenger-signal-verify`,
+      sub,
+      data: { token, expire },
+      options: {
+        messengers: [{ id: messengerId }],
+      },
+    });
+
+    let messengerDB = await store.select(messengerGetOptions().table, { sub });
+    //let authnDB = await store.select(authnGetOptions().table, { sub });
+
+    equal(messengerDB.id, messengerId);
+    equal(messengerDB.type, messengerType);
+    ok(messengerDB.value);
+    ok(messengerDB.digest);
+    ok(!messengerDB.verify);
+
+    await messengerVerifyToken(messengerType, sub, token, messengerId);
+
+    // notify
+    equal(mocks.notifyClient.mock.calls.length, 2);
 
     messengerDB = await store.select(messengerGetOptions().table, { sub });
     let authnDB = await store.select(authnGetOptions().table, { sub });
