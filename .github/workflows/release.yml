@@ -130,6 +130,6 @@ jobs:
       - name: npm publish (latest)
         if: ${{ !needs.release.outputs.prerelease }}
         run: |
-          npm publish --workspaces --tag latest --provenance --access public "**/*.tgz"
+          npm publish --tag latest --provenance --access public "**/*.tgz"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
