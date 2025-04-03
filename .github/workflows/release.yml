@@ -124,12 +124,12 @@ jobs:
       - name: npm publish (next)
         if: ${{ needs.release.outputs.prerelease }}
         run: |
-          npm publish --workspaces --tag next --provenance --access public **/*.tgz
+          npm publish --tag next --provenance --access public "**/*.tgz"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       - name: npm publish (latest)
         if: ${{ !needs.release.outputs.prerelease }}
         run: |
-          npm publish --workspaces --tag latest --provenance --access public **/*.tgz
+          npm publish --workspaces --tag latest --provenance --access public "**/*.tgz"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
