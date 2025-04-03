@@ -1,6 +1,6 @@
 {
   "name": "@1auth/monorepo",
-  "version": "0.0.0-alpha.68",
+  "version": "0.0.0-alpha.69",
   "description": "",
   "private": true,
   "type": "module",
@@ -19,7 +19,7 @@
     "test": "npm run test:lint && npm run test:unit && npm run test:sast && npm run test:perf && npm run test:dast",
     "test:lint": "prettier --write --log-level warn \"./**/*.{js,cjs,mjs,json}\"",
     "test:lint:ci": "prettier --check --log-level error \"./**/*.{js,cjs,mjs,json}\"",
-    "test:unit": "node --test --experimental-test-coverage --test-coverage-lines=97 --test-coverage-branches=95 --test-coverage-functions=96 --test-coverage-exclude=**/mock.*.js --test-coverage-exclude=**/*.test.js --test-coverage-exclude=**/table/*",
+    "test:unit": "node --test --experimental-test-coverage --test-coverage-lines=97 --test-coverage-branches=95 --test-coverage-functions=97 --test-coverage-exclude=**/mock.*.js --test-coverage-exclude=**/*.test.js --test-coverage-exclude=**/table/*",
     "test:sast": "npm run test:sast:sandworm && npm run test:sast:semgrep && npm run test:sast:trufflehog",
     "test:sast:sandworm": "sandworm-audit --skip-all --show-tips false",
     "test:sast:semgrep": "semgrep scan --config auto",
@@ -39,9 +39,7 @@
     "outdated": "npm outdated --workspaces",
     "audit": "npm audit fix --workspaces",
     "release:sync": "npm version $npm_package_version --workspaces && find ./packages -name \"package.json\" -exec sed -i '' -E \"s|\\\"@1auth/(.*)\\\": ([^,]*)|\\\"@1auth/\\1\\\": $(npm pkg get version)|g\" {} \\; && npm run rm:node_modules && npm link --workspaces && npm install",
-    "release:tag": "git tag $npm_package_version && git push --tags",
-    "release:publish": "npm publish --workspaces && npm update",
-    "release:publish:next": "npm publish --tag next --workspaces"
+    "release:tag": "git tag $npm_package_version && git push --tags"
   },
   "repository": {
     "type": "git",

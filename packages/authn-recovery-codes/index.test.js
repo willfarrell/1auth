@@ -58,6 +58,9 @@ authn({
   usernameExists: [accountUsernameExists],
   encryptedFields: ["value", "name"],
   authenticationDuration: 0,
+  log: function () {
+    mocks.log(...arguments);
+  },
 });
 recoveryCodes({
   log: function () {

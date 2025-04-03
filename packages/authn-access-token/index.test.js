@@ -58,6 +58,9 @@ authn({
   usernameExists: [accountUsernameExists, accessTokenExists],
   encryptedFields: ["value", "name"],
   authenticationDuration: 0,
+  log: function () {
+    mocks.log(...arguments);
+  },
 });
 accessToken({
   log: function () {
