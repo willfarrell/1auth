@@ -37,7 +37,13 @@ export default (table = "sessions", { timeToLiveKey } = {}) => {
         ],
         Projection: {
           ProjectionType: "INCLUDE",
-          NonKeyAttributes: ["encryptionKey", "value", "create", "expire"],
+          NonKeyAttributes: [
+            "encryptionKey",
+            "value",
+            "metadata", // optional, used in tests
+            "create",
+            "expire",
+          ],
         },
       },
       {

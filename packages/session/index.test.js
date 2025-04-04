@@ -109,6 +109,7 @@ describe("session", () => {
         store = config.store;
         table = config.table;
         session({
+          encryptedFields: ["value", "location"],
           store,
           notify,
           log: function () {
@@ -174,13 +175,27 @@ describe("session", () => {
 
       it("Can select a session by { sub, id }", async () => {
         const currentDevice = { os: "MacOS" };
-        const { id, expire } = await sessionCreate(sub, currentDevice);
+        const currentFields = { metadata: "Toronto, Ontario, Canada" };
+        const { id, expire } = await sessionCreate(
+          sub,
+          currentDevice,
+          currentFields,
+        );
         const session = await sessionSelect(sub, id);
         ok(session);
         equal(session.id, id);
         equal(session.expire, expire);
+        equal(session.metadata, currentFields.metadata);
       });
 
+      it("Can list sessions for an account, additional fields", async () => {
+        const currentDevice = { os: "MacOS" };
+        const currentFields = { metadata: "Toronto, Ontario, Canada" };
+        await sessionCreate(sub, currentDevice, currentFields);
+
+        const sessions = await sessionList(sub);
+        deepEqual(sessions[0].metadata, currentFields.metadata);
+      });
       it("Can list sessions for an account, including expired", async () => {
         const currentDevice = { os: "MacOS" };
         const otherDevice = { os: "iOS" };
