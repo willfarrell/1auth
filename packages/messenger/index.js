@@ -94,13 +94,15 @@ export const list = async (type, sub) => {
     type,
   });
   for (let i = messengers.length; i--; ) {
-    const { encryptionKey: encryptedKey, sub } = messengers[i];
-    delete messengers[i].encryptionKey;
-    messengers[i] = symmetricDecryptFields(
-      messengers[i],
+    const messenger = messengers[i];
+    const { encryptionKey: encryptedKey, sub } = messenger;
+    delete messenger.encryptionKey;
+    const decryptedMessenger = symmetricDecryptFields(
+      messenger,
       { encryptedKey, sub },
       options.encryptedFields,
     );
+    messengers[i] = decryptedMessenger;
   }
   return messengers;
 };
@@ -133,7 +135,6 @@ export const create = async (type, sub, value, values) => {
     {
       ...values,
       value,
-      digest,
     },
     {
       encryptionKey,
@@ -143,6 +144,7 @@ export const create = async (type, sub, value, values) => {
   );
   const params = {
     ...encryptedValues,
+    digest,
     sub,
     type,
     encryptionKey: encryptedKey,

@@ -2,7 +2,8 @@ import {
   makeRandomConfigObject,
   createSeasonedDigest,
   symmetricGenerateEncryptionKey,
-  symmetricEncrypt,
+  symmetricEncryptFields,
+  symmetricDecryptFields,
   symmetricDecrypt,
   symmetricSignatureSign,
   symmetricSignatureVerify,
@@ -41,7 +42,7 @@ const defaults = {
   randomId: randomId(),
   randomSessionId: randomSessionId(),
   expire: 15 * 60,
-  // encryptedFields: ["value"],
+  encryptedFields: ["value"],
   encode: (value) => JSON.stringify(value),
   decode: (value) => JSON.parse(value),
   checkMetadata: (oldSession, newSession) => safeEqual(oldSession, newSession),
@@ -73,29 +74,35 @@ export const lookup = async (sid, value = {}) => {
 
 export const select = async (sub, id) => {
   const session = await options.store.select(options.table, { sub, id });
-  const now = nowInSeconds();
-  if (session) {
-    const decryptedValue = symmetricDecrypt(session.value, {
-      sub,
-      encryptedKey: session.encryptionKey,
-    });
-    session.value = options.decode(decryptedValue);
-    return session;
-  }
+  if (!session) return;
+
+  const { encryptionKey: encryptedKey } = session;
+  delete session.encryptionKey;
+
+  const decryptedValues = symmetricDecryptFields(
+    session,
+    { encryptedKey, sub },
+    options.encryptedFields,
+  );
+  decryptedValues.value = options.decode(decryptedValues.value);
+  return decryptedValues;
 };
 
 export const list = async (sub) => {
   const items = await options.store.selectList(options.table, { sub });
-  const now = nowInSeconds();
   const sessions = [];
   for (let i = items.length; i--; ) {
     const session = items[i];
-    const decryptedValue = symmetricDecrypt(session.value, {
-      sub,
-      encryptedKey: session.encryptionKey,
-    });
-    session.value = options.decode(decryptedValue);
-    sessions.push(session);
+    const { encryptionKey: encryptedKey, sub } = session;
+    delete session.encryptionKey;
+    const decryptedSession = symmetricDecryptFields(
+      session,
+      { encryptedKey, sub },
+      options.encryptedFields,
+    );
+
+    decryptedSession.value = options.decode(decryptedSession.value);
+    sessions.push(decryptedSession);
   }
   return sessions;
 };
@@ -105,16 +112,33 @@ export const list = async (sub) => {
  * @param sub
  * @param value {os, browser, ip, ...}
  */
-export const create = async (sub, value = {}) => {
+export const create = async (sub, value = {}, values) => {
   if (options.log) {
     options.log("@1auth/session create(", sub, value, ")");
   }
   const now = nowInSeconds();
   const sid = await options.randomSessionId.create();
   const digest = createSeasonedDigest(sid);
+
+  const encodedValue = options.encode(value);
+
+  const { encryptedKey, encryptionKey } = symmetricGenerateEncryptionKey(sub);
+  const encryptedValues = symmetricEncryptFields(
+    {
+      ...values,
+      value: encodedValue,
+    },
+    {
+      encryptionKey,
+      sub,
+    },
+    options.encryptedFields,
+  );
   const params = {
+    ...encryptedValues,
     digest,
     sub,
+    encryptionKey: encryptedKey,
     create: now,
     update: now,
     expire: now + options.expire,
@@ -122,18 +146,7 @@ export const create = async (sub, value = {}) => {
   if (options.idGenerate) {
     params.id = await options.randomId.create(options.idPrefix);
   }
-  const encodedValue = options.encode(value);
-
-  const { encryptedKey, encryptionKey } = symmetricGenerateEncryptionKey(sub);
-  params.encryptionKey = encryptedKey;
-  params.value = symmetricEncrypt(encodedValue, {
-    encryptionKey,
-    sub,
-  });
-  // if (options.log) {
-  //   options.log("@1auth/session create", { params });
-  // }
-  await options.store.insert(options.table, params);
+  params.id = await options.store.insert(options.table, params);
   params.sid = sid;
   return params;
 };

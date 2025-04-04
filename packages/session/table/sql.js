@@ -8,6 +8,7 @@ export default (table = "sessions") => {
 
     "encryptionKey"      VARCHAR(128)  NOT NULL,
     "value"              VARCHAR(256)  NOT NULL,
+    "metadata"           VARCHAR(256)  DEFAULT NULL, -- optional, used in tests
 
     "create"             TIMESTAMP WITH TIME ZONE DEFAULT NULL,
     "update"             TIMESTAMP WITH TIME ZONE DEFAULT NULL,
