@@ -33,7 +33,7 @@ Ensure tests are updated and pass. All tests are automatically enforced using Gi
 
 ### Formating / Linting
 
-We use `prettier` with default configurations.
+We use `biome` with recommended configurations plus a few correctness additions.
 
 ### Unit tests
 
