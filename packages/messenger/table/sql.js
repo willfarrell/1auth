@@ -1,5 +1,5 @@
 export default (table = "messengers") => {
-  return `
+	return `
   CREATE TABLE IF NOT EXISTS app.messengers
   (
     id                 VARCHAR(11) NOT NULL,

@@ -1,8 +1,8 @@
 export const sqlTable = (table = "test") => {
-  return `
+	return `
   CREATE TABLE IF NOT EXISTS ${table}
   (
-    id INTEGER,
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
     sub VARCAHR(32),
     value TEXT
   )

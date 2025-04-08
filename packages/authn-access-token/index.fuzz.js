@@ -1,53 +1,53 @@
 import { test } from "node:test";
 import fc from "fast-check";
 
+import crypto, {
+	symmetricRandomEncryptionKey,
+	symmetricRandomSignatureSecret,
+	randomChecksumSalt,
+	randomChecksumPepper,
+} from "../crypto/index.js";
 // *** Setup Start *** //
 import * as notify from "../notify-console/index.js";
 import * as store from "../store-memory/index.js";
-import crypto, {
-  symmetricRandomEncryptionKey,
-  symmetricRandomSignatureSecret,
-  randomChecksumSalt,
-  randomChecksumPepper,
-} from "../crypto/index.js";
 
 import account, { create as accountCreate } from "../account/index.js";
 
 import accountUsername, {
-  create as accountUsernameCreate,
-  exists as accountUsernameExists,
+	create as accountUsernameCreate,
+	exists as accountUsernameExists,
 } from "../account-username/index.js";
 
 import authn from "../authn/index.js";
 
 import accessToken, {
-  authenticate as accessTokenAuthenticate,
-  exists as accessTokenExists,
-  create as accessTokenCreate,
+	authenticate as accessTokenAuthenticate,
+	exists as accessTokenExists,
+	create as accessTokenCreate,
 } from "../authn-access-token/index.js";
 
 crypto({
-  symmetricEncryptionKey: symmetricRandomEncryptionKey(),
-  symmetricSignatureSecret: symmetricRandomSignatureSecret(),
-  digestChecksumSalt: randomChecksumSalt(),
-  digestChecksumPepper: randomChecksumPepper(),
+	symmetricEncryptionKey: symmetricRandomEncryptionKey(),
+	symmetricSignatureSecret: symmetricRandomSignatureSecret(),
+	digestChecksumSalt: randomChecksumSalt(),
+	digestChecksumPepper: randomChecksumPepper(),
 });
 store.default({ log: false });
 notify.default({
-  client: (id, sub, params) => {
-    mocks.notifyClient(id, sub, params);
-  },
+	client: (id, sub, params) => {
+		mocks.notifyClient(id, sub, params);
+	},
 });
 
 account({ store, notify, encryptedFields: ["name", "username", "privateKey"] });
 accountUsername();
 
 authn({
-  store,
-  notify,
-  usernameExists: [accountUsernameExists],
-  encryptedFields: ["value", "name"],
-  authenticationDuration: 0,
+	store,
+	notify,
+	usernameExists: [accountUsernameExists],
+	encryptedFields: ["value", "name"],
+	authenticationDuration: 0,
 });
 accessToken();
 // *** Setup End *** //
@@ -61,43 +61,43 @@ await accountUsernameCreate(sub, username);
 await accessTokenCreate(sub);
 
 const catchError = (input, e) => {
-  if (e.message === "401 Unauthorized") {
-    return;
-  }
-  console.error(input, e);
-  throw e;
+	if (e.message === "401 Unauthorized") {
+		return;
+	}
+	console.error(input, e);
+	throw e;
 };
 
 test("fuzz accessTokenAuthenticate w/ `string`, `string`", async () => {
-  await fc.assert(
-    fc.asyncProperty(fc.string(), fc.string(), async (username, secret) => {
-      try {
-        await accessTokenAuthenticate(username, secret);
-      } catch (e) {
-        catchError({ username, secret }, e);
-      }
-    }),
-    {
-      numRuns: 10,
-      verbose: 2,
-      examples: [],
-    },
-  );
+	await fc.assert(
+		fc.asyncProperty(fc.string(), fc.string(), async (username, secret) => {
+			try {
+				await accessTokenAuthenticate(username, secret);
+			} catch (e) {
+				catchError({ username, secret }, e);
+			}
+		}),
+		{
+			numRuns: 10,
+			verbose: 2,
+			examples: [],
+		},
+	);
 });
 
 test("fuzz accessTokenExists w/ `string`", async () => {
-  await fc.assert(
-    fc.asyncProperty(fc.string(), async (secret) => {
-      try {
-        await accessTokenExists(secret);
-      } catch (e) {
-        catchError(secret, e);
-      }
-    }),
-    {
-      numRuns: 100_000,
-      verbose: 2,
-      examples: [],
-    },
-  );
+	await fc.assert(
+		fc.asyncProperty(fc.string(), async (secret) => {
+			try {
+				await accessTokenExists(secret);
+			} catch (e) {
+				catchError(secret, e);
+			}
+		}),
+		{
+			numRuns: 100_000,
+			verbose: 2,
+			examples: [],
+		},
+	);
 });

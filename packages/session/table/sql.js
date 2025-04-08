@@ -1,5 +1,5 @@
 export default (table = "sessions") => {
-  return `
+	return `
   CREATE TABLE IF NOT EXISTS ${table}
   (
     "id"                 VARCHAR(21)   NOT NULL,

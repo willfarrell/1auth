@@ -1,5 +1,5 @@
 export default (table = "authentications") => {
-  return `
+	return `
   CREATE TABLE IF NOT EXISTS ${table}
   (
     id                 VARCHAR(11) NOT NULL,

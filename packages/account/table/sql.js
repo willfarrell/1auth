@@ -1,5 +1,5 @@
 export default (table = "accounts") => {
-  return `
+	return `
   CREATE TABLE IF NOT EXISTS ${table}
   (
     sub                VARCHAR(11)         NOT NULL,
