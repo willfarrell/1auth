@@ -94,9 +94,9 @@ export const insertList = async (table, list = []) => {
 	db[table] ??= [];
 	const ids = [];
 	for (const values of list) {
-		values.id ??= __randomId();
-		db[table].push(values);
-		ids.push(values.id);
+		const id = values.id ?? __randomId();
+		db[table].push({ id, ...values });
+		ids.push(id);
 	}
 	return ids;
 };
@@ -146,6 +146,7 @@ const matchFilter = (item, filters) => {
 const __randomId = () => {
 	return randomBytes(32).toString("base64");
 };
+
 // For testing only
 export const __table = async (table) => {
 	if (options.log) {
@@ -158,5 +159,5 @@ export const __clear = async (table) => {
 	if (options.log) {
 		options.log("__clear", { table });
 	}
-	delete db[table];
+	db[table] = [];
 };
