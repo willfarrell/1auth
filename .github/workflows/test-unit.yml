@@ -30,5 +30,6 @@ jobs:
           npm run build --if-present
       - name: Unit tests
         run: |
-          docker run -p 8000:8000 amazon/dynamodb-local &
+          npm run test:dynamodb &
+          npm run test:postgres &
           npm run test:unit

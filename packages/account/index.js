@@ -1,5 +1,4 @@
 import {
-	makeAsymmetricKeys,
 	makeRandomConfigObject,
 	symmetricDecryptFields,
 	symmetricEncryptFields,
@@ -30,7 +29,7 @@ const defaults = {
 	idGenerate: true,
 	randomId: randomId(),
 	randomSubject: randomSubject(),
-	encryptedFields: ["privateKey"], // TODO has encryption build-in
+	encryptedFields: [],
 };
 const options = {};
 export default (params) => {
@@ -39,15 +38,22 @@ export default (params) => {
 export const getOptions = () => options;
 
 export const exists = async (sub) => {
+	if (!sub || typeof sub !== "string") {
+		throw new Error("404 Not Found", { cause: { sub } });
+	}
 	return options.store.exists(options.table, { sub });
 };
 
 export const lookup = async (sub) => {
+	if (!sub || typeof sub !== "string") {
+		throw new Error("404 Not Found", { cause: { sub } });
+	}
 	const account = await options.store.select(options.table, { sub });
-	if (!account) return;
+	if (!account) {
+		throw new Error("404 Not Found", { cause: { sub } });
+	}
 	const { encryptionKey: encryptedKey } = account;
 	account.encryptionKey = undefined;
-	account.privateKey = undefined;
 	const decryptedAccount = symmetricDecryptFields(
 		account,
 		{ encryptedKey, sub },
@@ -58,11 +64,10 @@ export const lookup = async (sub) => {
 
 export const create = async (values = {}) => {
 	const sub = await options.randomSubject.create(options.subPrefix);
-	const asymmetricKeys = await makeAsymmetricKeys();
 
 	const { encryptionKey, encryptedKey } = symmetricGenerateEncryptionKey(sub);
 	const encryptedValues = symmetricEncryptFields(
-		{ ...values, ...asymmetricKeys },
+		values,
 		{ encryptionKey, sub },
 		options.encryptedFields,
 	);
@@ -86,13 +91,20 @@ export const create = async (values = {}) => {
 
 // for in the clear user metadata
 export const update = async (sub, values = {}) => {
-	const { encryptionKey: encryptedKey } = await options.store.select(
+	if (!sub || typeof sub !== "string") {
+		throw new Error("404 Not Found", { cause: { sub } });
+	}
+	const account = await options.store.select(
 		options.table,
 		{
 			sub,
 		},
 		["encryptionKey"],
 	);
+	if (!account) {
+		throw new Error("404 Not Found", { cause: { sub } });
+	}
+	const { encryptionKey: encryptedKey } = account;
 
 	const encryptedValues = symmetricEncryptFields(
 		values,
@@ -108,6 +120,9 @@ export const update = async (sub, values = {}) => {
 };
 
 export const expire = async (sub) => {
+	if (!sub || typeof sub !== "string") {
+		throw new Error("401 Unauthorized", { cause: { sub } });
+	}
 	await options.store.update(
 		options.table,
 		{ sub },
@@ -116,6 +131,9 @@ export const expire = async (sub) => {
 };
 
 export const remove = async (sub) => {
+	if (!sub || typeof sub !== "string") {
+		throw new Error("404 Not Found", { cause: { sub } });
+	}
 	// Should trigger removal of credentials and messengers
 	await options.store.remove(options.table, { sub });
 };

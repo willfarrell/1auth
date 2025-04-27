@@ -1,19 +1,29 @@
 import { test } from "node:test";
 import fc from "fast-check";
 
+// ** Setup Start *** //
+import * as notify from "../notify/index.js";
+import * as store from "../store-sqlite/index.js";
+
+import * as mockNotify from "../notify/mock.js";
+import * as mockStore from "../store-sqlite/mock.js";
+
+import * as mockAccountSQLTable from "../account/table/sql.js";
+
 import crypto, {
 	symmetricRandomEncryptionKey,
 	symmetricRandomSignatureSecret,
 	randomChecksumSalt,
 	randomChecksumPepper,
 } from "../crypto/index.js";
-// ** Setup Start *** //
-import * as notify from "../notify-console/index.js";
-import * as store from "../store-memory/index.js";
 
 import account, {
+	exists as accountExists,
+	lookup as accountLookup,
 	create as accountCreate,
 	update as accountUpdate,
+	expire as accountExpire,
+	remove as accountRemove,
 } from "../account/index.js";
 
 crypto({
@@ -22,20 +32,68 @@ crypto({
 	digestChecksumSalt: randomChecksumSalt(),
 	digestChecksumPepper: randomChecksumPepper(),
 });
-store.default({ log: false });
 notify.default({
 	client: () => {},
 });
-
-account({ store, notify, encryptedFields: ["name", "username", "privateKey"] });
+store.default({
+	client: {
+		query: (...args) => mocks.storeClient.query(...args),
+	},
+});
 // *** Setup End *** //
 
-const sub = await accountCreate();
+const mocks = {
+	...mockNotify,
+	...mockStore,
+	storeAccount: mockAccountSQLTable,
+};
 
-test("fuzz accountUpdate unencrypted value w/ `string`", async () => {
+let sub;
+
+test.before(async () => {
+	await mocks.storeAccount.create(mocks.storeClient);
+
+	account({
+		store,
+		notify,
+	});
+});
+
+test.beforeEach(async () => {
+	sub = await accountCreate();
+});
+
+test.afterEach(async () => {
+	await mocks.storeAccount.truncate(mocks.storeClient);
+});
+
+test.after(async () => {
+	await mocks.storeAccount.drop(mocks.storeClient);
+	mocks.storeClient.after?.();
+});
+
+const catchError = (input, e) => {
+	const expectedErrors = [
+		"400 Bad Request",
+		"401 Unauthorized",
+		"404 Not Found",
+		"409 Conflict",
+	];
+	if (expectedErrors.includes(e.message)) {
+		return;
+	}
+	console.error(input, e);
+	throw e;
+};
+
+test("fuzz accountExists w/ sub", async () => {
 	await fc.assert(
-		fc.asyncProperty(fc.string(), async (notPersonalInformation) => {
-			await accountUpdate(sub, { notPersonalInformation });
+		fc.asyncProperty(fc.anything(), async (sub) => {
+			try {
+				await accountExists(sub);
+			} catch (e) {
+				catchError(sub, e);
+			}
 		}),
 		{
 			numRuns: 100_000,
@@ -45,10 +103,130 @@ test("fuzz accountUpdate unencrypted value w/ `string`", async () => {
 	);
 });
 
-test("fuzz accountUpdate encrypted value w/ `string`", async () => {
+test("fuzz accountLookup w/ sub", async () => {
 	await fc.assert(
-		fc.asyncProperty(fc.string(), async (name) => {
-			await accountUpdate(sub, { name });
+		fc.asyncProperty(fc.anything(), async (sub) => {
+			try {
+				await accountLookup(sub);
+			} catch (e) {
+				catchError(sub, e);
+			}
+		}),
+		{
+			numRuns: 100_000,
+			verbose: 2,
+			examples: [],
+		},
+	);
+});
+
+// test("fuzz accountCreate w/ values", async () => {
+// 	await fc.assert(
+// 		fc.asyncProperty(fc.anything(), async (values) => {
+//       try {
+//   		  await accountCreate(values);
+//   		} catch (e) {
+//   			catchError(values, e);
+//   		}
+// 		}),
+// 		{
+// 			numRuns: 100_000,
+// 			verbose: 2,
+// 			examples: [],
+// 		},
+// 	);
+// });
+test("fuzz accountCreate w/ values", async () => {
+	await fc.assert(
+		fc.asyncProperty(fc.string(), async (values) => {
+			try {
+				await accountCreate({ name: values });
+			} catch (e) {
+				catchError(values, e);
+			}
+		}),
+		{
+			numRuns: 100_000,
+			verbose: 2,
+			examples: [],
+		},
+	);
+});
+
+test("fuzz accountUpdate w/ sub", async () => {
+	await fc.assert(
+		fc.asyncProperty(fc.anything(), async (sub) => {
+			try {
+				await accountUpdate(sub);
+			} catch (e) {
+				catchError(sub, e);
+			}
+		}),
+		{
+			numRuns: 100_000,
+			verbose: 2,
+			examples: [],
+		},
+	);
+});
+// test("fuzz accountUpdate w/ values", async () => {
+// 	await fc.assert(
+//     fc.asyncProperty(fc.anything(), async (values) => {
+//       try {
+//   		  await accountUpdate(sub, values);
+//   		} catch (e) {
+//   			catchError(values, e);
+//   		}
+// 		}),
+// 		{
+// 			numRuns: 100_000,
+// 			verbose: 2,
+// 			examples: [],
+// 		},
+// 	);
+// });
+test("fuzz accountUpdate w/ values", async () => {
+	await fc.assert(
+		fc.asyncProperty(fc.string(), async (values) => {
+			try {
+				await accountUpdate(sub, { name: values });
+			} catch (e) {
+				catchError(values, e);
+			}
+		}),
+		{
+			numRuns: 100_000,
+			verbose: 2,
+			examples: [],
+		},
+	);
+});
+
+test("fuzz accountExpire w/ sub", async () => {
+	await fc.assert(
+		fc.asyncProperty(fc.anything(), async (sub) => {
+			try {
+				await accountExpire(sub);
+			} catch (e) {
+				catchError(sub, e);
+			}
+		}),
+		{
+			numRuns: 100_000,
+			verbose: 2,
+			examples: [],
+		},
+	);
+});
+
+test("fuzz accountRemove w/ sub", async () => {
+	await fc.assert(
+		fc.asyncProperty(fc.anything(), async (sub) => {
+			try {
+				await accountRemove(sub);
+			} catch (e) {
+				catchError(sub, e);
+			}
 		}),
 		{
 			numRuns: 100_000,

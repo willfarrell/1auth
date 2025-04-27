@@ -41,19 +41,10 @@ import crypto, {
 } from "../crypto/index.js";
 
 crypto({
-	symmetricEncryptionKey: Buffer.from(
-		"K6u9kqw3u+w/VxR48wYT21hUY56gDIWgxzL5uPTK9zw=",
-		"base64",
-	), // symmetricRandomEncryptionKey()
-	symmetricSignatureSecret: Buffer.from(
-		"B6u9kqw3u+w/VxR48wYT21hUY56gDIWgxzL5uPTK9zw=",
-		"base64",
-	), // symmetricRandomSignatureSecret()
-	digestChecksumSalt: Buffer.from(
-		"ViB9S/dvoJUB7lcNU9oA97/hT+kUvD2FLat7lXudF34=",
-		"base64",
-	), // randomChecksumSalt()
-	digestChecksumPepper: Buffer.from("yTJifrFGweECzlse", "base64"), // randomChecksumPepper()
+	symmetricEncryptionKey: "K6u9kqw3u+w/VxR48wYT21hUY56gDIWgxzL5uPTK9zw=", // symmetricRandomEncryptionKey()
+	symmetricSignatureSecret: "B6u9kqw3u+w/VxR48wYT21hUY56gDIWgxzL5uPTK9zw=", // symmetricRandomSignatureSecret()
+	digestChecksumSalt: "ViB9S/dvoJUB7lcNU9oA97/hT+kUvD2FLat7lXudF34=", // randomChecksumSalt()
+	digestChecksumPepper: "yTJifrFGweECzlse", // randomChecksumPepper()
 });
 
 /*
@@ -873,7 +864,6 @@ describe("crypto", () => {
 					// digestChecksumPepper: randomChecksumPepper(),
 				});
 			} catch (e) {
-				console.log(e);
 				ok(e.message.includes("digestChecksumPepper"));
 			}
 		});

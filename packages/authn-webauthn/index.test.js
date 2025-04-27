@@ -1,6 +1,24 @@
 import { deepEqual, equal, ok } from "node:assert/strict";
 import { describe, it, test } from "node:test";
 
+// *** Setup Start *** //
+import * as notify from "../notify/index.js";
+import * as storeDynamoDB from "../store-dynamodb/index.js";
+import * as storePostgres from "../store-postgres/index.js";
+import * as storeSQLite from "../store-sqlite/index.js";
+
+import * as mockNotify from "../notify/mock.js";
+
+// import * as mockDynamoDB from "../store-dynamodb/mock.js";
+// import * as mockPostgres from "../store-postgres/mock.js";
+import * as mockSQLite from "../store-sqlite/mock.js";
+
+// import * as mockAccountDynamoDBTable from "../account/table/dynamodb.js";
+import * as mockAccountSQLTable from "../account/table/sql.js";
+
+// import * as mockAuthnDynamoDBTable from "../authn/table/dynamodb.js";
+import * as mockAuthnSQLTable from "../authn/table/sql.js";
+
 import crypto, {
 	symmetricRandomEncryptionKey,
 	symmetricRandomSignatureSecret,
@@ -9,20 +27,15 @@ import crypto, {
 	symmetricEncrypt,
 	symmetricDecrypt,
 } from "../crypto/index.js";
-import * as notify from "../notify-console/index.js";
-import * as store from "../store-memory/index.js";
-
-import account, {
-	create as accountCreate,
-	remove as accountRemove,
-	getOptions as accountGetOptions,
-} from "../account/index.js";
 
 import accountUsername, {
 	create as accountUsernameCreate,
 	exists as accountUsernameExists,
 } from "../account-username/index.js";
-
+import account, {
+	create as accountCreate,
+	remove as accountRemove,
+} from "../account/index.js";
 import authn, { getOptions as authnGetOptions } from "../authn/index.js";
 
 import webauthn, {
@@ -34,6 +47,7 @@ import webauthn, {
 	count as webauthnCount,
 	select as webauthnSelect,
 	list as webauthnList,
+	expire as webauthnExpire,
 	remove as webauthnRemove,
 } from "../authn-webauthn/index.js";
 
@@ -42,64 +56,310 @@ crypto({
 	symmetricSignatureSecret: symmetricRandomSignatureSecret(),
 	digestChecksumSalt: randomChecksumSalt(),
 	digestChecksumPepper: randomChecksumPepper(),
+	secretTimeCost: 1,
+	secretMemoryCost: 2 ** 3,
+	secretParallelism: 1,
 });
-store.default({ log: false });
 notify.default({
-	client: (id, sub, params) => {
-		mocks.notifyClient(id, sub, params);
+	client: (...args) => mocks.notifyClient(...args),
+});
+
+storePostgres.default({
+	log: (...args) => mocks.log(...args),
+	client: {
+		query: (...args) => mocks.storeClient.query(...args),
+	},
+});
+storeSQLite.default({
+	log: (...args) => mocks.log(...args),
+	client: {
+		query: (...args) => mocks.storeClient.query(...args),
+	},
+});
+storeDynamoDB.default({
+	log: (...args) => mocks.log(...args),
+	client: {
+		send: (...args) => mocks.storeClient.send(...args),
 	},
 });
 
-account({ store, notify, encryptedFields: ["name", "username", "privateKey"] });
-accountUsername();
+let mocks = {};
 
-authn({
-	store,
-	notify,
-	usernameExists: [accountUsernameExists],
-	encryptedFields: ["value", "name"],
-	authenticationDuration: 0,
-	log: (...args) => {
-		mocks.log(...args);
+const mockStores = {
+	// postgres: {
+	//   store: storePostgres,
+	//   mocks : {
+	// 		...mockNotify,
+	//     ...mockPostgres,
+	// 		storeAccount: mockAccountSQLTable,
+	// 		storeAuthn: mockAuthnSQLTable,
+	//    }
+	// },
+	sqlite: {
+		store: storeSQLite,
+		mocks: {
+			...mockNotify,
+			...mockSQLite,
+			storeAccount: mockAccountSQLTable,
+			storeAuthn: mockAuthnSQLTable,
+		},
 	},
-});
-const name = "1Auth";
-const origin = "http://localhost";
-webauthn({
-	name,
-	origin,
-	log: (...args) => {
-		mocks.log(...args);
-	},
-});
-
-const mocks = {
-	log: () => {},
-	notifyClient: () => {},
+	// TODO
+	// dynamodb: {
+	//   store: storeDynamoDB,
+	//   mocks :{
+	// 		...mockNotify,
+	// 	  ...mockDynamoDB,
+	// 		storeAccount: mockAccountDynamoDBTable,
+	// 		storeAuthn: mockAuthnDynamoDBTable,
+	//    }
+	// },
 };
+
+account();
+accountUsername();
+authn();
+webauthn();
+// *** Setup End *** //
+
 let sub;
-const username = "username00";
-test.beforeEach(async (t) => {
-	sub = await accountCreate();
-	await accountUsernameCreate(sub, username);
-	t.mock.method(mocks, "notifyClient");
-});
+const username = "username";
+const webauthnName = "1Auth";
+const webauthnOrigin = "http://localhost";
 
-test.afterEach(async (t) => {
-	t.mock.reset();
-	await accountRemove(sub);
-	await store.__clear(accountGetOptions().table);
-	await store.__clear(authnGetOptions().table);
-});
+const tests = (config) => {
+	const store = config.store;
 
-describe("authn-webauthn", () => {
+	test.before(async () => {
+		mocks = config.mocks;
+
+		await mocks.storeAccount.create(mocks.storeClient);
+		await mocks.storeAuthn.create(mocks.storeClient);
+
+		account({ store, notify });
+		accountUsername();
+		authn({
+			store,
+			notify,
+			encryptedFields: ["value", "name"],
+			usernameExists: [accountUsernameExists],
+			authenticationDuration: 0,
+			// log: (...args) => {
+			// mocks.log(...args);
+			// },
+		});
+		webauthn({
+			name: webauthnName,
+			origin: webauthnOrigin,
+			log: (...args) => {
+				mocks.log(...args);
+			},
+		});
+	});
+
+	test.beforeEach(async (t) => {
+		sub = await accountCreate();
+		await accountUsernameCreate(sub, username);
+
+		t.mock.method(mocks, "log");
+		t.mock.method(mocks, "notifyClient");
+	});
+
+	test.afterEach(async (t) => {
+		t.mock.reset();
+		await accountRemove(sub);
+		await mocks.storeAuthn.truncate(mocks.storeClient);
+		await mocks.storeAccount.truncate(mocks.storeClient);
+	});
+
+	test.after(async () => {
+		await mocks.storeAuthn.drop(mocks.storeClient);
+		await mocks.storeAccount.drop(mocks.storeClient);
+		mocks.storeClient.after?.();
+	});
+
+	describe("`count`", () => {
+		it("Will throw with ({sub:undefined})", async () => {
+			try {
+				await webauthnCount(undefined);
+			} catch (e) {
+				equal(e.message, "401 Unauthorized");
+			}
+		});
+		it("Can count with { sub }", async () => {
+			await webauthnCreate(sub);
+			const [token] = await store.selectList(authnGetOptions().table, { sub });
+			await overrideCreateChallenge(sub, token);
+			await webauthnVerify(
+				sub,
+				registrationResponse,
+				{ name: "PassKey" },
+				false,
+			);
+			const count = await webauthnCount(sub);
+			equal(count, 1);
+		});
+		it("Can count with { sub } (unverified)", async () => {
+			await webauthnCreate(sub);
+			const count = await webauthnCount(sub);
+			equal(count, 0);
+		});
+	});
+
+	describe("`list`", () => {
+		it("Will throw with ({sub:undefined})", async () => {
+			try {
+				await webauthnList(undefined);
+			} catch (e) {
+				equal(e.message, "401 Unauthorized");
+			}
+		});
+		it("Can list an WebAuthn with { sub } (exists)", async () => {
+			await webauthnCreate(sub);
+			const [token] = await store.selectList(authnGetOptions().table, { sub });
+			await overrideCreateChallenge(sub, token);
+			await webauthnVerify(
+				sub,
+				registrationResponse,
+				{ name: "PassKey" },
+				false,
+			);
+			const row = await webauthnList(sub);
+			equal(row.length, 1);
+		});
+		it("Can list an WebAuthn with { sub } (not exists)", async () => {
+			const row = await webauthnList(sub);
+			equal(row.length, 0);
+		});
+	});
+
+	describe("`select`", () => {
+		it("Will throw with ({sub:undefined})", async () => {
+			try {
+				await webauthnSelect(undefined, "id");
+			} catch (e) {
+				equal(e.message, "401 Unauthorized");
+			}
+		});
+		it("Will throw with ({id:undefined})", async () => {
+			try {
+				await webauthnSelect(sub, undefined);
+			} catch (e) {
+				equal(e.message, "404 Not Found");
+			}
+		});
+		it("Can select an WebAuthn with { id } (exists)", async () => {
+			await webauthnCreate(sub); // TODO id is undefined
+			const [token] = await store.selectList(authnGetOptions().table, { sub });
+			await overrideCreateChallenge(sub, token);
+			const { id } = await webauthnVerify(
+				sub,
+				registrationResponse,
+				{ name: "PassKey" },
+				false,
+			);
+
+			const row = await webauthnSelect(sub, id);
+			ok(row);
+		});
+		it("Can select an WebAuthn with { id } (not exists)", async () => {
+			const row = await webauthnSelect(sub, "authn_000");
+			equal(row, undefined);
+		});
+	});
+
+	describe("`create`", () => {
+		it("Will throw with ({sub:undefined})", async () => {
+			try {
+				await webauthnCreate(undefined);
+			} catch (e) {
+				equal(e.message, "401 Unauthorized");
+			}
+		});
+	});
+
+	describe("`verify`", () => {
+		it("Will throw with ({sub:undefined})", async () => {
+			try {
+				await webauthnVerify(undefined);
+			} catch (e) {
+				equal(e.message, "401 Unauthorized");
+			}
+		});
+	});
+
+	describe("`authenticate`", () => {
+		it("Will throw when no credentials", async () => {
+			try {
+				await webauthnAuthenticate(username, {});
+			} catch (e) {
+				equal(e.message, "401 Unauthorized");
+				equal(e.cause, "missing");
+			}
+		});
+		// it("Will throw when unverfied credentials", async () => {
+		// 	await webauthnCreate(sub);
+		//    try {
+		//      await webauthnAuthenticate(username, {});
+		//    } catch(e) {
+		//      equal(e.message, '401 Unauthorized')
+		//      equal(e.cause, 'missing')
+		//    }
+		// });
+		// it("Will throw when expired credentials", async () => {
+		//    const { id } = await webauthnCreate(sub);
+		//    await store.update(authnGetOptions().table, { sub, id }, {verify:1})
+		//    await webauthnExpire(sub, id);
+		//    try {
+		//      await webauthnAuthenticate(username, {});
+		//    } catch(e) {
+		//      equal(e.message, '401 Unauthorized')
+		//      equal(e.cause, 'expired')
+		//    }
+		//  });
+	});
+
+	describe("`expire`", () => {
+		it("Will throw with ({sub:undefined})", async () => {
+			try {
+				await webauthnExpire(undefined, "id");
+			} catch (e) {
+				equal(e.message, "401 Unauthorized");
+			}
+		});
+		it("Will throw with ({id:undefined})", async () => {
+			try {
+				await webauthnExpire(sub, undefined);
+			} catch (e) {
+				equal(e.message, "404 Not Found");
+			}
+		});
+	});
+
+	describe("`remove`", () => {
+		it("Will throw with ({sub:undefined})", async () => {
+			try {
+				await webauthnRemove(undefined, "id");
+			} catch (e) {
+				equal(e.message, "401 Unauthorized");
+			}
+		});
+		it("Will throw with ({id:undefined})", async () => {
+			try {
+				await webauthnRemove(sub, undefined);
+			} catch (e) {
+				equal(e.message, "404 Not Found");
+			}
+		});
+	});
+
 	it("Can create WebAuthn on an account", async () => {
 		// Registration
 		const { secret: registrationOptions } = await webauthnCreate(sub);
 
 		equal(registrationOptions.challenge.length, 43);
-		equal(registrationOptions.rp.name, name);
-		equal(registrationOptions.rp.id, origin.substring(7));
+		equal(registrationOptions.rp.name, webauthnName);
+		equal(registrationOptions.rp.id, webauthnOrigin.substring(7));
 		ok(registrationOptions.user.id);
 		equal(registrationOptions.user.name, username);
 		deepEqual(registrationOptions.authenticatorSelection, {
@@ -136,7 +396,7 @@ describe("authn-webauthn", () => {
 		equal(secret.type, "WebAuthn-secret");
 		equal(secret.otp, false);
 		equal(secret.value.length, 1741);
-		equal(secret.expire, undefined);
+		equal(secret.expire, null);
 
 		count = await webauthnCount(sub);
 		equal(count, 1);
@@ -145,7 +405,7 @@ describe("authn-webauthn", () => {
 		const { secret: authenticationOptions } =
 			await webauthnCreateChallenge(sub);
 		equal(authenticationOptions.challenge.length, 43);
-		equal(authenticationOptions.rpId, origin.substring(7));
+		equal(authenticationOptions.rpId, webauthnOrigin.substring(7));
 		deepEqual(authenticationOptions.userVerification, "preferred");
 		deepEqual(authenticationOptions.allowCredentials, [
 			{
@@ -173,7 +433,7 @@ describe("authn-webauthn", () => {
 
 		authnDB = await store.selectList(authnGetOptions().table, { sub });
 		equal(authnDB.length, 2);
-		authnDB = authnDB.filter((item) => item.expire === undefined);
+		authnDB = authnDB.filter((item) => !item.expire);
 		equal(authnDB.length, 1);
 	});
 	it("Can create a 2nd WebAuthn on an account", async () => {
@@ -200,7 +460,7 @@ describe("authn-webauthn", () => {
 		await webauthnRemove(sub, token.id);
 		let authnDB = await store.selectList(authnGetOptions().table, { sub });
 		equal(authnDB.length, 1);
-		authnDB = authnDB.filter((item) => item.expire !== undefined);
+		authnDB = authnDB.filter((item) => !!item.expire);
 		equal(authnDB.length, 0);
 
 		// notify
@@ -237,48 +497,72 @@ describe("authn-webauthn", () => {
 		ok(authnDB);
 		equal(authnDB.length, 1);
 	});
-	it("Can select an WebAuthn with { id } (exists)", async () => {
-		await webauthnCreate(sub); // TODO id is undefined
-		const [token] = await store.selectList(authnGetOptions().table, { sub });
-		await overrideCreateChallenge(sub, token);
-		const { id } = await webauthnVerify(
-			sub,
-			registrationResponse,
-			{ name: "PassKey" },
-			false,
+
+	const overrideCreateChallenge = async (sub, token) => {
+		await store.update(
+			authnGetOptions().table,
+			{ sub, id: token.id },
+			{
+				value: symmetricEncrypt(
+					JSON.stringify({
+						expectedChallenge: registrationOptionsOverride.challenge,
+						expectedOrigin: webauthnOrigin,
+						expectedRPID: registrationOptionsOverride.rp.id,
+						requireUserVerification: true,
+					}),
+					{
+						sub,
+						encryptedKey: token.encryptionKey,
+					},
+				),
+			},
 		);
+	};
 
-		const row = await webauthnSelect(sub, id);
-		ok(row);
-	});
-	it("Can select an WebAuthn with { id } (not exists)", async () => {
-		const row = await webauthnSelect(sub, "authn_000");
-		equal(row, undefined);
-	});
-
-	it("Can list an WebAuthn with { sub } (exists)", async () => {
-		await webauthnCreate(sub);
-		const [token] = await store.selectList(authnGetOptions().table, { sub });
-		await overrideCreateChallenge(sub, token);
-		await webauthnVerify(sub, registrationResponse, { name: "PassKey" }, false);
-		const row = await webauthnList(sub);
-		equal(row.length, 1);
-	});
-	it("Can list an WebAuthn with { sub } (not exists)", async () => {
-		const row = await webauthnList(sub);
-		equal(row.length, 0);
-	});
+	const overrideGetChallenge = async (sub, challenge) => {
+		await store.update(
+			authnGetOptions().table,
+			{ sub, id: challenge.id },
+			{
+				value: symmetricEncrypt(
+					JSON.stringify({
+						...JSON.parse(
+							symmetricDecrypt(challenge.value, {
+								sub,
+								encryptedKey: challenge.encryptionKey,
+							}),
+						),
+						expectedChallenge: authenticationOptionsOverride.challenge,
+						expectedOrigin: webauthnOrigin,
+						expectedRPID: authenticationOptionsOverride.rpId,
+						requireUserVerification: true,
+					}),
+					{
+						sub,
+						encryptedKey: challenge.encryptionKey,
+					},
+				),
+			},
+		);
+	};
+};
+describe("authn-webauthn", () => {
+	for (const storeKey of Object.keys(mockStores)) {
+		describe(`using store-${storeKey}`, () => {
+			tests(mockStores[storeKey]);
+		});
+	}
 });
 
 const registrationOptionsOverride = {
 	challenge: "Jl-QJo7l9_InkLl52RE0DLbc3I7sU4IuVJHV1EyHYY4",
 	rp: {
-		name: "1Auth",
+		name: webauthnName,
 		id: "localhost",
 	},
 	user: {
 		id: "c3ViX0lLN21mb0lMOGJD",
-		name: "username00",
+		name: username,
 		displayName: "",
 	},
 	pubKeyCredParams: [
@@ -349,52 +633,4 @@ const authenticationResponse = {
 	type: "public-key",
 	clientExtensionResults: {},
 	authenticatorAttachment: "platform",
-};
-
-const overrideCreateChallenge = async (sub, token) => {
-	await store.update(
-		authnGetOptions().table,
-		{ sub, id: token.id },
-		{
-			value: symmetricEncrypt(
-				JSON.stringify({
-					expectedChallenge: registrationOptionsOverride.challenge,
-					expectedOrigin: origin,
-					expectedRPID: registrationOptionsOverride.rp.id,
-					requireUserVerification: true,
-				}),
-				{
-					sub,
-					encryptedKey: token.encryptionKey,
-				},
-			),
-		},
-	);
-};
-
-const overrideGetChallenge = async (sub, challenge) => {
-	await store.update(
-		authnGetOptions().table,
-		{ sub, id: challenge.id },
-		{
-			value: symmetricEncrypt(
-				JSON.stringify({
-					...JSON.parse(
-						symmetricDecrypt(challenge.value, {
-							sub,
-							encryptedKey: challenge.encryptionKey,
-						}),
-					),
-					expectedChallenge: authenticationOptionsOverride.challenge,
-					expectedOrigin: origin,
-					expectedRPID: authenticationOptionsOverride.rpId,
-					requireUserVerification: true,
-				}),
-				{
-					sub,
-					encryptedKey: challenge.encryptionKey,
-				},
-			),
-		},
-	);
 };

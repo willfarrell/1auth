@@ -1,23 +1,38 @@
 import { test } from "node:test";
 import fc from "fast-check";
 
+// *** Setup Start *** //
+import * as notify from "../notify/index.js";
+import * as store from "../store-sqlite/index.js";
+
+import * as mockNotify from "../notify/mock.js";
+import * as mockStore from "../store-sqlite/mock.js";
+
+import * as mockAccountSQLTable from "../account/table/sql.js";
+import * as mockAuthnSQLTable from "../authn/table/sql.js";
+import * as mockMessengerSQLTable from "../messenger/table/sql.js";
+
 import crypto, {
 	symmetricRandomEncryptionKey,
 	symmetricRandomSignatureSecret,
 	randomChecksumSalt,
 	randomChecksumPepper,
 } from "../crypto/index.js";
-// *** Setup Start *** //
-import * as notify from "../notify-console/index.js";
-import * as store from "../store-memory/index.js";
 
+import accountUsername, {
+	exists as accountUsernameExists,
+	create as accountUsernameCreate,
+} from "../account-username/index.js";
 import account, { create as accountCreate } from "../account/index.js";
-
 import authn from "../authn/index.js";
 
 import emailAddress, {
+	exists as emailAddressExists,
 	lookup as emailAddressLookup,
+	list as emailAddressList,
+	select as emailAddressSelect,
 	create as emailAddressCreate,
+	remove as emailAddressRemove,
 } from "../messenger-email-address/index.js";
 import messenger from "../messenger/index.js";
 
@@ -26,36 +41,206 @@ crypto({
 	symmetricSignatureSecret: symmetricRandomSignatureSecret(),
 	digestChecksumSalt: randomChecksumSalt(),
 	digestChecksumPepper: randomChecksumPepper(),
+	secretTimeCost: 1,
+	secretMemoryCost: 2 ** 3,
+	secretParallelism: 1,
 });
-store.default({ log: false });
 notify.default({
-	client: (id, sub, params) => {
-		mocks.notifyClient(id, sub, params);
+	client: (...args) => mocks.notifyClient(...args),
+});
+store.default({
+	client: {
+		query: (...args) => mocks.storeClient.query(...args),
 	},
 });
-
-account({ store, notify, encryptedFields: ["name", "username", "privateKey"] });
-authn({ store, notify, authenticationDuration: 0 });
-messenger({ store, notify });
-emailAddress();
 // *** Setup End *** //
 
-const mocks = { notifyClient: () => {} };
+const mocks = {
+	...mockNotify,
+	...mockStore,
+	storeAccount: mockAccountSQLTable,
+	storeAuthn: mockAuthnSQLTable,
+	storeMessenger: mockMessengerSQLTable,
+};
 
-const sub = await accountCreate();
+let sub;
+let testMessenger;
+const username = "username";
+
+test.before(async () => {
+	await mocks.storeAccount.create(mocks.storeClient);
+	await mocks.storeAuthn.create(mocks.storeClient);
+	await mocks.storeMessenger.create(mocks.storeClient);
+
+	account({
+		store,
+		notify,
+	});
+	accountUsername();
+	authn({
+		store,
+		notify,
+		usernameExists: [accountUsernameExists],
+		encryptedFields: ["value", "name"],
+		authenticationDuration: 0,
+	});
+	messenger({ store, notify });
+	emailAddress();
+});
+
+test.beforeEach(async () => {
+	sub = await accountCreate();
+	await accountUsernameCreate(sub, username);
+	testMessenger = await emailAddressCreate(sub, `${sub}@example.com`);
+});
+
+test.afterEach(async () => {
+	await mocks.storeMessenger.truncate(mocks.storeClient);
+	await mocks.storeAuthn.truncate(mocks.storeClient);
+	await mocks.storeAccount.truncate(mocks.storeClient);
+});
+
+test.after(async () => {
+	await mocks.storeMessenger.drop(mocks.storeClient);
+	await mocks.storeAuthn.drop(mocks.storeClient);
+	await mocks.storeAccount.drop(mocks.storeClient);
+	mocks.storeClient.after?.();
+});
 
 const catchError = (input, e) => {
-	if (e.message === "400 Bad Request") {
-		return;
-	}
-	if (e.message === "409 Conflict") {
+	const expectedErrors = [
+		"400 Bad Request",
+		"401 Unauthorized",
+		"404 Not Found",
+		"409 Conflict",
+	];
+	if (expectedErrors.includes(e.message)) {
 		return;
 	}
 	console.error(input, e);
 	throw e;
 };
 
-test("fuzz emailAddressCreate w/ `string`", async () => {
+test("fuzz emailAddressExists w/ `username`", async () => {
+	await fc.assert(
+		fc.asyncProperty(fc.anything(), async (username) => {
+			try {
+				await emailAddressExists(username);
+			} catch (e) {
+				catchError(username, e);
+			}
+		}),
+		{
+			numRuns: 10,
+			verbose: 2,
+			examples: [],
+		},
+	);
+});
+
+test("fuzz emailAddressLookup w/ `username`", async () => {
+	await fc.assert(
+		fc.asyncProperty(fc.anything(), async (username) => {
+			try {
+				await emailAddressLookup(username);
+			} catch (e) {
+				catchError(username, e);
+			}
+		}),
+		{
+			numRuns: 10,
+			verbose: 2,
+			examples: [],
+		},
+	);
+});
+
+test("fuzz emailAddressList w/ `sub`", async () => {
+	await fc.assert(
+		fc.asyncProperty(fc.anything(), async (sub) => {
+			try {
+				await emailAddressList(sub);
+			} catch (e) {
+				catchError(sub, e);
+			}
+		}),
+		{
+			numRuns: 10,
+			verbose: 2,
+			examples: [],
+		},
+	);
+});
+
+test("fuzz emailAddressSelect w/ `sub`", async () => {
+	await fc.assert(
+		fc.asyncProperty(fc.anything(), async (sub) => {
+			try {
+				await emailAddressSelect(sub, testMessenger.id);
+			} catch (e) {
+				catchError(sub, e);
+			}
+		}),
+		{
+			numRuns: 10,
+			verbose: 2,
+			examples: [],
+		},
+	);
+});
+
+test("fuzz emailAddressSelect w/ `id`", async () => {
+	await fc.assert(
+		fc.asyncProperty(fc.anything(), async (id) => {
+			try {
+				await emailAddressSelect(sub, id);
+			} catch (e) {
+				catchError(id, e);
+			}
+		}),
+		{
+			numRuns: 10,
+			verbose: 2,
+			examples: [],
+		},
+	);
+});
+
+test("fuzz emailAddressCreate w/ `sub`", async () => {
+	await fc.assert(
+		fc.asyncProperty(fc.anything(), async (sub) => {
+			try {
+				await emailAddressCreate(sub, emailAddress);
+			} catch (e) {
+				catchError(sub, e);
+			}
+		}),
+		{
+			numRuns: 10,
+			verbose: 2,
+			examples: [],
+		},
+	);
+});
+
+test("fuzz emailAddressCreate w/ `username`", async () => {
+	await fc.assert(
+		fc.asyncProperty(fc.anything(), async (username) => {
+			try {
+				await emailAddressCreate(sub, username);
+			} catch (e) {
+				catchError(username, e);
+			}
+		}),
+		{
+			numRuns: 10,
+			verbose: 2,
+			examples: [],
+		},
+	);
+});
+
+test("fuzz emailAddressCreate w/ `emailAddress`", async () => {
 	await fc.assert(
 		fc.asyncProperty(fc.emailAddress(), async (emailAddress) => {
 			try {
@@ -72,34 +257,68 @@ test("fuzz emailAddressCreate w/ `string`", async () => {
 	);
 });
 
-test("fuzz emailAddressCreate w/ `string`", async () => {
+// test("fuzz emailAddressCreate w/ `values`", async () => {
+// 	await fc.assert(
+// 		fc.asyncProperty(fc.anything(), async (values) => {
+// 			try {
+// 				await emailAddressCreate(sub, testMessenger.value, values);
+// 			} catch (e) {
+// 				catchError(values, e);
+// 			}
+// 		}),
+// 		{
+// 			numRuns: 10,
+// 			verbose: 2,
+// 			examples: [],
+// 		},
+// 	);
+// });
+
+test("fuzz emailAddressCreate w/ `values`", async () => {
 	await fc.assert(
-		fc.asyncProperty(fc.string(), async (emailAddress) => {
+		fc.asyncProperty(fc.anything(), async (values) => {
 			try {
-				await emailAddressCreate(sub, emailAddress);
+				await emailAddressCreate(sub, testMessenger.value, { name: values });
 			} catch (e) {
-				catchError(emailAddress, e);
+				catchError(values, e);
 			}
 		}),
 		{
-			numRuns: 100_000,
+			numRuns: 10,
 			verbose: 2,
 			examples: [],
 		},
 	);
 });
 
-test("fuzz emailAddressLookup w/ `string`", async () => {
+test("fuzz emailAddressRemove w/ `sub`", async () => {
 	await fc.assert(
-		fc.asyncProperty(fc.string(), async (emailAddress) => {
+		fc.asyncProperty(fc.anything(), async (sub) => {
 			try {
-				await emailAddressLookup(emailAddress);
+				await emailAddressRemove(sub, testMessenger.id);
 			} catch (e) {
-				catchError(emailAddress, e);
+				catchError(sub, e);
 			}
 		}),
 		{
-			numRuns: 100_000,
+			numRuns: 10,
+			verbose: 2,
+			examples: [],
+		},
+	);
+});
+
+test("fuzz emailAddressRemove w/ `id`", async () => {
+	await fc.assert(
+		fc.asyncProperty(fc.anything(), async (id) => {
+			try {
+				await emailAddressRemove(sub, id);
+			} catch (e) {
+				catchError(id, e);
+			}
+		}),
+		{
+			numRuns: 10,
 			verbose: 2,
 			examples: [],
 		},

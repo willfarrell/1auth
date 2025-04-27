@@ -1,13 +1,11 @@
 const options = {
+	id: "sqlite",
 	log: false,
-	query: undefined, // async (sql, parameters) => {}
+	client: { query: undefined }, // async (sql, parameters) => {}
 	// number of seconds after expire before removal
 	// 10d chosen based on EFF DNT Policy
 	timeToLiveExpireOffset: 10 * 24 * 60 * 60,
 	timeToLiveKey: "remove",
-	// mode:
-	// ?: use `?` for variables, ie sqlite
-	// $: use `$1` for variables, ie postgres
 	placeholder: "?",
 };
 
@@ -17,29 +15,39 @@ export default (params) => {
 
 export const exists = async (table, filters) => {
 	if (options.log) {
-		options.log("@1auth/store-sql exists(", table, filters, ")");
+		options.log(`@1auth/store-${options.id} exists(`, table, filters, ")");
 	}
 	const { select, where, parameters } = makeSqlParts(filters, {}, ["sub"]);
 	const sql = `SELECT ${select} FROM ${table} ${where} LIMIT 1`;
-	return await options.query(sql, parameters).then((res) => res?.[0]?.sub);
+	return await options.client
+		.query(sql, parameters)
+		.then((res) => res?.[0]?.sub);
 };
 
 export const count = async (table, filters = {}) => {
 	if (options.log) {
-		options.log("@1auth/store-sql count(", table, filters, ")");
+		options.log(`@1auth/store-${options.id} count(`, table, filters, ")");
 	}
 	const { where, parameters } = makeSqlParts(filters, {});
 	const sql = `SELECT COUNT(*) AS count FROM ${table} ${where}`;
-	return await options.query(sql, parameters).then((res) => res[0].count);
+	return await options.client
+		.query(sql, parameters)
+		.then((res) => res[0].count);
 };
 
 export const select = async (table, filters = {}, fields = []) => {
 	if (options.log) {
-		options.log("@1auth/store-sql select(", table, filters, fields, ")");
+		options.log(
+			`@1auth/store-${options.id} select(`,
+			table,
+			filters,
+			fields,
+			")",
+		);
 	}
 	const { select, where, parameters } = makeSqlParts(filters, {}, fields);
 	const sql = `SELECT ${select} FROM ${table} ${where} LIMIT 1`;
-	return await options
+	return await options.client
 		.query(sql, parameters)
 		.then((res) => res?.[0])
 		// Workaround because an expire filter doesn't exists yet'
@@ -51,11 +59,17 @@ export const select = async (table, filters = {}, fields = []) => {
 
 export const selectList = async (table, filters = {}, fields = []) => {
 	if (options.log) {
-		options.log("@1auth/store-sql selectList(", table, filters, fields, ")");
+		options.log(
+			`@1auth/store-${options.id} selectList(`,
+			table,
+			filters,
+			fields,
+			")",
+		);
 	}
 	const { select, where, parameters } = makeSqlParts(filters, {}, fields);
 	const sql = `SELECT ${select} FROM ${table} ${where}`;
-	return await options
+	return await options.client
 		.query(sql, parameters)
 		// Workaround because an expire filter doesn't exists yet'
 		.then((rows) => {
@@ -69,7 +83,7 @@ export const selectList = async (table, filters = {}, fields = []) => {
 export const insert = async (table, inputValues = {}) => {
 	const values = structuredClone(inputValues);
 	if (options.log) {
-		options.log("@1auth/store-sql insert(", table, values, ")");
+		options.log(`@1auth/store-${options.id} insert(`, table, values, ")");
 	}
 	if (values.expire && options.timeToLiveKey) {
 		values[options.timeToLiveKey] =
@@ -78,18 +92,22 @@ export const insert = async (table, inputValues = {}) => {
 	normalizeValues(values);
 	const { insert, parameters } = makeSqlParts({}, values);
 	const sql = `INSERT INTO ${table} ${insert} RETURNING id`;
-	const res = await options.query(sql, parameters);
+	const res = await options.client.query(sql, parameters);
 	return res.id;
 };
 
 export const insertList = async (table, rows = []) => {
 	if (options.log) {
-		options.log("@1auth/store-sql insertList(", table, rows, ")");
+		options.log(`@1auth/store-${options.id} insertList(`, table, rows, ")");
 	}
 	const insertValues = [];
 	let insertParameters = [];
 	for (let i = 0, l = rows.length; i < l; i++) {
 		const values = structuredClone(rows[i]);
+		if (values.expire && options.timeToLiveKey) {
+			values[options.timeToLiveKey] =
+				values.expire + options.timeToLiveExpireOffset;
+		}
 		normalizeValues(values);
 		const { insert, parameters } = makeSqlParts(
 			{},
@@ -107,32 +125,47 @@ export const insertList = async (table, rows = []) => {
 	}
 
 	const sql = `INSERT INTO ${table} ${insertValues.join(",")} RETURNING id`;
-	const res = await options.query(sql, insertParameters);
+	const res = await options.client.query(sql, insertParameters);
 	return res;
 };
 
 export const update = async (table, filters = {}, inputValues = {}) => {
 	const values = structuredClone(inputValues);
 	if (options.log) {
-		options.log("@1auth/store-sql update(", table, filters, values, ")");
+		options.log(
+			`@1auth/store-${options.id} update(`,
+			table,
+			filters,
+			values,
+			")",
+		);
+	}
+	if (values.expire && options.timeToLiveKey) {
+		values[options.timeToLiveKey] =
+			values.expire + options.timeToLiveExpireOffset;
 	}
 	normalizeValues(values);
 	const { update, where, parameters } = makeSqlParts(filters, values);
 	const sql = `UPDATE ${table} SET ${update} ${where}`;
-	await options.query(sql, parameters);
+	await options.client.query(sql, parameters);
 };
 
 export const remove = async (table, filters = {}) => {
 	if (options.log) {
-		options.log("@1auth/store-sql remove(", table, filters, ")");
+		options.log(`@1auth/store-${options.id} remove(`, table, filters, ")");
 	}
 	const { where, parameters } = makeSqlParts(filters);
 	const sql = `DELETE FROM ${table} ${where}`;
-	await options.query(sql, parameters);
+	await options.client.query(sql, parameters);
 };
+
+export const removeList = remove;
 
 const normalizeValues = (values) => {
 	if (!values) return;
+	if (Object.hasOwn(values, "otp")) {
+		values.otp = values.otp ? 1 : 0;
+	}
 	values.create &&= new Date(values.create * 1000).toISOString();
 	values.update &&= new Date(values.update * 1000).toISOString();
 	values.verify &&= new Date(values.verify * 1000).toISOString();
@@ -143,6 +176,9 @@ const normalizeValues = (values) => {
 
 const parseValues = (values) => {
 	if (!values) return;
+	if (typeof values.otp === "number") {
+		values.otp = !!values.otp;
+	}
 	values.create &&= Date.parse(values.create) / 1000;
 	values.update &&= Date.parse(values.update) / 1000;
 	values.verify &&= Date.parse(values.verify) / 1000;
@@ -180,18 +216,21 @@ export const makeSqlParts = (
 	const update = updateParts.join(", ");
 	parameters = parameters.concat(Object.values(values));
 
-	let where = Object.keys(filters);
-	where = where
+	let where = Object.keys(filters)
 		.map((key) => {
-			if (Array.isArray(filters[key])) {
-				let sql = filters[key].map(() => getPlaceholder(idx++)).join(",");
+			const value = filters[key];
+			if (typeof value === "undefined") {
+				return null;
+			}
+			if (Array.isArray(value)) {
+				let sql = value.map(() => getPlaceholder(idx++)).join(",");
 				sql &&= `"${key}" IN (${sql})`;
-				parameters = parameters.concat(filters[key]);
+				parameters = parameters.concat(value);
 				return sql;
 			}
 			// const sql = '"' + key + '" = $' + idx++;
 			const sql = `"${key}" = ${getPlaceholder(idx++)}`;
-			parameters.push(filters[key]);
+			parameters.push(value);
 			return sql;
 		})
 		.filter((v) => v)
@@ -199,15 +238,4 @@ export const makeSqlParts = (
 	where &&= `WHERE ${where}`;
 
 	return { select, insert, update, where, parameters };
-};
-
-export const __table = async (sql) => {
-	await options.query(sql);
-};
-
-export const __clear = async (table) => {
-	if (options.log) {
-		options.log("__clear", { table });
-	}
-	options.query(`DELETE FROM ${table}`);
 };

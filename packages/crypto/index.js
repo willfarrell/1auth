@@ -33,6 +33,10 @@ const defaults = {
 	digestChecksumEncoding: undefined,
 	digestChecksumSalt: undefined, // randomChecksumSalt()
 	digestChecksumPepper: undefined, // randomChecksumPepper()
+	secretHashAlgorithm: "argon2id",
+	secretTimeCost: 3, // argon2id
+	secretMemoryCost: 2 ** 15, // argon2id
+	secretParallelism: 1, // argon2id
 	defaultEncoding: "base64",
 	defaultHashAlgorithm: "sha3-384",
 };
@@ -47,6 +51,9 @@ export default (opt = {}) => {
 			"@1auth/crypto symmetricEncryptionKey is empty, use a stored secret made from randomBytes(32) Encryption disabled.",
 		);
 	}
+	options.symmetricEncryptionKey = makeOptionsBuffer(
+		options.symmetricEncryptionKey,
+	);
 	options.symmetricEncryptionEncoding ??= options.defaultEncoding;
 	options.symmetricSignatureHashAlgorithm ??= options.defaultHashAlgorithm;
 	if (!options.symmetricSignatureSecret) {
@@ -54,6 +61,9 @@ export default (opt = {}) => {
 			"@1auth/crypto symmetricSignatureSecret is empty, use a stored secret made from randomBytes(32) Signature disabled.",
 		);
 	}
+	options.symmetricSignatureSecret = makeOptionsBuffer(
+		options.symmetricSignatureSecret,
+	);
 	options.symmetricSignatureEncoding ??= options.defaultEncoding;
 	options.asymmetricSignatureHashAlgorithm ??= options.defaultHashAlgorithm;
 	options.asymmetricSignatureEncoding ??= options.defaultEncoding;
@@ -62,13 +72,24 @@ export default (opt = {}) => {
 			"@1auth/crypto digestChecksumSalt is empty, use a stored secret made from randomBytes(32) Checksum salting disabled.",
 		);
 	}
+	options.digestChecksumSalt = makeOptionsBuffer(options.digestChecksumSalt);
 	if (!options.digestChecksumPepper) {
 		throw new Error(
 			"@1auth/crypto digestChecksumPepper is empty, use a stored secret made from randomBytes(12) Checksum peppering disabled.",
 		);
 	}
+	options.digestChecksumPepper = makeOptionsBuffer(
+		options.digestChecksumPepper,
+	);
 	options.digestChecksumHashAlgorithm ??= options.defaultHashAlgorithm;
 	options.digestChecksumEncoding ??= options.defaultEncoding;
+
+	// Secrets
+	Object.assign(hashOptions, {
+		timeCost: options.secretTimeCost,
+		memoryCost: options.secretMemoryCost,
+		parallelism: options.secretParallelism,
+	});
 
 	// Lengths
 	symmetricEncryptionEncodingLengths.iv = randomIV().toString(
@@ -77,6 +98,16 @@ export default (opt = {}) => {
 	symmetricEncryptionEncodingLengths.ivAndAuthTag =
 		symmetricEncryptionEncodingLengths.iv +
 		randomBytes(16).toString(options.symmetricEncryptionEncoding).length;
+};
+
+export const makeOptionsBuffer = (
+	value,
+	encoding = options.defaultEncoding,
+) => {
+	if (typeof value === "string") {
+		return Buffer.from(value, encoding);
+	}
+	return value;
 };
 
 export const getOptions = () => options;
@@ -266,8 +297,8 @@ export const createSeasonedDigest = (
 const hashOptions = {
 	timeCost: 3, // Default 3
 	memoryCost: 2 ** 15, // Default 2 ** 12 = 4MB
-	saltLength: 16,
 	parallelism: 1, // Default 1
+	saltLength: 16,
 	outputLen: 64, // hashLength: 128 // Default 32
 	algorithm: 2, // Default 2 = Argon2id
 	version: 1, // Default 1 = version 19

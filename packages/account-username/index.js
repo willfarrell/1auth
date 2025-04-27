@@ -48,11 +48,13 @@ export const lookup = async (username) => {
 		options.encryptedFields,
 	);
 	item.encryptionKey = undefined;
-	item.privateKey = undefined;
 	return item;
 };
 
 export const create = async (sub, username) => {
+	if (!sub || typeof sub !== "string") {
+		throw new Error("401 Unauthorized", { cause: { sub } });
+	}
 	const usernameSanitized = sanitize(username);
 	const usernameValidate = validate(usernameSanitized);
 	if (usernameValidate !== true) {
@@ -69,7 +71,7 @@ export const create = async (sub, username) => {
 	}
 
 	await accountUpdate(sub, {
-		username,
+		value: username,
 		digest: usernameDigest,
 	});
 };
@@ -80,12 +82,14 @@ export const update = async (sub, username) => {
 };
 
 export const recover = async (sub) => {
-	const { username } = await accountLookup(sub);
+	const { value: username } = await accountLookup(sub);
 	await options.notify.trigger("account-username-recover", sub, { username });
 };
 
 export const sanitize = (value) => {
-	if (!value) return "";
+	if (!value || typeof value !== "string") {
+		throw new Error("400 Bad Request", { cause: { value } });
+	}
 	return value
 		.trim()
 		.toLocaleLowerCase()

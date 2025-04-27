@@ -7,6 +7,7 @@ import {
 	//select as authnSelect,
 	list as authnList,
 	remove as authnRemove,
+	removeList as authnRemoveList,
 } from "@1auth/authn";
 import {
 	createSecretHash,
@@ -47,43 +48,31 @@ export default (opt = {}) => {
 	Object.assign(options, authnGetOptions(), defaults, opt);
 };
 
-export const count = async (sub) => {
-	if (options.log) {
-		options.log("@1auth/authn-recovery-codes count(", sub, ")");
-	}
-	return await authnCount(options.secret, sub);
-};
-
-// export const select = async (sub, id) => {
-//   if (options.log) {
-//     options.log("@1auth/authn-recovery-codes select(", sub, id, ")");
-//   }
-//   return await authnSelect(options.secret, sub, id);
-// };
-
-export const list = async (sub) => {
-	if (options.log) {
-		options.log("@1auth/authn-recovery-codes list(", sub, ")");
-	}
-	return await authnList(options.secret, sub);
-};
-
 export const authenticate = async (username, secret) => {
 	return await authnAuthenticate(options.secret, username, secret);
 };
 
+export const count = async (sub) => {
+	return await authnCount(options.secret, sub);
+};
+
+// export const select = async (sub, id) => {
+//   return await authnSelect(options.secret, sub, id);
+// };
+
+export const list = async (sub) => {
+	return await authnList(options.secret, sub);
+};
+
 export const create = async (sub) => {
-	if (options.log) {
-		options.log("@1auth/authn-recovery-codes create(", sub, ")");
-	}
 	const secrets = await createSecrets(sub, options.count);
 	await options.notify.trigger("authn-recovery-codes-create", sub);
 	return secrets;
 };
 
 export const update = async (sub) => {
-	if (options.log) {
-		options.log("@1auth/authn-recovery-codes update(", sub, ")");
+	if (!sub || typeof sub !== "string") {
+		throw new Error("401 Unauthorized", { cause: { sub } });
 	}
 	const existingSecrets = await options.store.selectList(options.table, {
 		sub,
@@ -92,26 +81,26 @@ export const update = async (sub) => {
 	const secrets = await createSecrets(sub, options.count);
 
 	const id = existingSecrets.map((item) => item.id);
-	await authnRemove(options.secret, sub, id);
+	await authnRemoveList(options.secret, sub, id);
 
 	await options.notify.trigger("authn-recovery-codes-update", sub);
 	return secrets;
 };
 
 export const remove = async (sub, id) => {
-	if (options.log) {
-		options.log("@1auth/authn-recovery-codes remove(", sub, id, ")");
-	}
 	if (id) {
 		await authnRemove(options.secret, sub, id);
 	} else {
+		if (!sub || typeof sub !== "string") {
+			throw new Error("401 Unauthorized", { cause: { sub } });
+		}
 		const ids = await options.store
 			.selectList(options.table, {
 				sub,
 				type: `${options.id}-${options.secret.type}`,
 			})
 			.then((res) => res.map((item) => item.id));
-		await authnRemove(options.secret, sub, ids);
+		await authnRemoveList(options.secret, sub, ids);
 	}
 
 	await options.notify.trigger("authn-recovery-codes-remove", sub);

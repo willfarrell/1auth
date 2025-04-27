@@ -1,8 +1,6 @@
 import {
 	BatchWriteItemCommand,
-	CreateTableCommand,
 	DeleteItemCommand,
-	DeleteTableCommand,
 	DynamoDBClient,
 	GetItemCommand,
 	PutItemCommand,
@@ -14,8 +12,10 @@ import { marshall, unmarshall } from "@aws-sdk/util-dynamodb";
 const marshallOptions = { removeUndefinedValues: true };
 
 const options = {
+	id: "dynamodb",
 	log: false,
 	client: new DynamoDBClient(),
+	randomId: () => {},
 	// number of seconds after expire before removal
 	// 10d chosen based on EFF DNT Policy
 	timeToLiveExpireOffset: 10 * 24 * 60 * 60,
@@ -28,28 +28,49 @@ export default (params) => {
 
 export const exists = async (table, filters) => {
 	if (options.log) {
-		options.log("@1auth/store-dynamodb exists(", table, filters, ")");
+		options.log(`@1auth/store-${options.id} exists(`, table, filters, ")");
 	}
-	const item = await select(table, filters);
+	const item = await getItem(table, filters);
 	return item?.sub;
 };
 
 export const count = async (table, filters) => {
 	if (options.log) {
-		options.log("@1auth/store-dynamodb count(", table, filters, ")");
+		options.log(`@1auth/store-${options.id} count(`, table, filters, ")");
 	}
-
-	const items = await selectList(table, filters);
+	// TODO refactor to use Select COUNT
+	const items = await queryCommand(table, filters);
 	return items.length;
 };
 
 export const select = async (table, filters = {}, fields = []) => {
-	// GetItemCommand doesn't support IndexName
-	if (!(filters.sub && filters.id)) {
-		return selectList(table, filters).then((res) => res[0]);
-	}
 	if (options.log) {
-		options.log("@1auth/store-dynamodb select(", table, filters, fields, ")");
+		options.log(
+			`@1auth/store-${options.id} select(`,
+			table,
+			filters,
+			fields,
+			")",
+		);
+	}
+	// GetItemCommand doesn't support IndexName
+	if (filters.sub && filters.id) {
+		return await getItem(table, filters, fields);
+	}
+	return await queryCommand(table, filters, fields).then((res) => res[0]);
+};
+
+const getItem = async (table, filters = {}, fields = []) => {
+	let indexName; // must be length of >=3
+	if (filters.digest) {
+		indexName ??= "digest";
+	} else if (filters.sub && !filters.id) {
+		indexName ??= "sub";
+	} else if (filters.id && !filters.sub) {
+		indexName ??= "key";
+	}
+	if (indexName) {
+		return await queryCommand(table, filters, fields).then((res) => res?.[0]);
 	}
 	const commandParams = {
 		TableName: table,
@@ -58,32 +79,34 @@ export const select = async (table, filters = {}, fields = []) => {
 	if (fields.length) {
 		commandParams.AttributesToGet = fields;
 	}
-	if (options.log) {
-		options.log("@1auth/store-dynamodb GetItemCommand(", commandParams, ")");
-	}
 	try {
 		return await options.client
 			.send(new GetItemCommand(commandParams))
 			.then((res) => unmarshall(res.Item));
 	} catch (e) {
-		if (e.message === "The provided key element does not match the schema") {
-			return selectList(table, filters).then((res) => res[0]);
-		}
+		// if (e.message === "The provided key element does not match the schema") {
+		// 	 return await queryCommand(table, filters, fields).then((res) => res[0]);
+		// }
 		// ResourceNotFoundException
-		if (e.message === "Requested resource not found") {
-			return;
-		}
+		// if (e.message === "Requested resource not found") {
+		// 	 return;
+		// }
 		if (e.message === "No value defined: {}") {
 			return;
 		}
+
 		throw e;
 	}
 };
 
 export const selectList = async (table, filters = {}, fields = []) => {
 	if (options.log) {
-		options.log("@1auth/store-dynamodb selectList(", table, filters, ")");
+		options.log(`@1auth/store-${options.id} selectList(`, table, filters, ")");
 	}
+	return await queryCommand(table, filters, fields);
+};
+
+const queryCommand = async (table, filters = {}, fields = []) => {
 	let indexName; // must be length of >=3
 	if (filters.digest) {
 		indexName ??= "digest";
@@ -105,6 +128,8 @@ export const selectList = async (table, filters = {}, fields = []) => {
 		ExpressionAttributeNames,
 		ExpressionAttributeValues,
 		KeyConditionExpression,
+		// return in the same order they were inserted
+		ScanIndexForward: false,
 	};
 	// DynamoDB dosn't support fields
 	// ValidationException: Can not use both expression and non-expression parameters in the same request: Non-expression parameters: {AttributesToGet} Expression parameters: {KeyConditionExpression}
@@ -112,9 +137,7 @@ export const selectList = async (table, filters = {}, fields = []) => {
 	// if (fields.length) {
 	//   commandParams.AttributesToGet = AttributesToGet;
 	// }
-	if (options.log) {
-		options.log("@1auth/store-dynamodb QueryCommand(", commandParams, ")");
-	}
+
 	return await options.client
 		.send(new QueryCommand(commandParams))
 		.then((res) => res.Items.map(unmarshall));
@@ -122,41 +145,38 @@ export const selectList = async (table, filters = {}, fields = []) => {
 
 export const insert = async (table, values = {}) => {
 	if (options.log) {
-		options.log("@1auth/store-dynamodb insert(", table, values, ")");
+		options.log(`@1auth/store-${options.id} insert(`, table, values, ")");
 	}
 	if (values.expire && options.timeToLiveKey) {
 		values[options.timeToLiveKey] =
 			values.expire + options.timeToLiveExpireOffset;
 	}
-
+	values.id ??= options.randomId();
 	const commandParams = {
 		TableName: table,
 		Item: marshall(values, marshallOptions),
 	};
-	if (options.log) {
-		options.log("@1auth/store-dynamodb PutItemCommand(", commandParams, ")");
-	}
 	await options.client.send(new PutItemCommand(commandParams));
 	return values.id;
 };
 
 export const insertList = async (table, rows = []) => {
 	if (options.log) {
-		options.log("@1auth/store-dynamodb insertList(", table, rows, ")");
+		options.log(`@1auth/store-${options.id} insertList(`, table, rows, ")");
 	}
 
 	const ids = [];
 	const putRequests = [];
 	for (let i = 0, l = rows.length; i < l; i++) {
-		const params = rows[i];
-		if (params.expire && options.timeToLiveKey) {
-			params[options.timeToLiveKey] =
-				params.expire + options.timeToLiveExpireOffset;
+		const values = structuredClone(rows[i]);
+		if (values.expire && options.timeToLiveKey) {
+			values[options.timeToLiveKey] =
+				values.expire + options.timeToLiveExpireOffset;
 		}
-		ids.push(params.id);
+		ids.push(values.id);
 		putRequests.push({
 			PutRequest: {
-				Item: marshall(params, marshallOptions),
+				Item: marshall(values, marshallOptions),
 			},
 		});
 	}
@@ -166,27 +186,26 @@ export const insertList = async (table, rows = []) => {
 			[table]: putRequests,
 		},
 	};
-	if (options.log) {
-		options.log(
-			"@1auth/store-dynamodb BatchWriteItemCommand(",
-			commandParams,
-			//JSON.stringify(commandParams),
-			")",
-		);
-	}
 	await options.client.send(new BatchWriteItemCommand(commandParams));
 	return ids;
 };
 
 export const update = async (table, filters = {}, values = {}) => {
 	if (options.log) {
-		options.log("@1auth/store-dynamodb update(", table, filters, values, ")");
-	}
-	if (Array.isArray(filters.id)) {
-		return Promise.allSettled(
-			filters.id.map((id) => update(table, { ...filters, id }, values)),
+		options.log(
+			`@1auth/store-${options.id} update(`,
+			table,
+			filters,
+			values,
+			")",
 		);
 	}
+	// TODO Move to updateList - for updating webauthn
+	// if (Array.isArray(filters.id)) {
+	// 	return Promise.allSettled(
+	// 		filters.id.map((id) => update(table, { ...filters, id }, values)),
+	// 	);
+	// }
 	if (values.expire && options.timeToLiveKey) {
 		values[options.timeToLiveKey] =
 			values.expire + options.timeToLiveExpireOffset;
@@ -204,9 +223,6 @@ export const update = async (table, filters = {}, values = {}) => {
 		ExpressionAttributeValues,
 		UpdateExpression: `SET ${KeyConditionExpression.replaceAll(" and ", ", ")}`,
 	};
-	if (options.log) {
-		options.log("@1auth/store-dynamodb UpdateItemCommand(", commandParams, ")");
-	}
 	await options.client.send(new UpdateItemCommand(commandParams));
 };
 
@@ -243,50 +259,39 @@ export const update = async (table, filters = {}, values = {}) => {
 
 export const remove = async (table, filters = {}) => {
 	if (options.log) {
-		options.log("@1auth/store-dynamodb remove(", table, filters, ")");
+		options.log(`@1auth/store-${options.id} remove(`, table, filters, ")");
 	}
 	const commandParams = {
 		TableName: table,
 		Key: marshall(filters, marshallOptions),
 	};
-
-	if (options.log) {
-		options.log("@1auth/store-dynamodb DeleteItemCommand(", commandParams, ")");
-	}
 	await options.client.send(new DeleteItemCommand(commandParams));
 };
 
 // Can only be used with recovery-codes for now
-// export const removeList = async (table, filters = {}) => {
-//   if (options.log) {
-//     options.log('@1auth/store-dynamodb removeList(', table, filters, ')')
-//   }
-//
-//   const deleteRequests = []
-//   for (let i = 0, l = filters.id.length; i < l; i++) {
-//     const itemFilters = structuredClone(filters)
-//     itemFilters.id = filters.id[i]
-//     deleteRequests.push({
-//       DeleteRequest: {
-//         Key: marshall(itemFilters, marshallOptions)
-//       }
-//     })
-//   }
-//
-//   const commandParams = {
-//     RequestItems: {
-//       [table]: putRequests
-//     }
-//   }
-//   if (options.log) {
-//     options.log(
-//       '@1auth/store-dynamodb BatchWriteItemCommand(',
-//       commandParams,
-//       ')'
-//     )
-//   }
-//   await options.client.send(new BatchWriteItemCommand(commandParams))
-// }
+export const removeList = async (table, filters = {}) => {
+	if (options.log) {
+		options.log("@1auth/store-dynamodb removeList(", table, filters, ")");
+	}
+
+	const deleteRequests = [];
+	for (let i = 0, l = filters.id.length; i < l; i++) {
+		const itemFilters = structuredClone(filters);
+		itemFilters.id = filters.id[i];
+		deleteRequests.push({
+			DeleteRequest: {
+				Key: marshall(itemFilters, marshallOptions),
+			},
+		});
+	}
+
+	const commandParams = {
+		RequestItems: {
+			[table]: deleteRequests,
+		},
+	};
+	await options.client.send(new BatchWriteItemCommand(commandParams));
+};
 
 export const makeQueryParams = (filters = {}) => {
 	const expressionAttributeNames = {};
@@ -334,26 +339,4 @@ export const makeQueryParams = (filters = {}) => {
 	//   commandParams.AttributesToGet = attributesToGet;
 	// }
 	return commandParams;
-};
-
-export const __table = async (commandParams) => {
-	const table = commandParams.TableName;
-	try {
-		await options.client.send(new CreateTableCommand(commandParams));
-	} catch (e) {
-		if (e.message === "Cannot create preexisting table") {
-			await __clear(table);
-			await __table(commandParams);
-		} else {
-			console.error("ERROR createTable", e.message);
-		}
-	}
-};
-
-export const __clear = async (table) => {
-	await options.client.send(
-		new DeleteTableCommand({
-			TableName: table,
-		}),
-	);
 };

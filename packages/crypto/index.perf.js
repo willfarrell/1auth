@@ -29,9 +29,17 @@ crypto({
 
 const suite = new Bench({ name: "@1auth/crypto" });
 
-const hash = await createSecretHash("1auth");
 const sub = "sub_000000";
 const value = "1auth";
+const hash = await createSecretHash(value);
+const hashFastest = await createSecretHash(value, {
+	timeCost: 1,
+	memoryCost: 2 ** 3,
+	parallelism: 1,
+});
+const hashTimeCost2 = await createSecretHash(value, { timeCost: 6 });
+const hashMemoryCost2 = await createSecretHash(value, { memoryCost: 2 ** 16 });
+const hashParallelism2 = await createSecretHash(value, { parallelism: 2 });
 const { encryptionKey } = symmetricGenerateEncryptionKey(sub);
 const encryptedValue = symmetricEncrypt(value, { sub, encryptionKey });
 const signedValue = symmetricSignatureSign(value);
@@ -58,8 +66,19 @@ suite
 	.add('createSeasonedDigest({ hashAlgorithm: "sha2-256" })', () => {
 		createSeasonedDigest(value, { hashAlgorithm: "sha2-256" });
 	})
-	.add("createSecretHash", async () => {
-		await createSecretHash(value);
+	.add("createSecretHash (default)", async () => {
+		await createSecretHash(value, {
+			timeCost: 3,
+			memoryCost: 2 ** 15,
+			parallelism: 1,
+		});
+	})
+	.add("createSecretHash (fastest)", async () => {
+		await createSecretHash(value, {
+			timeCost: 1,
+			memoryCost: 2 ** 3,
+			parallelism: 1,
+		});
 	})
 	.add("createSecretHash x 2 timeCost", async () => {
 		await createSecretHash(value, { timeCost: 6 });
@@ -75,6 +94,18 @@ suite
 	})
 	.add("verifySecretHash = invalid", async () => {
 		await verifySecretHash(hash, "invalid");
+	})
+	.add("verifySecretHash (fastest)", async () => {
+		await verifySecretHash(hashFastest, value);
+	})
+	.add("verifySecretHash x 2 timeCost", async () => {
+		await verifySecretHash(hashTimeCost2, value);
+	})
+	.add("verifySecretHash x 2 memoryCost", async () => {
+		await verifySecretHash(hashMemoryCost2, value);
+	})
+	.add("verifySecretHash x 2 parallelism", async () => {
+		await verifySecretHash(hashParallelism2, value);
 	})
 	.add("symmetricGenerateEncryptionKey", () => {
 		symmetricGenerateEncryptionKey(sub);

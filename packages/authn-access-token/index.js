@@ -17,6 +17,20 @@ import {
 
 const id = "accessToken";
 
+export const username = ({
+	type = "username",
+	prefix = "pat-",
+	entropy = 112,
+	...params
+} = {}) =>
+	makeRandomConfigObject({
+		id,
+		type,
+		prefix,
+		entropy,
+		...params,
+	});
+
 export const secret = ({
 	type = "secret",
 	prefix = "pat-",
@@ -43,6 +57,7 @@ export const secret = ({
 
 const defaults = {
 	id,
+	username: username(),
 	secret: secret(),
 };
 const options = {};
@@ -55,26 +70,23 @@ export const authenticate = async (username, secret) => {
 	return await authnAuthenticate(options.secret, username, secret);
 };
 
-export const exists = async (secret) => {
-	const digest = createDigest(secret);
-	if (options.log) {
-		options.log("@1auth/authn-access-token exists(", digest, ")");
+export const exists = async (username) => {
+	if (!username || typeof username !== "string") {
+		throw new Error("404 Not Found", { cause: { username } });
 	}
+	const digest = createDigest(username);
 	return options.store.exists(options.table, { digest });
 };
 
 export const count = async (sub) => {
-	if (options.log) {
-		options.log("@1auth/authn-access-token count(", sub, ")");
-	}
 	return await authnCount(options.secret, sub);
 };
 
-export const lookup = async (secret) => {
-	const digest = createDigest(secret);
-	if (options.log) {
-		options.log("@1auth/authn-access-token lookup(", digest, ")");
+export const lookup = async (username) => {
+	if (!username || typeof username !== "string") {
+		throw new Error("404 Not Found", { cause: { username } });
 	}
+	const digest = createDigest(username);
 	const authn = await options.store.select(options.table, { digest });
 	if (authn) {
 		const now = nowInSeconds();
@@ -86,26 +98,18 @@ export const lookup = async (secret) => {
 };
 
 export const select = async (sub, id) => {
-	if (options.log) {
-		options.log("@1auth/authn-access-token select(", sub, id, ")");
-	}
 	return await authnSelect(options.secret, sub, id);
 };
 
 export const list = async (sub) => {
-	if (options.log) {
-		options.log("@1auth/authn-access-token list(", sub, ")");
-	}
 	return await authnList(options.secret, sub);
 };
 
 // expire: expire duration (s)
 export const create = async (sub, values = {}) => {
-	if (options.log) {
-		options.log("@1auth/authn-access-token create(", sub, values, ")");
-	}
+	const username = await options.username.create();
+	const digest = createDigest(username);
 	const secret = await options.secret.create();
-	const digest = createDigest(secret);
 	const now = nowInSeconds();
 	const { id, expire } = await authnCreate(options.secret, sub, {
 		...values,
@@ -117,21 +121,15 @@ export const create = async (sub, values = {}) => {
 		expire,
 	});
 
-	return { id, secret };
+	return { id, username, secret };
 };
 
 export const expire = async (sub, id) => {
-	if (options.log) {
-		options.log("@1auth/authn-access-token expire(", sub, id, ")");
-	}
 	await authnExpire(options.secret, sub, id);
 	await options.notify.trigger("authn-access-token-expire", sub);
 };
 
 export const remove = async (sub, id) => {
-	if (options.log) {
-		options.log("@1auth/authn-access-token remove(", sub, id, ")");
-	}
 	await authnRemove(options.secret, sub, id);
 	await options.notify.trigger("authn-access-token-remove", sub);
 };

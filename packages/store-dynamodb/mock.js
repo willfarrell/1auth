@@ -1,15 +1,8 @@
 import { setTimeout } from "node:timers/promises";
 import { DynamoDBClient, ListTablesCommand } from "@aws-sdk/client-dynamodb";
 
-// const defaults = {
-//   log: true,
-// };
-// const options = {};
-// export default (opt = {}) => {
-//   Object.assign(options, defaults, opt);
-// };
-export const log = console.log;
-export const client = new DynamoDBClient({
+export const log = () => {};
+export const storeClient = new DynamoDBClient({
 	endpoint: "http://localhost:8000",
 	region: "ca-central-1",
 	credentials: {
@@ -19,11 +12,14 @@ export const client = new DynamoDBClient({
 	maxRetries: 10,
 });
 
+let ready;
 const waitForStart = async () => {
+	if (ready) return;
 	try {
-		await client.send(new ListTablesCommand());
+		await storeClient.send(new ListTablesCommand());
+		ready = 1;
 	} catch (error) {
-		console.log("Waiting for Docker container to start...", error);
+		console.info("Waiting for dynamodb to start...", error);
 		await setTimeout(500);
 		return waitForStart();
 	}

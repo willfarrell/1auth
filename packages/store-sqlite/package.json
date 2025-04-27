@@ -1,10 +1,10 @@
 {
-	"name": "@1auth/store-sql",
+	"name": "@1auth/store-sqlite",
 	"version": "0.0.0-alpha.71",
 	"description": "",
 	"type": "module",
 	"engines": {
-		"node": ">=20"
+		"node": ">=22"
 	},
 	"engineStrict": true,
 	"publishConfig": {
@@ -39,19 +39,14 @@
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/willfarrell/1auth.git",
-		"directory": "packages/store-dynamodb"
+		"directory": "packages/store-postgres"
 	},
 	"bugs": {
 		"url": "https://github.com/willfarrell/1auth/issues"
 	},
 	"homepage": "https://github.com/willfarrell/1auth",
 	"gitHead": "7a6c0fbb8ab71d6a2171e678697de9f237568431",
-	"peerDependencies": {
-		"@aws-sdk/client-dynamodb": "^3.0.0",
-		"@aws-sdk/util-dynamodb": "^3.0.0",
-		"uuid": "^11.0.0"
-	},
-	"devDependencies": {
-		"better-sqlite3": "^11.0.0"
+	"dependencies": {
+		"@1auth/store-sql": "0.0.0-alpha.71"
 	}
 }

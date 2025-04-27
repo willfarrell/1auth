@@ -54,6 +54,9 @@ export default (opt = {}) => {
 export const getOptions = () => options;
 
 export const lookup = async (sid, value = {}) => {
+	if (!sid || typeof sid !== "string") {
+		throw new Error("401 Unauthorized", { cause: { sid } });
+	}
 	const digest = createSeasonedDigest(sid);
 	const session = await options.store.select(options.table, { digest });
 	if (session) {
@@ -73,6 +76,12 @@ export const lookup = async (sid, value = {}) => {
 };
 
 export const select = async (sub, id) => {
+	if (!sub || typeof sub !== "string") {
+		throw new Error("401 Unauthorized", { cause: { sub, id } });
+	}
+	if (!id || typeof id !== "string") {
+		throw new Error("404 Not Found", { cause: { sub, id } });
+	}
 	const session = await options.store.select(options.table, { sub, id });
 	if (!session) return;
 
@@ -89,6 +98,9 @@ export const select = async (sub, id) => {
 };
 
 export const list = async (sub) => {
+	if (!sub || typeof sub !== "string") {
+		throw new Error("401 Unauthorized", { cause: { sub } });
+	}
 	const items = await options.store.selectList(options.table, { sub });
 	const sessions = [];
 	for (let i = items.length; i--; ) {
@@ -112,9 +124,12 @@ export const list = async (sub) => {
  * @param sub
  * @param value {os, browser, ip, ...}
  */
-export const create = async (sub, value, values) => {
-	if (options.log) {
-		options.log("@1auth/session create(", sub, value, values, ")");
+export const create = async (sub, value, values = {}) => {
+	if (!sub || typeof sub !== "string") {
+		throw new Error("401 Unauthorized", { cause: { sub } });
+	}
+	if (!value) {
+		throw new Error("400 Bad Request", { cause: { sub } });
 	}
 	const now = nowInSeconds();
 	const sid = await options.randomSessionId.create();
@@ -153,6 +168,9 @@ export const create = async (sub, value, values) => {
 
 // Before creating a new session, check if metadata is new
 export const check = async (sub, value = {}) => {
+	if (!sub || typeof sub !== "string") {
+		throw new Error("401 Unauthorized", { cause: { sub } });
+	}
 	const encodedValue = options.encode(value);
 	const sessions = await options.store.selectList(options.table, { sub });
 	for (const session of sessions) {
@@ -168,6 +186,12 @@ export const check = async (sub, value = {}) => {
 };
 
 export const expire = async (sub, id) => {
+	if (!sub || typeof sub !== "string") {
+		throw new Error("401 Unauthorized", { cause: { sub, id } });
+	}
+	if (!id || typeof id !== "string") {
+		throw new Error("404 Not Found", { cause: { sub, id } });
+	}
 	const now = nowInSeconds();
 	await options.store.update(
 		options.table,
@@ -177,15 +201,21 @@ export const expire = async (sub, id) => {
 };
 
 export const remove = async (sub, id) => {
+	if (!sub || typeof sub !== "string") {
+		throw new Error("401 Unauthorized", { cause: { sub, id } });
+	}
+	if (!id || typeof id !== "string") {
+		throw new Error("404 Not Found", { cause: { sub, id } });
+	}
 	await options.store.remove(options.table, { sub, id });
 };
 
-export const sign = (id) => {
-	return symmetricSignatureSign(id);
+export const sign = (sid) => {
+	return symmetricSignatureSign(sid);
 };
 
-export const verify = (idWithSignature) => {
-	return symmetricSignatureVerify(idWithSignature);
+export const verify = (sidWithSignature) => {
+	return symmetricSignatureVerify(sidWithSignature);
 };
 
 // guest or onboard session to authenticated

@@ -21,7 +21,7 @@
   <a href="https://prettier.io/"><img alt="Code style: prettier" src="https://img.shields.io/badge/code_style-prettier-ff69b4.svg"></a>
   <a href="https://conventionalcommits.org"><img alt="Conventional Commits" src="https://img.shields.io/badge/Conventional%20Commits-1.0.0-%23FE5196?logo=conventionalcommits&logoColor=white"></a>
   <a href="https://github.com/willfarrell/1auth/blob/main/package.json#L32">
-  <img alt="code coverage" src="https://img.shields.io/badge/code%20coverage-95%25-brightgreen"></a>
+  <img alt="code coverage" src="https://img.shields.io/badge/code%20coverage-96%25-brightgreen"></a>
 </p>
 <p><!--You can read the documentation at: <a href="https://github.com/willfarrell/1auth">https://github.com/willfarrell/1auth</a>--> 1Auth is like an ORM for `accounts`, `authentications`, `messengers`, `sessions` with extensibility to ensure they have a consistent API and ensure that encoding/decoding/encryption/decryption are applied in a consistent way. All while enforcing industry defaults for cryptographic algorithms with an easy method to keep them up to date.</p>
 </div>
@@ -84,28 +84,16 @@ notify.default({
 
 // Passed in via ENV for example only
 crypto({
-  symmetricEncryptionKey: Buffer.from(
-    process.env.SYMMETRIC_ENCRYPTION_KEY ?? '',
-    'base64'
-  ),
-  symmetricSignatureSecret: Buffer.from(
-    process.env.SYMMETRIC_SIGNATURE_SECRET ?? '',
-    'base64'
-  ),
-  digestChecksumSalt: Buffer.from(
-    process.env.DIGEST_CHECKSUM_SALT ?? '',
-    'base64'
-  ),
-  digestChecksumPepper: Buffer.from(
-    process.env.DIGEST_CHECKSUM_PEPPER ?? '',
-    'base64'
-  )
+  symmetricEncryptionKey: process.env.SYMMETRIC_ENCRYPTION_KEY ?? '',
+  symmetricSignatureSecret: process.env.SYMMETRIC_SIGNATURE_SECRET ?? '',
+  digestChecksumSalt: process.env.DIGEST_CHECKSUM_SALT ?? '',
+  digestChecksumPepper: process.env.DIGEST_CHECKSUM_PEPPER ?? ''
 })
 
 account({
   store,
   notify,
-  encryptedFields: ['name', 'locale', 'username', 'privateKey']
+  encryptedFields: ['value','name', 'locale']
 })
 accountUsername({
   usernameBlacklist: ['root', 'admin', 'sa']

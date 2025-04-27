@@ -1,3 +1,4 @@
+import { createSeasonedDigest } from "@1auth/crypto";
 import {
 	create as messengerCreate,
 	createToken as messengerCreateToken,
@@ -49,53 +50,56 @@ export default (opt = {}) => {
 	}
 };
 
-export const exists = async (emailAddress) => {
-	const emailAddressSanitized = sanitize(emailAddress);
-	return await messengerExists(options.id, emailAddressSanitized);
+export const exists = async (value) => {
+	const valueSanitized = sanitize(value);
+	return await messengerExists(options.id, valueSanitized);
 };
 
-export const lookup = async (emailAddress) => {
-	const emailAddressSanitized = sanitize(emailAddress);
-	return await messengerLookup(options.id, emailAddressSanitized);
-};
-
-export const create = async (sub, emailAddress) => {
-	const emailAddressSanitized = sanitize(emailAddress);
-	const emailAddressValidate = validate(emailAddressSanitized);
-	if (emailAddressValidate !== true) {
-		throw new Error(emailAddressValidate, {
-			cause: { emailAddress, emailAddressSanitized },
-		});
-	}
-
-	return await messengerCreate(options.id, sub, emailAddressSanitized);
-};
-
-export const select = async (sub, id) => {
-	return await messengerSelect(options.id, sub, id);
+export const lookup = async (value) => {
+	const valueSanitized = sanitize(value);
+	return await messengerLookup(options.id, valueSanitized);
 };
 
 export const list = async (sub) => {
 	return messengerList(options.id, sub);
 };
 
+export const select = async (sub, id) => {
+	return await messengerSelect(options.id, sub, id);
+};
+
+export const create = async (sub, value, values = {}) => {
+	const valueSanitized = sanitize(value);
+	const valueValidate = validate(valueSanitized);
+	if (valueValidate !== true) {
+		throw new Error(valueValidate, {
+			cause: { value, valueSanitized },
+		});
+	}
+	const digest = createSeasonedDigest(valueSanitized);
+	return await messengerCreate(options.id, sub, { ...values, value, digest });
+};
+
 export const remove = async (sub, id) => {
 	await messengerRemove(options.id, sub, id);
 };
 
-export const createToken = async (sub, id) => {
-	return messengerCreateToken(options.id, sub, id);
+export const createToken = async (sub, sourceId) => {
+	return messengerCreateToken(options.id, sub, sourceId);
 };
 
 export const verifyToken = async (sub, token, sourceId) => {
 	await messengerVerifyToken(options.id, sub, token, sourceId);
 };
 
-export const sanitize = (emailAddress) => {
-	let [username, domain] = emailAddress.split("@");
+export const sanitize = (value) => {
+	if (!value || typeof value !== "string") {
+		throw new Error("400 Bad Request", { cause: { value } });
+	}
+	let [username, domain] = value.split("@");
 
 	// not a valid email
-	if (!domain) return emailAddress;
+	if (!domain) return value;
 
 	username = username.trimStart().split("+")[0].toLowerCase(); // TODO puntycode?
 	domain = toASCII(domain).trimEnd().toLowerCase();
@@ -112,14 +116,14 @@ export const sanitize = (emailAddress) => {
 
 const regexp =
 	/^[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*@(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i;
-export const validate = (emailAddress) => {
-	const [, domain] = emailAddress.split("@");
-	if (!regexp.test(emailAddress)) {
+export const validate = (value) => {
+	const [, domain] = value.split("@");
+	if (!regexp.test(value)) {
 		return "400 Bad Request";
 	}
 	if (
 		options.usernameBlacklist.filter(
-			(username) => `${username}@${domain}` === emailAddress,
+			(username) => `${username}@${domain}` === value,
 		).length
 	) {
 		return "409 Conflict";

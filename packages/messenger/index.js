@@ -89,6 +89,9 @@ export const lookup = async (type, value) => {
 };
 
 export const list = async (type, sub) => {
+	if (!sub || typeof sub !== "string") {
+		throw new Error("401 Unauthorized", { cause: { sub } });
+	}
 	const messengers = await options.store.selectList(options.table, {
 		sub,
 		type,
@@ -107,12 +110,37 @@ export const list = async (type, sub) => {
 	return messengers;
 };
 
-export const create = async (type, sub, value, values) => {
-	const digest = createSeasonedDigest(value);
+export const select = async (type, sub, id) => {
+	if (!sub || typeof sub !== "string") {
+		throw new Error("401 Unauthorized", { cause: { sub } });
+	}
+	if (!id || typeof id !== "string") {
+		throw new Error("404 Not Found", { cause: { sub, id } });
+	}
+	const res = await options.store.select(options.table, {
+		type,
+		sub,
+		id,
+	});
+	if (!res?.verify) return;
+	const { encryptionKey: encryptedKey } = res;
+	res.encryptionKey = undefined;
+	const decryptedValues = symmetricDecryptFields(
+		res,
+		{ encryptedKey, sub },
+		options.encryptedFields,
+	);
+	return decryptedValues;
+};
+
+export const create = async (type, sub, values) => {
+	if (!sub || typeof sub !== "string") {
+		throw new Error("401 Unauthorized", { cause: { sub } });
+	}
 	const valueExists = await options.store.select(
 		options.table,
 		{
-			digest,
+			digest: values.digest,
 		},
 		["id", "sub", "verify"],
 	);
@@ -133,10 +161,7 @@ export const create = async (type, sub, value, values) => {
 
 	const { encryptedKey, encryptionKey } = symmetricGenerateEncryptionKey(sub);
 	const encryptedValues = symmetricEncryptFields(
-		{
-			...values,
-			value,
-		},
+		values,
 		{
 			encryptionKey,
 			sub,
@@ -145,7 +170,6 @@ export const create = async (type, sub, value, values) => {
 	);
 	const params = {
 		...encryptedValues,
-		digest,
 		sub,
 		type,
 		encryptionKey: encryptedKey,
@@ -162,6 +186,12 @@ export const create = async (type, sub, value, values) => {
 };
 
 export const createToken = async (type, sub, sourceId) => {
+	if (!sub || typeof sub !== "string") {
+		throw new Error("401 Unauthorized", { cause: { sub } });
+	}
+	if (!sourceId || typeof sourceId !== "string") {
+		throw new Error("404 Not Found", { cause: { sub, sourceId } });
+	}
 	// remove previous tokens
 	await authnGetOptions().store.remove(authnGetOptions().table, {
 		sub,
@@ -186,6 +216,12 @@ export const createToken = async (type, sub, sourceId) => {
 };
 
 export const verifyToken = async (type, sub, token, sourceId) => {
+	if (!sub || typeof sub !== "string") {
+		throw new Error("401 Unauthorized", { cause: { sub } });
+	}
+	if (!sourceId || typeof sourceId !== "string") {
+		throw new Error("404 Not Found", { cause: { sub, sourceId } });
+	}
 	const messengers = await list(type, sub).then((items) => {
 		const messengers = [];
 		for (let i = items.length; i--; ) {
@@ -211,14 +247,20 @@ export const verifyToken = async (type, sub, token, sourceId) => {
 };
 
 export const remove = async (type, sub, id) => {
+	if (!sub || typeof sub !== "string") {
+		throw new Error("401 Unauthorized", { cause: { sub } });
+	}
+	if (!id || typeof id !== "string") {
+		throw new Error("404 Not Found", { cause: { sub, id } });
+	}
 	const messenger = await options.store.select(
 		options.table,
 		{ id, sub, type },
-		["value", "verify"],
+		["encryptionKey", "value", "verify"],
 	);
 
 	if (!messenger) {
-		throw new Error("403 Unauthorized");
+		throw new Error("401 Unauthorized");
 	}
 	// await authnRemove(options.token, sub, id);
 	await authnGetOptions().store.remove(authnGetOptions().table, {
@@ -249,23 +291,6 @@ export const remove = async (type, sub, id) => {
 		// Let all others know one was removed
 		options.notify.trigger(`messenger-${type}-remove`, sub),
 	]);
-};
-
-export const select = async (type, sub, id) => {
-	const res = await options.store.select(options.table, {
-		type,
-		sub,
-		id,
-	});
-	if (!res?.verify) return;
-	const { encryptionKey: encryptedKey } = res;
-	res.encryptionKey = undefined;
-	const decryptedValues = symmetricDecryptFields(
-		res,
-		{ encryptedKey, sub },
-		options.encryptedFields,
-	);
-	return decryptedValues;
 };
 
 const nowInSeconds = () => Math.floor(Date.now() / 1000);

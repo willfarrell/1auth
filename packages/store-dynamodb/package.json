@@ -4,7 +4,7 @@
 	"description": "",
 	"type": "module",
 	"engines": {
-		"node": ">=20"
+		"node": ">=22"
 	},
 	"engineStrict": true,
 	"publishConfig": {
@@ -49,7 +49,6 @@
 	"gitHead": "7a6c0fbb8ab71d6a2171e678697de9f237568431",
 	"peerDependencies": {
 		"@aws-sdk/client-dynamodb": "^3.0.0",
-		"@aws-sdk/util-dynamodb": "^3.0.0",
-		"uuid": "^11.0.0"
+		"@aws-sdk/util-dynamodb": "^3.0.0"
 	}
 }

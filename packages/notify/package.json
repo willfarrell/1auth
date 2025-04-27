@@ -1,10 +1,10 @@
 {
-	"name": "@1auth/notify-console",
+	"name": "@1auth/notify",
 	"version": "0.0.0-alpha.71",
 	"description": "",
 	"type": "module",
 	"engines": {
-		"node": ">=20"
+		"node": ">=22"
 	},
 	"engineStrict": true,
 	"publishConfig": {
@@ -39,7 +39,7 @@
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/willfarrell/1auth.git",
-		"directory": "packages/notify-console"
+		"directory": "packages/notify"
 	},
 	"bugs": {
 		"url": "https://github.com/willfarrell/1auth/issues"
