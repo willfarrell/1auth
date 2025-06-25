@@ -1,22 +1,22 @@
 import { Bench } from "tinybench";
 import crypto, {
-	randomAlphaNumeric,
-	randomNumeric,
-	randomChecksumSalt,
-	randomChecksumPepper,
 	createDigest,
-	createSaltedDigest,
 	createPepperedDigest,
+	createSaltedDigest,
 	createSeasonedDigest,
 	createSecretHash,
-	verifySecretHash,
-	symmetricRandomEncryptionKey,
-	symmetricGenerateEncryptionKey,
-	symmetricEncrypt,
+	randomAlphaNumeric,
+	randomChecksumPepper,
+	randomChecksumSalt,
+	randomNumeric,
 	symmetricDecrypt,
+	symmetricEncrypt,
+	symmetricGenerateEncryptionKey,
+	symmetricRandomEncryptionKey,
 	symmetricRandomSignatureSecret,
 	symmetricSignatureSign,
 	symmetricSignatureVerify,
+	verifySecretHash,
 	// safeEqual
 } from "../crypto/index.js";
 

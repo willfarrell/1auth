@@ -1,40 +1,34 @@
 import { test } from "node:test";
 import fc from "fast-check";
-
-// *** Setup Start *** //
-import * as notify from "../notify/index.js";
-import * as store from "../store-sqlite/index.js";
-
-import * as mockNotify from "../notify/mock.js";
-import * as mockStore from "../store-sqlite/mock.js";
-
+import account, { create as accountCreate } from "../account/index.js";
 import * as mockAccountSQLTable from "../account/table/sql.js";
+import accountUsername, {
+	create as accountUsernameCreate,
+	exists as accountUsernameExists,
+} from "../account-username/index.js";
+import authn from "../authn/index.js";
 import * as mockAuthnSQLTable from "../authn/table/sql.js";
-import * as mockMessengerSQLTable from "../messenger/table/sql.js";
-
 import crypto, {
+	randomChecksumPepper,
+	randomChecksumSalt,
 	symmetricRandomEncryptionKey,
 	symmetricRandomSignatureSecret,
-	randomChecksumSalt,
-	randomChecksumPepper,
 } from "../crypto/index.js";
-
-import accountUsername, {
-	exists as accountUsernameExists,
-	create as accountUsernameCreate,
-} from "../account-username/index.js";
-import account, { create as accountCreate } from "../account/index.js";
-import authn from "../authn/index.js";
-
-import emailAddress, {
-	exists as emailAddressExists,
-	lookup as emailAddressLookup,
-	list as emailAddressList,
-	select as emailAddressSelect,
-	create as emailAddressCreate,
-	remove as emailAddressRemove,
-} from "../messenger-email-address/index.js";
 import messenger from "../messenger/index.js";
+import * as mockMessengerSQLTable from "../messenger/table/sql.js";
+import emailAddress, {
+	create as emailAddressCreate,
+	exists as emailAddressExists,
+	list as emailAddressList,
+	lookup as emailAddressLookup,
+	remove as emailAddressRemove,
+	select as emailAddressSelect,
+} from "../messenger-email-address/index.js";
+// *** Setup Start *** //
+import * as notify from "../notify/index.js";
+import * as mockNotify from "../notify/mock.js";
+import * as store from "../store-sqlite/index.js";
+import * as mockStore from "../store-sqlite/mock.js";
 
 crypto({
 	symmetricEncryptionKey: symmetricRandomEncryptionKey(),

@@ -130,7 +130,7 @@ export const insertList = async (table, rows = []) => {
 	const sql = `INSERT INTO ${table} ${insertValues.join(",")} RETURNING id`;
 	const res = await options.client.query(sql, insertParameters);
 
-	return res.map((row) => row.id);
+	return res;
 };
 
 export const update = async (table, filters = {}, inputValues = {}) => {

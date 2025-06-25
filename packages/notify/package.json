@@ -1,6 +1,6 @@
 {
 	"name": "@1auth/notify",
-	"version": "0.0.0-alpha.71",
+	"version": "0.0.0-alpha.72",
 	"description": "",
 	"type": "module",
 	"engines": {
@@ -21,7 +21,10 @@
 		}
 	},
 	"types": "index.d.ts",
-	"files": ["index.js", "index.d.ts"],
+	"files": [
+		"index.js",
+		"index.d.ts"
+	],
 	"scripts": {
 		"test": "npm run test:unit",
 		"test:unit": "node --test"

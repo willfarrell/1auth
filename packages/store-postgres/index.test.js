@@ -1,12 +1,9 @@
 import { deepEqual, equal } from "node:assert/strict";
 import { describe, it } from "node:test";
-
+import tests from "../store/index.test.js";
 import * as store from "./index.js";
-
 import * as mockDatabase from "./mock.js";
 import * as mockDatabaseTable from "./table/postgres.js";
-
-import tests from "../store/index.test.js";
 
 store.default({
 	log: (...args) => mocks.log(...args),

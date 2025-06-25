@@ -1,30 +1,25 @@
 import { test } from "node:test";
 import fc from "fast-check";
-
-// ** Setup Start *** //
-import * as notify from "../notify/index.js";
-import * as store from "../store-sqlite/index.js";
-
-import * as mockNotify from "../notify/mock.js";
-import * as mockStore from "../store-sqlite/mock.js";
-
+import account, {
+	create as accountCreate,
+	exists as accountExists,
+	expire as accountExpire,
+	lookup as accountLookup,
+	remove as accountRemove,
+	update as accountUpdate,
+} from "../account/index.js";
 import * as mockAccountSQLTable from "../account/table/sql.js";
-
 import crypto, {
+	randomChecksumPepper,
+	randomChecksumSalt,
 	symmetricRandomEncryptionKey,
 	symmetricRandomSignatureSecret,
-	randomChecksumSalt,
-	randomChecksumPepper,
 } from "../crypto/index.js";
-
-import account, {
-	exists as accountExists,
-	lookup as accountLookup,
-	create as accountCreate,
-	update as accountUpdate,
-	expire as accountExpire,
-	remove as accountRemove,
-} from "../account/index.js";
+// ** Setup Start *** //
+import * as notify from "../notify/index.js";
+import * as mockNotify from "../notify/mock.js";
+import * as store from "../store-sqlite/index.js";
+import * as mockStore from "../store-sqlite/mock.js";
 
 crypto({
 	symmetricEncryptionKey: symmetricRandomEncryptionKey(),

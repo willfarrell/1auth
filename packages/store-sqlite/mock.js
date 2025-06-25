@@ -1,5 +1,6 @@
 import { DatabaseSync } from "node:sqlite";
 import { setTimeout } from "node:timers/promises";
+
 const db = new DatabaseSync(":memory:", {});
 db.exec("PRAGMA journal_mode = 'wal';");
 

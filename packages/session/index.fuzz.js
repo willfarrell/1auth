@@ -1,40 +1,34 @@
 import { test } from "node:test";
 import fc from "fast-check";
-
-// *** Setup Start *** //
-import * as notify from "../notify/index.js";
-import * as store from "../store-sqlite/index.js";
-
-import * as mockNotify from "../notify/mock.js";
-import * as mockStore from "../store-sqlite/mock.js";
-
+import account, { create as accountCreate } from "../account/index.js";
 import * as mockAccountSQLTable from "../account/table/sql.js";
+import accountUsername, {
+	create as accountUsernameCreate,
+	exists as accountUsernameExists,
+} from "../account-username/index.js";
+import authn from "../authn/index.js";
 import * as mockAuthnSQLTable from "../authn/table/sql.js";
-import * as mockSessionSQLTable from "../session/table/sql.js";
-
 import crypto, {
+	randomChecksumPepper,
+	randomChecksumSalt,
 	symmetricRandomEncryptionKey,
 	symmetricRandomSignatureSecret,
-	randomChecksumSalt,
-	randomChecksumPepper,
 } from "../crypto/index.js";
-
-import accountUsername, {
-	exists as accountUsernameExists,
-	create as accountUsernameCreate,
-} from "../account-username/index.js";
-import account, { create as accountCreate } from "../account/index.js";
-import authn from "../authn/index.js";
-
+// *** Setup Start *** //
+import * as notify from "../notify/index.js";
+import * as mockNotify from "../notify/mock.js";
 import session, {
-	create as sessionCreate,
 	check as sessionCheck,
-	lookup as sessionLookup,
-	select as sessionSelect,
-	list as sessionList,
+	create as sessionCreate,
 	expire as sessionExpire,
+	list as sessionList,
+	lookup as sessionLookup,
 	remove as sessionRemove,
+	select as sessionSelect,
 } from "../session/index.js";
+import * as mockSessionSQLTable from "../session/table/sql.js";
+import * as store from "../store-sqlite/index.js";
+import * as mockStore from "../store-sqlite/mock.js";
 
 crypto({
 	symmetricEncryptionKey: symmetricRandomEncryptionKey(),

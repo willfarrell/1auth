@@ -1,7 +1,7 @@
 import {
 	GetQueueUrlCommand,
-	SQSClient,
 	SendMessageCommand,
+	SQSClient,
 } from "@aws-sdk/client-sqs";
 
 const options = {

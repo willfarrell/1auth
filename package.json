@@ -1,6 +1,6 @@
 {
 	"name": "@1auth/monorepo",
-	"version": "0.0.0-alpha.71",
+	"version": "0.0.0-alpha.72",
 	"description": "",
 	"private": true,
 	"type": "module",
@@ -44,7 +44,13 @@
 		"type": "git",
 		"url": "git+https://github.com/willfarrell/1auth.git"
 	},
-	"keywords": ["Authentication", "Authorization", "OWASP", "ASVS", "Node.js"],
+	"keywords": [
+		"Authentication",
+		"Authorization",
+		"OWASP",
+		"ASVS",
+		"Node.js"
+	],
 	"author": {
 		"name": "1auth contributors",
 		"url": "https://github.com/willfarrell/1auth/graphs/contributors"
@@ -67,5 +73,7 @@
 		"husky": "^9.0.0",
 		"tinybench": "^4.0.0"
 	},
-	"workspaces": ["packages/*"]
+	"workspaces": [
+		"packages/*"
+	]
 }

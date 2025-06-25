@@ -1,52 +1,44 @@
 import { deepEqual, equal, ok } from "node:assert/strict";
 import { describe, it, test } from "node:test";
-
-// *** Setup Start *** //
-import * as notify from "../notify/index.js";
-import * as storeDynamoDB from "../store-dynamodb/index.js";
-import * as storePostgres from "../store-postgres/index.js";
-import * as storeSQLite from "../store-sqlite/index.js";
-
-import * as mockNotify from "../notify/mock.js";
-
-// import * as mockDynamoDB from "../store-dynamodb/mock.js";
-// import * as mockPostgres from "../store-postgres/mock.js";
-import * as mockSQLite from "../store-sqlite/mock.js";
-
-// import * as mockAccountDynamoDBTable from "../account/table/dynamodb.js";
-import * as mockAccountSQLTable from "../account/table/sql.js";
-
-// import * as mockAuthnDynamoDBTable from "../authn/table/dynamodb.js";
-import * as mockAuthnSQLTable from "../authn/table/sql.js";
-
-import crypto, {
-	symmetricRandomEncryptionKey,
-	symmetricRandomSignatureSecret,
-	randomChecksumSalt,
-	randomChecksumPepper,
-} from "../crypto/index.js";
-
-import accountUsername, {
-	create as accountUsernameCreate,
-	exists as accountUsernameExists,
-} from "../account-username/index.js";
 import account, {
 	create as accountCreate,
 	remove as accountRemove,
 } from "../account/index.js";
+// import * as mockAccountDynamoDBTable from "../account/table/dynamodb.js";
+import * as mockAccountSQLTable from "../account/table/sql.js";
+import accountUsername, {
+	create as accountUsernameCreate,
+	exists as accountUsernameExists,
+} from "../account-username/index.js";
 import authn, { getOptions as authnGetOptions } from "../authn/index.js";
-
+// import * as mockAuthnDynamoDBTable from "../authn/table/dynamodb.js";
+import * as mockAuthnSQLTable from "../authn/table/sql.js";
 import recoveryCodes, {
 	authenticate as recoveryCodesAuthenticate,
-	create as recoveryCodesCreate,
 	count as recoveryCodesCount,
+	create as recoveryCodesCreate,
 	// exists as recoveryCodesExists,
 	// lookup as recoveryCodesLookup,
 	// select as recoveryCodesSelect,
 	list as recoveryCodesList,
-	update as recoveryCodesUpdate,
 	remove as recoveryCodesRemove,
+	update as recoveryCodesUpdate,
 } from "../authn-recovery-codes/index.js";
+import crypto, {
+	randomChecksumPepper,
+	randomChecksumSalt,
+	symmetricRandomEncryptionKey,
+	symmetricRandomSignatureSecret,
+} from "../crypto/index.js";
+// *** Setup Start *** //
+import * as notify from "../notify/index.js";
+import * as mockNotify from "../notify/mock.js";
+import * as storeDynamoDB from "../store-dynamodb/index.js";
+import * as storePostgres from "../store-postgres/index.js";
+import * as storeSQLite from "../store-sqlite/index.js";
+// import * as mockDynamoDB from "../store-dynamodb/mock.js";
+// import * as mockPostgres from "../store-postgres/mock.js";
+import * as mockSQLite from "../store-sqlite/mock.js";
 
 crypto({
 	symmetricEncryptionKey: symmetricRandomEncryptionKey(),

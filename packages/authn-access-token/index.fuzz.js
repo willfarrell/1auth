@@ -1,42 +1,36 @@
 import { test } from "node:test";
 import fc from "fast-check";
-
-// *** Setup Start *** //
-import * as notify from "../notify/index.js";
-import * as store from "../store-sqlite/index.js";
-
-import * as mockNotify from "../notify/mock.js";
-import * as mockStore from "../store-sqlite/mock.js";
-
-import * as mockAccountSQLTable from "../account/table/sql.js";
-import * as mockAuthnSQLTable from "../authn/table/sql.js";
-
-import crypto, {
-	symmetricRandomEncryptionKey,
-	symmetricRandomSignatureSecret,
-	randomChecksumSalt,
-	randomChecksumPepper,
-} from "../crypto/index.js";
-
 import account, { create as accountCreate } from "../account/index.js";
-
+import * as mockAccountSQLTable from "../account/table/sql.js";
 import accountUsername, {
 	create as accountUsernameCreate,
 	exists as accountUsernameExists,
 } from "../account-username/index.js";
 import authn from "../authn/index.js";
-
+import * as mockAuthnSQLTable from "../authn/table/sql.js";
 import accessToken, {
 	authenticate as accessTokenAuthenticate,
-	exists as accessTokenExists,
 	count as accessTokenCount,
-	lookup as accessTokenLookup,
-	select as accessTokenSelect,
-	list as accessTokenList,
 	create as accessTokenCreate,
+	exists as accessTokenExists,
 	expire as accessTokenExpire,
+	list as accessTokenList,
+	lookup as accessTokenLookup,
 	remove as accessTokenRemove,
+	select as accessTokenSelect,
 } from "../authn-access-token/index.js";
+
+import crypto, {
+	randomChecksumPepper,
+	randomChecksumSalt,
+	symmetricRandomEncryptionKey,
+	symmetricRandomSignatureSecret,
+} from "../crypto/index.js";
+// *** Setup Start *** //
+import * as notify from "../notify/index.js";
+import * as mockNotify from "../notify/mock.js";
+import * as store from "../store-sqlite/index.js";
+import * as mockStore from "../store-sqlite/mock.js";
 
 crypto({
 	symmetricEncryptionKey: symmetricRandomEncryptionKey(),

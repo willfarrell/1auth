@@ -1,4 +1,9 @@
 import {
+	create as authnCreate,
+	getOptions as authnGetOptions,
+	verify as authnVerify,
+} from "@1auth/authn";
+import {
 	createSeasonedDigest,
 	createSecretHash,
 	makeRandomConfigObject,
@@ -8,12 +13,6 @@ import {
 	symmetricGenerateEncryptionKey,
 	verifySecretHash,
 } from "@1auth/crypto";
-
-import {
-	create as authnCreate,
-	getOptions as authnGetOptions,
-	verify as authnVerify,
-} from "@1auth/authn";
 
 const id = "messenger";
 
