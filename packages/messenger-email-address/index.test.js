@@ -41,6 +41,7 @@ import authn, { getOptions as authnGetOptions } from "../authn/index.js";
 
 import emailAddress, {
 	exists as emailAddressExists,
+	count as emailAddressCount,
 	lookup as emailAddressLookup,
 	select as emailAddressSelect,
 	list as emailAddressList,
@@ -183,6 +184,10 @@ const tests = (config) => {
 
 	it("Can create a messenger on an account", async () => {
 		const messengerId = await emailAddressCreate(sub, messengerValue);
+
+		let count = await emailAddressCount(sub);
+		equal(count, 0); // unverified
+
 		const { token, expire } =
 			mocks.notifyClient.mock.calls[0].arguments[0].data;
 
@@ -206,6 +211,9 @@ const tests = (config) => {
 		ok(!messengerDB.verify);
 
 		await emailAddressVerifyToken(sub, token, messengerId);
+
+		count = await emailAddressCount(sub);
+		equal(count, 1); // verified
 
 		// notify
 		equal(mocks.notifyClient.mock.calls.length, 1);

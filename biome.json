@@ -19,11 +19,12 @@
 	"linter": {
 		"enabled": true,
 		"rules": {
-			"recommended": true,
-			"correctness": {
-				"noUnusedImports": "error",
-				"noUnusedVariables": "error"
-			}
+			"recommended": true
+		}
+	},
+	"javascript": {
+		"formatter": {
+			"quoteStyle": "double"
 		}
 	}
 }

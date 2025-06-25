@@ -1,5 +1,6 @@
 import { createSeasonedDigest } from "@1auth/crypto";
 import {
+	count as messengerCount,
 	create as messengerCreate,
 	createToken as messengerCreateToken,
 	exists as messengerExists,
@@ -55,9 +56,13 @@ export const exists = async (value) => {
 	return await messengerExists(options.id, valueSanitized);
 };
 
-export const lookup = async (value) => {
-	const valueSanitized = sanitize(value);
-	return await messengerLookup(options.id, valueSanitized);
+export const count = async (sub) => {
+	return await messengerCount(options.secret, sub);
+};
+
+export const lookup = async (emailAddress) => {
+	const emailAddressSanitized = sanitize(emailAddress);
+	return await messengerLookup(options.id, emailAddressSanitized);
 };
 
 export const list = async (sub) => {

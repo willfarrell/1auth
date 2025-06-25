@@ -5,7 +5,7 @@
 	"private": true,
 	"type": "module",
 	"engines": {
-		"node": ">=23"
+		"node": ">=24"
 	},
 	"engineStrict": true,
 	"scripts": {
@@ -15,6 +15,7 @@
 		"git:commit-msg": "commitlint --config commitlint.config.cjs --edit",
 		"git:lint-staged": "biome check --staged --no-errors-on-unmatched --files-ignore-unknown=true",
 		"git:test-staged": "node --test",
+		"lint": "biome check --write --no-errors-on-unmatched --files-ignore-unknown=true",
 		"test": "npm run test:lint && npm run test:unit && npm run test:sast && npm run test:perf && npm run test:dast",
 		"test:lint": "biome check --write --no-errors-on-unmatched --files-ignore-unknown=true",
 		"test:unit": "node --test --experimental-test-coverage --test-coverage-lines=98 --test-coverage-branches=96 --test-coverage-functions=97 --test-coverage-exclude=**/mock.js --test-coverage-exclude=**/*.test.js --test-coverage-exclude=**/table/*",
@@ -58,7 +59,7 @@
 	},
 	"homepage": "https://github.com/willfarrell/1auth",
 	"devDependencies": {
-		"@biomejs/biome": "^1.0.0",
+		"@biomejs/biome": "^2.0.0",
 		"@commitlint/cli": "^19.0.0",
 		"@commitlint/config-conventional": "^19.0.0",
 		"aws-sdk-client-mock": "^4.0.0",

@@ -71,6 +71,27 @@ export const exists = async (type, value) => {
 	});
 };
 
+export const count = async (type, sub) => {
+	const messengers = await options.store.selectList(
+		options.table,
+		{ sub, type },
+		["verify", "expire"],
+	);
+	let count = 0;
+	const now = nowInSeconds();
+	for (let i = messengers.length; i--; ) {
+		const messenger = messengers[i];
+		if (messenger.expire && messenger.expire < now) {
+			continue;
+		}
+		if (!messenger.verify) {
+			continue;
+		}
+		count += 1;
+	}
+	return count;
+};
+
 export const lookup = async (type, value) => {
 	const valueDigest = createSeasonedDigest(value);
 	const res = await options.store.select(options.table, {

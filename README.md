@@ -17,6 +17,7 @@
   <img alt="npm provenance" src="https://img.shields.io/badge/provenance-Yes-brightgreen"></a>
   <br/>
   <a href="https://scorecard.dev/viewer/?uri=github.com/willfarrell/1auth"><img src="https://api.scorecard.dev/projects/github.com/willfarrell/1auth/badge" alt="Open Source Security Foundation (OpenSSF) Scorecard"></a>
+  <a href="https://slsa.dev"><img src="https://slsa.dev/images/gh-badge-level3.svg" alt="SLSA 3"></a>
   <a href="https://github.com/willfarrell/1auth/blob/main/docs/CODE_OF_CONDUCT.md"><img src="https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg"></a>
   <a href="https://prettier.io/"><img alt="Code style: prettier" src="https://img.shields.io/badge/code_style-prettier-ff69b4.svg"></a>
   <a href="https://conventionalcommits.org"><img alt="Conventional Commits" src="https://img.shields.io/badge/Conventional%20Commits-1.0.0-%23FE5196?logo=conventionalcommits&logoColor=white"></a>

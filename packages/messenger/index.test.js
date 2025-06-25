@@ -42,6 +42,7 @@ import authn, { getOptions as authnGetOptions } from "../authn/index.js";
 
 import messenger, {
 	exists as messengerExists,
+	count as messengerCount,
 	lookup as messengerLookup,
 	select as messengerSelect,
 	list as messengerList,
@@ -186,6 +187,10 @@ const tests = (config) => {
 			value: messengerValue,
 			digest: createSeasonedDigest(messengerValue),
 		});
+
+		let count = await messengerCount(messengerType, sub);
+		equal(count, 0); // unverified
+
 		const { token, expire } =
 			mocks.notifyClient.mock.calls[0].arguments[0].data;
 
@@ -209,6 +214,9 @@ const tests = (config) => {
 		ok(!messengerDB.verify);
 
 		await messengerVerifyToken(messengerType, sub, token, messengerId);
+
+		count = await messengerCount(messengerType, sub);
+		equal(count, 1); // verified
 
 		// notify
 		equal(mocks.notifyClient.mock.calls.length, 1);
