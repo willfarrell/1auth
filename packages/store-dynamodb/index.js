@@ -131,12 +131,13 @@ const queryCommand = async (table, filters = {}, fields = []) => {
 		// return in the same order they were inserted
 		ScanIndexForward: false,
 	};
-	// DynamoDB dosn't support fields
-	// ValidationException: Can not use both expression and non-expression parameters in the same request: Non-expression parameters: {AttributesToGet} Expression parameters: {KeyConditionExpression}
+
 	// Add fields to secondary indexes instead
-	// if (fields.length) {
-	//   commandParams.AttributesToGet = AttributesToGet;
-	// }
+	if (fields.length) {
+		// DynamoDB can't support fields
+		// ValidationException: Can not use both expression and non-expression parameters in the same request: Non-expression parameters: {AttributesToGet} Expression parameters: {KeyConditionExpression}
+		commandParams.AttributesToGet = undefined; //AttributesToGet;
+	}
 
 	return await options.client
 		.send(new QueryCommand(commandParams))
@@ -293,12 +294,12 @@ export const removeList = async (table, filters = {}) => {
 	await options.client.send(new BatchWriteItemCommand(commandParams));
 };
 
-export const makeQueryParams = (filters = {}) => {
+export const makeQueryParams = (filters = {}, fields = []) => {
 	const expressionAttributeNames = {};
 	const expressionAttributeValues = {};
 	let keyConditionExpression = [];
 	let updateExpression = [];
-	//let attributesToGet = [];
+	const attributesToGet = [];
 	for (const key in filters) {
 		let value = filters[key];
 		if (typeof value === "undefined") {
@@ -320,13 +321,15 @@ export const makeQueryParams = (filters = {}) => {
 	keyConditionExpression = keyConditionExpression.join(" and ");
 	updateExpression = `SET ${updateExpression.join(", ")}`;
 
-	//let projectionExpression = [];
-	// for (const key of fields) {
-	//   expressionAttributeNames[`#${key}`] = key;
-	//   projectionExpression.push(`:${key}`);
-	//   attributesToGet.push(`:${key}`);
-	// }
-	//projectionExpression = [...new Set(projectionExpression)].join(", ");
+	// DynamoDB can't support fields
+	// ValidationException: Can not use both expression and non-expression parameters in the same request: Non-expression parameters: {AttributesToGet} Expression parameters: {KeyConditionExpression}
+	let projectionExpression = [];
+	for (const key of fields) {
+		// expressionAttributeNames[`#${key}`] = key;
+		projectionExpression.push(`:${key}`);
+		attributesToGet.push(`:${key}`);
+	}
+	projectionExpression = [...new Set(projectionExpression)].join(", ");
 
 	const commandParams = {
 		// ProjectionExpression: projectionExpression, // return keys
