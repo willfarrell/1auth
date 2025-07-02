@@ -300,6 +300,7 @@ export const makeQueryParams = (filters = {}, fields = []) => {
 	const expressionAttributeValues = {};
 	let keyConditionExpression = [];
 	let updateExpression = [];
+	const projectionExpression = [];
 	const attributesToGet = [];
 	for (const key in filters) {
 		let value = filters[key];
@@ -322,22 +323,22 @@ export const makeQueryParams = (filters = {}, fields = []) => {
 	keyConditionExpression = keyConditionExpression.join(" and ");
 	updateExpression = `SET ${updateExpression.join(", ")}`;
 
-	let projectionExpression = [];
 	for (const key of fields) {
 		expressionAttributeNames[`#${key}`] = key;
 		projectionExpression.push(`:${key}`);
 		attributesToGet.push(`:${key}`);
 	}
-	projectionExpression = [...new Set(projectionExpression)].join(", ");
 
 	const commandParams = {
-		ProjectionExpression: projectionExpression, // return keys
 		ExpressionAttributeNames: expressionAttributeNames,
 		ExpressionAttributeValues: expressionAttributeValues,
 		KeyConditionExpression: keyConditionExpression,
 		UpdateExpression: updateExpression,
 	};
 	if (attributesToGet.length) {
+		commandParams.ProjectionExpression = [
+			...new Set(projectionExpression),
+		].join(", "); // return keys
 		commandParams.AttributesToGet = attributesToGet;
 	}
 	return commandParams;
