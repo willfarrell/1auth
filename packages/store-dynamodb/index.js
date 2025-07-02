@@ -132,10 +132,11 @@ const queryCommand = async (table, filters = {}, fields = []) => {
 		ScanIndexForward: false,
 	};
 
+	// DynamoDB can't support fields
+	// ValidationException: Can not use both expression and non-expression parameters in the same request: Non-expression parameters: {AttributesToGet} Expression parameters: {KeyConditionExpression}
+
 	// Add fields to secondary indexes instead
 	if (fields.length) {
-		// DynamoDB can't support fields
-		// ValidationException: Can not use both expression and non-expression parameters in the same request: Non-expression parameters: {AttributesToGet} Expression parameters: {KeyConditionExpression}
 		commandParams.AttributesToGet = undefined; //AttributesToGet;
 	}
 
@@ -321,25 +322,23 @@ export const makeQueryParams = (filters = {}, fields = []) => {
 	keyConditionExpression = keyConditionExpression.join(" and ");
 	updateExpression = `SET ${updateExpression.join(", ")}`;
 
-	// DynamoDB can't support fields
-	// ValidationException: Can not use both expression and non-expression parameters in the same request: Non-expression parameters: {AttributesToGet} Expression parameters: {KeyConditionExpression}
 	let projectionExpression = [];
 	for (const key of fields) {
-		// expressionAttributeNames[`#${key}`] = key;
+		expressionAttributeNames[`#${key}`] = key;
 		projectionExpression.push(`:${key}`);
 		attributesToGet.push(`:${key}`);
 	}
 	projectionExpression = [...new Set(projectionExpression)].join(", ");
 
 	const commandParams = {
-		// ProjectionExpression: projectionExpression, // return keys
+		ProjectionExpression: projectionExpression, // return keys
 		ExpressionAttributeNames: expressionAttributeNames,
 		ExpressionAttributeValues: expressionAttributeValues,
 		KeyConditionExpression: keyConditionExpression,
 		UpdateExpression: updateExpression,
 	};
-	// if (attributesToGet.length) {
-	//   commandParams.AttributesToGet = attributesToGet;
-	// }
+	if (attributesToGet.length) {
+		commandParams.AttributesToGet = attributesToGet;
+	}
 	return commandParams;
 };
