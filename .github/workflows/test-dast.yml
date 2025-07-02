@@ -4,7 +4,7 @@ on:
   pull_request:
 
 env:
-  NODE_VERSION: 23.x
+  NODE_VERSION: 24.x
 
 permissions:
   contents: read
@@ -30,10 +30,8 @@ jobs:
           npm run build --if-present
       - name: Fuzzing tests
         run: |
-          npm run test:dynamodb:update
           npm run test:dynamodb &
-          PID=$!
+          npm run test:postgres &
           npm run test:dast:fuzz
-          kill ${PID}
 
 # zaproxy Endpoint Fuzzing

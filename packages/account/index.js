@@ -1,123 +1,141 @@
 import {
-  makeRandomConfigObject,
-  symmetricGenerateEncryptionKey,
-  makeAsymmetricKeys,
-  symmetricEncryptFields,
-  symmetricDecryptFields,
+	makeRandomConfigObject,
+	symmetricDecryptFields,
+	symmetricEncryptFields,
+	symmetricGenerateEncryptionKey,
 } from "@1auth/crypto";
 
 const id = "account";
 
 export const randomId = ({ prefix = "user_", ...params } = {}) =>
-  makeRandomConfigObject({
-    id,
-    prefix,
-    ...params,
-  });
+	makeRandomConfigObject({
+		id,
+		prefix,
+		...params,
+	});
 
 export const randomSubject = ({ prefix = "sub_", ...params } = {}) =>
-  makeRandomConfigObject({
-    id,
-    prefix,
-    ...params,
-  });
+	makeRandomConfigObject({
+		id,
+		prefix,
+		...params,
+	});
 
 const defaults = {
-  id,
-  store: undefined,
-  notify: undefined,
-  table: "accounts",
-  idGenerate: true,
-  randomId: randomId(),
-  randomSubject: randomSubject(),
-  encryptedFields: ["privateKey"], // TODO has encryption build-in
+	id,
+	store: undefined,
+	notify: undefined,
+	table: "accounts",
+	idGenerate: true,
+	randomId: randomId(),
+	randomSubject: randomSubject(),
+	encryptedFields: [],
 };
 const options = {};
 export default (params) => {
-  Object.assign(options, defaults, params);
+	Object.assign(options, defaults, params);
 };
 export const getOptions = () => options;
 
 export const exists = async (sub) => {
-  return options.store.exists(options.table, { sub });
+	if (!sub || typeof sub !== "string") {
+		throw new Error("404 Not Found", { cause: { sub } });
+	}
+	return options.store.exists(options.table, { sub });
 };
 
 export const lookup = async (sub) => {
-  const account = await options.store.select(options.table, { sub });
-  if (!account) return;
-  const { encryptionKey: encryptedKey } = account;
-  delete account.encryptionKey;
-  delete account.privateKey;
-  const decryptedAccount = symmetricDecryptFields(
-    account,
-    { encryptedKey, sub },
-    options.encryptedFields,
-  );
-  return decryptedAccount;
+	if (!sub || typeof sub !== "string") {
+		throw new Error("404 Not Found", { cause: { sub } });
+	}
+	const account = await options.store.select(options.table, { sub });
+	if (!account) {
+		throw new Error("404 Not Found", { cause: { sub } });
+	}
+	const { encryptionKey: encryptedKey } = account;
+	account.encryptionKey = undefined;
+	const decryptedAccount = symmetricDecryptFields(
+		account,
+		{ encryptedKey, sub },
+		options.encryptedFields,
+	);
+	return decryptedAccount;
 };
 
 export const create = async (values = {}) => {
-  const sub = await options.randomSubject.create(options.subPrefix);
-  const asymmetricKeys = await makeAsymmetricKeys();
+	const sub = await options.randomSubject.create(options.subPrefix);
 
-  const { encryptionKey, encryptedKey } = symmetricGenerateEncryptionKey(sub);
-  const encryptedValues = symmetricEncryptFields(
-    { ...values, ...asymmetricKeys },
-    { encryptionKey, sub },
-    options.encryptedFields,
-  );
+	const { encryptionKey, encryptedKey } = symmetricGenerateEncryptionKey(sub);
+	const encryptedValues = symmetricEncryptFields(
+		values,
+		{ encryptionKey, sub },
+		options.encryptedFields,
+	);
 
-  const now = nowInSeconds();
-  const params = {
-    create: now, // allow use for migration import
-    ...encryptedValues,
-    sub,
-    encryptionKey: encryptedKey,
-    update: now,
-  };
-  if (options.idGenerate) {
-    params.id = await options.randomId.create(options.idPrefix);
-  }
-  await options.store.insert(options.table, params);
+	const now = nowInSeconds();
+	const params = {
+		create: now, // allow use for migration import
+		...encryptedValues,
+		sub,
+		encryptionKey: encryptedKey,
+		update: now,
+	};
+	if (options.idGenerate) {
+		params.id = await options.randomId.create(options.idPrefix);
+	}
+	await options.store.insert(options.table, params);
 
-  // TODO update guest session, attach sub
-  return sub;
+	// TODO update guest session, attach sub
+	return sub;
 };
 
 // for in the clear user metadata
 export const update = async (sub, values = {}) => {
-  const { encryptionKey: encryptedKey } = await options.store.select(
-    options.table,
-    {
-      sub,
-    },
-    ["encryptionKey"],
-  );
+	if (!sub || typeof sub !== "string") {
+		throw new Error("404 Not Found", { cause: { sub } });
+	}
+	const account = await options.store.select(
+		options.table,
+		{
+			sub,
+		},
+		["encryptionKey"],
+	);
+	if (!account) {
+		throw new Error("404 Not Found", { cause: { sub } });
+	}
+	const { encryptionKey: encryptedKey } = account;
 
-  values = symmetricEncryptFields(
-    values,
-    { encryptedKey, sub },
-    options.encryptedFields,
-  );
+	const encryptedValues = symmetricEncryptFields(
+		values,
+		{ encryptedKey, sub },
+		options.encryptedFields,
+	);
 
-  await options.store.update(
-    options.table,
-    { sub },
-    { ...values, update: nowInSeconds() },
-  );
+	await options.store.update(
+		options.table,
+		{ sub },
+		{ ...encryptedValues, update: nowInSeconds() },
+	);
 };
 
 export const expire = async (sub) => {
-  await options.store.update(
-    options.table,
-    { sub },
-    { expire: nowInSeconds() },
-  );
+	if (!sub || typeof sub !== "string") {
+		throw new Error("401 Unauthorized", { cause: { sub } });
+	}
+	await options.store.update(
+		options.table,
+		{ sub },
+		{ expire: nowInSeconds() },
+	);
 };
 
 export const remove = async (sub) => {
-  // Should trigger removal of credentials and messengers
-  await options.store.remove(options.table, { sub });
+	if (!sub || typeof sub !== "string") {
+		throw new Error("404 Not Found", { cause: { sub } });
+	}
+	// Should trigger removal of credentials and messengers
+	await options.store.remove(options.table, { sub });
 };
 
 /* export const expire = async (sub) => {

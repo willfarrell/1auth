@@ -1,26 +1,42 @@
-export default (table = "accounts") => {
-  return `
-  CREATE TABLE IF NOT EXISTS ${table}
-  (
-    sub                VARCHAR(11)         NOT NULL,
+export const name = "accounts";
+export const timeToLiveKey = "remove";
+export const create = async (client, table = name) => {
+	const sql = `
+	CREATE TABLE IF NOT EXISTS ${table}
+   (
+     "id"                 VARCHAR(19)         NOT NULL, -- prefix (user_) + entropy (11)
+     "sub"                VARCHAR(15)         NOT NULL, -- prefix (sub_) + entropy (11)
 
-    privateKey         VARCHAR(128)        NOT NULL,
-    digest             VARCHAR(73) DEFAULT NULL, -- of username
-    encryptionKey      VARCHAR(128)        NOT NULL,
-    publicKey          VARCHAR(128)        NOT NULL,
-    username           VARCHAR(128) DEFAULT NULL,
+     "encryptionKey"      VARCHAR(256)        NOT NULL,
+     "value"              VARCHAR(512) DEFAULT NULL, -- username
+     "digest"             VARCHAR(73)  DEFAULT NULL, -- of username
 
-    locale             VARCHAR(128) NOT NULL,
-    name               VARCHAR(128) DEFAULT NULL,
+     "name"               VARCHAR(128) DEFAULT NULL,
+     "unencrypted"        VARCHAR(128) DEFAULT NULL,
 
-    create             TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    update             TIMESTAMP WITH TIME ZONE DEFAULT NULL,
-    verify             TIMESTAMP WITH TIME ZONE DEFAULT NULL,
-    expire             TIMESTAMP WITH TIME ZONE DEFAULT NULL,
-    remove             TIMESTAMP WITH TIME ZONE DEFAULT NULL,
+     "create"             TIMESTAMP WITH TIME ZONE DEFAULT NULL, -- postges: DEFAULT NOW(), sqlite: DEFAULT CURRENT_TIME,
+     "update"             TIMESTAMP WITH TIME ZONE DEFAULT NULL, -- NOW()
+     "verify"             TIMESTAMP WITH TIME ZONE DEFAULT NULL,
+     "expire"             TIMESTAMP WITH TIME ZONE DEFAULT NULL,
+     "${timeToLiveKey}"   TIMESTAMP WITH TIME ZONE DEFAULT NULL,
 
-    CONSTRAINT ${table}_pkey PRIMARY KEY (sub)
-    -- CONSTRAINT ${table}_ukey PRIMARY KEY (digest)
-  );
+     CONSTRAINT ${table}_pkey PRIMARY KEY ("id"),
+     CONSTRAINT ${table}_ukey UNIQUE ("sub")
+   );
+   `;
+	return await client.query(sql);
+};
+
+export const truncate = async (client, table = name) => {
+	const sql = `
+    DELETE FROM ${table};
   `;
+	return await client.query(sql);
+};
+
+export const drop = async (client, table = name) => {
+	const sql = `
+    DROP TABLE ${table};
+  `;
+	return await client.query(sql);
 };

@@ -30,8 +30,6 @@ jobs:
           npm run build --if-present
       - name: Benchmarking tests
         run: |
-          npm run test:dynamodb:update
           npm run test:dynamodb &
-          PID=$!
+          npm run test:postgres &
           npm run test:perf
-          kill ${PID}

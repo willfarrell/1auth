@@ -4,34 +4,41 @@
 
 - [ ] add in options, inputs, outputs for each package
 - [ ] threat modelling
+- [ ] document item count enforcement
+- [ ] document db permissions for stores
+- [ ] document sqs permisisons for notify
+- [ ] document how to update `lastused` on `accounts` after login
 
 ## Features
 
-- [ ] crypto decode string options to buffer
+- [ ] `authn-recovery-code`
+- [ ] update sqlite -> move mock logic into lib
 - [ ] Add in dedicated stores
-  - Split `store-sql` into multiple packages
-    - `store-postgres`
-    - `store-sqlite`
-    - `store-mysql`
-    - `store-rdsdataapi`
-  - aws lambda cloud kv
-  - cloudflare kv
-  - redis
-- [ ] update access token pattern
-  - deprecate use of `digest`
-- [ ] Asymmetric signatures
+  - `store-rdsdataapi`
+  - `store-cloudfront-kv`
+  - `store-cloudflare-kv`
+  - `store-redis`
+- [ ] dynamodb update count to used Scan({Select}) (https://docs.aws.amazon.com/AWSJavaScriptSDK/v3/latest/client/dynamodb/command/ScanCommand/)
+- [ ] `session-cookie` move sign/verify from `session`
+- [ ] `session-peseto` - access-token exchange for peseto token (single use, 15min expire) -> requests returns a new peseto token (single use, 15min expire) in response
+- [ ] add in option to replace secret after config change - only applies to `authn-access-token`
+- [ ] Add in suppport for Secure Remote Password (SRP) protocol into `crypto`
 
 ## Testing
 
-- [ ] improve unit tests 95% -> 100%
+- [ ] session fuzz {values} needs key enforcement
+- [ ] fix dynamodb tests on all packages
+- [ ] fix `npm --test` race condion with `store-postgres`
+- [ ] fix `npm --test` race condion with `store-dynamodb`
+- [ ] improve unit tests 96% -> 100%
 - [ ] Add in more perf tests (crypto)
-- [ ] Demo + DAST
+- [ ] Demo + DAST (zap)
 
 ## Planned Updates
 
-- Nodejs support for Argon2id (2025-04)
-- ASVS v5.0 (2025-05)
-- Update to support quantum-safe algorithms (ie ML-KEM-1024, ML-DSA-87, SLH-DSA-SHA2-256) (2027)
+- Nodejs support for Argon2id (2025-04+)
+- ASVS v5.0 (2025-05+)
+- Update to support quantum-safe algorithms (ie ML-KEM-1024, ML-DSA-87, SLH-DSA-SHA2-256)
 
 ## Schedule
 
