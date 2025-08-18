@@ -881,10 +881,10 @@ const parseSecretHash = (str) => {
 
 	for (const pair of config.split(",")) {
 		const [key, value] = pair.split("=");
-		options[optionMap[key]] = Number.parseInt(value);
+		options[optionMap[key]] = Number.parseInt(value, 10);
 	}
 	if (version) {
-		version = Number.parseInt(version.replace("v=", ""));
+		version = Number.parseInt(version.replace("v=", ""), 10);
 	}
 	if (options.associatedData) {
 		options.associatedData = undefined;
