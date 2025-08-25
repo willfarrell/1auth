@@ -4,7 +4,7 @@ on:
   pull_request:
 
 env:
-  NODE_VERSION: 23.x
+  NODE_VERSION: 24.x
 
 permissions:
   contents: read
@@ -26,4 +26,5 @@ jobs:
         run: |
           npm ci
       - name: Linting
-        run: npm run test:lint:ci
+        run: |
+          ./node_modules/.bin/biome ci --no-errors-on-unmatched
