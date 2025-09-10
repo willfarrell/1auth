@@ -33,10 +33,10 @@ jobs:
           key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
           restore-keys: |
             ${{ runner.os }}-node-
-      - name: Install sandworm
-        run: npm i -g @sandworm/audit@1.56.1
       - name: Remove deprecated npm config
         run: npm config delete always-auth
+      - name: Install sandworm
+        run: npm i -g @sandworm/audit@1.56.1
       - name: sandworm
         run: sandworm-audit --skip-tree
 
