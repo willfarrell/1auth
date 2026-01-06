@@ -135,3 +135,9 @@ export const validate = (value) => {
 	}
 	return true;
 };
+
+export const mask = (value) => {
+	const [username, domain] = value.split("@");
+
+	return `${username.substring(0, 1)}...${username.substring(username.length - 1)}@${domain}`;
+};

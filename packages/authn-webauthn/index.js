@@ -269,6 +269,7 @@ export const createChallenge = async (sub) => {
 	}
 
 	if (!allowCredentials.length) {
+		console.log("*** allowCredentials not found");
 		return {};
 	}
 
