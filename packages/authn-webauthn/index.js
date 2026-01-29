@@ -171,7 +171,7 @@ export const create = async (sub) => {
 	return await createToken(sub);
 };
 
-export const verify = async (sub, response, { name } = {}, notify = true) => {
+export const verify = async (sub, response, { name = null } = {}, notify = true) => {
 	const value = await verifyToken(sub, response);
 	const { id } = await authnCreate(options.secret, sub, {
 		name,
@@ -269,7 +269,9 @@ export const createChallenge = async (sub) => {
 	}
 
 	if (!allowCredentials.length) {
-		console.log("*** allowCredentials not found");
+		if(options.log){
+			options.log('@1auth/auth-webauthn allowCredentials is empty')
+		}
 		return {};
 	}
 

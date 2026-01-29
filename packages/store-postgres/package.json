@@ -51,6 +51,6 @@
 	"gitHead": "7a6c0fbb8ab71d6a2171e678697de9f237568431",
 	"dependencies": {},
 	"devDependencies": {
-		"pg": "8.16.3"
+		"pg": "8.17.2"
 	}
 }
