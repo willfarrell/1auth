@@ -140,7 +140,9 @@ const defaults = {
 	id,
 	origin: undefined, // with https://
 	name: undefined,
+	residentKey: "discouraged", // https://fy.blackhats.net.au/blog/2023-02-02-how-hype-will-turn-your-security-key-into-junk/
 	userVerification: "preferred",
+	preferredAuthenticatorType: undefined, // 'securityKey' | 'localDevice' | 'remoteDevice' - https://simplewebauthn.dev/docs/packages/server#fine-tuning-the-registration-experience-with-preferredauthenticatortype
 	secret: secret(),
 	token: token(),
 	challenge: challenge(),
@@ -171,7 +173,12 @@ export const create = async (sub) => {
 	return await createToken(sub);
 };
 
-export const verify = async (sub, response, { name = null } = {}, notify = true) => {
+export const verify = async (
+	sub,
+	response,
+	{ name = null } = {},
+	notify = true,
+) => {
 	const value = await verifyToken(sub, response);
 	const { id } = await authnCreate(options.secret, sub, {
 		name,
@@ -207,9 +214,12 @@ const createToken = async (sub) => {
 		userName: account.username ?? "username",
 		attestationType: "none",
 		excludeCredentials,
+		preferredAuthenticatorType: options.preferredAuthenticatorType,
 		// PassKey
-		residentKey: "discouraged", // https://fy.blackhats.net.au/blog/2023-02-02-how-hype-will-turn-your-security-key-into-junk/
-		userVerification: options.userVerification,
+		authenticatorSelection: {
+			residentKey: options.residentKey,
+			userVerification: options.userVerification,
+		},
 		// extras?
 		// timeout
 		// pubKeyCredParams: [
@@ -269,8 +279,8 @@ export const createChallenge = async (sub) => {
 	}
 
 	if (!allowCredentials.length) {
-		if(options.log){
-			options.log('@1auth/auth-webauthn allowCredentials is empty')
+		if (options.log) {
+			options.log("@1auth/auth-webauthn allowCredentials is empty");
 		}
 		return {};
 	}
