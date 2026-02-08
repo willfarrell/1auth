@@ -1,3 +1,5 @@
+// Copyright 2003 - 2026 will Farrell, and 1Auth contributors.
+// SPDX-License-Identifier: MIT
 import { createSeasonedDigest } from "@1auth/crypto";
 import {
 	count as messengerCount,
@@ -134,4 +136,10 @@ export const validate = (value) => {
 		return "409 Conflict";
 	}
 	return true;
+};
+
+export const mask = (value) => {
+	const [username, domain] = value.split("@");
+
+	return `${username.substring(0, 1)}...${username.substring(username.length - 1)}@${domain}`;
 };

@@ -1,4 +1,7 @@
+// Copyright 2003 - 2026 will Farrell, and 1Auth contributors.
+// SPDX-License-Identifier: MIT
 import {
+	argon2Sync,
 	createCipheriv,
 	createDecipheriv,
 	createHash,
@@ -11,8 +14,6 @@ import {
 	verify as verifyCallback,
 } from "node:crypto";
 import { promisify } from "node:util";
-// https://github.com/napi-rs/node-rs/tree/main/packages/argon2
-import { hash as secretHash, verify as secretVerify } from "@node-rs/argon2";
 import { customAlphabet } from "nanoid";
 
 const generateKeyPair = promisify(generateKeyPairCallback);
@@ -33,10 +34,14 @@ const defaults = {
 	digestChecksumEncoding: undefined,
 	digestChecksumSalt: undefined, // randomChecksumSalt()
 	digestChecksumPepper: undefined, // randomChecksumPepper()
-	secretHashAlgorithm: "argon2id",
-	secretTimeCost: 3, // argon2id
-	secretMemoryCost: 2 ** 15, // argon2id
-	secretParallelism: 1, // argon2id
+	secretArgon2Algorithm: "argon2id",
+	secretArgon2Version: 19, // argon2id
+	secretArgon2Parallelism: 1, // argon2id
+	secretArgon2MemoryCost: 15, // argon2id
+	secretArgon2TimeCost: 3, // argon2id
+	secretArgon2NonceLength: 16, // argon2id
+	secretArgon2HashLength: 64, // argon2id
+
 	defaultEncoding: "base64",
 	defaultHashAlgorithm: "sha3-384",
 };
@@ -85,10 +90,14 @@ export default (opt = {}) => {
 	options.digestChecksumEncoding ??= options.defaultEncoding;
 
 	// Secrets
-	Object.assign(hashOptions, {
-		timeCost: options.secretTimeCost,
-		memoryCost: options.secretMemoryCost,
-		parallelism: options.secretParallelism,
+	Object.assign(argon2Options, {
+		algorithm: options.secretArgon2Algorithm,
+		version: options.secretArgon2Version, // argon2id
+		parallelism: options.secretArgon2Parallelism, // argon2id
+		memoryCost: options.secretArgon2MemoryCost, // argon2id
+		timeCost: options.secretArgon2TimeCost, // argon2id
+		nonceLength: options.secretArgon2NonceLength, // argon2id
+		hashLength: options.secretArgon2HashLength, // argon2id
 	});
 
 	// Lengths
@@ -294,22 +303,127 @@ export const createSeasonedDigest = (
 };
 
 // *** Hashing *** //
-const hashOptions = {
-	timeCost: 3, // Default 3
-	memoryCost: 2 ** 15, // Default 2 ** 12 = 4MB
+const argon2Options = {
+	algorithm: "argon2id",
+	version: 19,
 	parallelism: 1, // Default 1
-	saltLength: 16,
-	outputLen: 64, // hashLength: 128 // Default 32
-	algorithm: 2, // Default 2 = Argon2id
-	version: 1, // Default 1 = version 19
+	memoryCost: 15, // memory 2^memoryCost // Default 2 ** 12 = 4MB
+	timeCost: 3, // Default 3
+	nonceLength: 16,
+	hashLength: 64, // hashLength: 128 // Default 32
+
+	secret: undefined, // pepper
+	associatedData: undefined, // sub
+};
+export const encodeArgon2 = ({
+	algorithm,
+	version,
+	memoryCost,
+	timeCost,
+	parallelism,
+	nonce,
+	hash,
+} = {}) => {
+	return `$${algorithm}$v=${version}$m=${memoryCost},t=${timeCost},p=${parallelism}$${nonce.toString(options.defaultEncoding)}$${hash.toString(options.defaultEncoding)}`;
+};
+export const decodeArgon2 = (str) => {
+	const argon2Options = {};
+	const optionMap = {
+		m: "memoryCost",
+		t: "timeCost",
+		p: "parallelism",
+	};
+	let [, algorithm, version, variables, nonce, hash] = str.split("$");
+
+	if (version) {
+		version = Number.parseInt(version.replace("v=", ""), 10);
+	}
+	nonce = Buffer.from(nonce, options.defaultEncoding);
+	hash = Buffer.from(hash, options.defaultEncoding);
+	const nonceLength = Buffer.byteLength(nonce);
+	const hashLength = Buffer.byteLength(hash);
+	Object.assign(argon2Options, {
+		algorithm,
+		version,
+		nonce,
+		nonceLength,
+		hash,
+		hashLength,
+	});
+	for (const pair of variables.split(",")) {
+		const [key, value] = pair.split("=");
+		argon2Options[optionMap[key]] = Number.parseInt(value, 10);
+	}
+	return argon2Options;
 };
 
-export const createSecretHash = async (value, options = hashOptions) => {
-	return secretHash(value, options);
+export const createArgon2 = (
+	message,
+	{
+		algorithm,
+		version,
+		parallelism,
+		memoryCost,
+		timeCost,
+		nonceLength,
+		hashLength,
+	} = {},
+) => {
+	algorithm ??= options.secretArgon2Algorithm;
+	version ??= options.secretArgon2Version;
+	memoryCost ??= options.secretArgon2MemoryCost;
+	timeCost ??= options.secretArgon2TimeCost;
+	parallelism ??= options.secretArgon2Parallelism;
+	nonceLength ??= options.secretArgon2NonceLength;
+	hashLength ??= options.secretArgon2HashLength;
+
+	const nonce = randomBytes(nonceLength);
+	const hash = argon2Sync(algorithm, {
+		message,
+		nonce,
+		parallelism,
+		memory: 2 ** memoryCost,
+		passes: timeCost,
+		tagLength: hashLength,
+	});
+	return encodeArgon2({
+		algorithm,
+		version,
+		memoryCost,
+		timeCost,
+		parallelism,
+		nonce,
+		hash,
+	});
+};
+export const verifyArgon2 = (derivedKey, message) => {
+	const {
+		algorithm,
+		memoryCost,
+		timeCost,
+		parallelism,
+		nonce,
+		hash,
+		hashLength,
+	} = decodeArgon2(derivedKey);
+
+	const verifyHash = argon2Sync(algorithm, {
+		message,
+		nonce,
+		parallelism,
+		memory: 2 ** memoryCost,
+		passes: timeCost,
+		tagLength: hashLength,
+	});
+	return timingSafeEqual(hash, verifyHash);
+};
+
+export const createSecretHash = async (value, options) => {
+	return createArgon2(value, options);
 };
 
 export const verifySecretHash = async (hash, value) => {
-	return secretVerify(hash, value);
+	return verifyArgon2(hash, value);
 };
 
 // *** Symmetric Encryption *** //

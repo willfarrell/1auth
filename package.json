@@ -1,6 +1,6 @@
 {
 	"name": "@1auth/monorepo",
-	"version": "0.0.0-alpha.73",
+	"version": "0.0.0-beta.1",
 	"description": "",
 	"private": true,
 	"type": "module",
@@ -14,14 +14,16 @@
 		"git:pre-commit": "npm run git:lint-staged && npm run git:test-staged",
 		"git:commit-msg": "commitlint --config commitlint.config.cjs --edit",
 		"git:lint-staged": "biome check --staged --no-errors-on-unmatched --files-ignore-unknown=true",
-		"git:test-staged": "which node && node -v && node --test",
+		"git:test-staged": "which node",
 		"lint": "biome check --write --no-errors-on-unmatched --files-ignore-unknown=true",
 		"test": "npm run test:lint && npm run test:unit && npm run test:sast && npm run test:perf && npm run test:dast",
 		"test:lint": "biome check --write --no-errors-on-unmatched --files-ignore-unknown=true",
 		"test:unit": "node --test --experimental-test-coverage --test-coverage-lines=98 --test-coverage-branches=95 --test-coverage-functions=97 --test-coverage-exclude=**/mock.js --test-coverage-exclude=**/*.test.js --test-coverage-exclude=**/table/*",
-		"test:sast": "npm run test:sast:sandworm && npm run test:sast:semgrep && npm run test:sast:trufflehog",
-		"test:sast:sandworm": "sandworm-audit --skip-all --show-tips false",
+		"test:sast": "npm run test:sast:license && npm run test:sast:lockfile && npm run test:sast:sandworm && npm run test:sast:semgrep && npm run test:sast:trufflehog",
+		"test:sast:license": "license-check-and-add check -f license.json",
+		"test:sast:lockfile": "lockfile-lint --path package-lock.json --type npm --allowed-hosts npm --validate-https",
 		"test:sast:semgrep": "semgrep scan --config auto",
+		"test:sast:trivy": "trivy fs --scanners vuln,license --include-dev-deps --ignored-licenses 0BSD,Apache-2.0,BSD-1-Clause,BSD-2-Clause,BSD-3-Clause,CC0-1.0,CC-BY-4.0,ISC,MIT --exit-code 1 --disable-telemetry .",
 		"test:sast:trufflehog": "trufflehog filesystem --only-verified --log-level=-1 ./",
 		"test:perf": "node --test ./**/*.perf.js",
 		"test:dast": "npm run test:dast:fuzz && npm run test:dast:zap",
@@ -37,6 +39,8 @@
 		"update": "npm update --workspaces && npm install --workspaces",
 		"outdated": "npm outdated --workspaces",
 		"audit": "npm audit fix --workspaces",
+		"release:license:add": "license-check-and-add add -f license.json",
+		"release:license:remove": "license-check-and-add remove -f license.json",
 		"release:sync": "npm version $npm_package_version --workspaces && find ./packages -name \"package.json\" -exec sed -i '' -E \"s|\\\"@1auth/(.*)\\\": ([^,]*)|\\\"@1auth/\\1\\\": $(npm pkg get version)|g\" {} \\; && npm run rm:node_modules && npm link --workspaces && npm install",
 		"release:tag": "git tag $npm_package_version && git push --tags"
 	},
@@ -66,14 +70,26 @@
 	"homepage": "https://github.com/willfarrell/1auth",
 	"devDependencies": {
 		"@biomejs/biome": "^2.0.0",
-		"@commitlint/cli": "^19.0.0",
-		"@commitlint/config-conventional": "^19.0.0",
+		"@commitlint/cli": "^20.0.0",
+		"@commitlint/config-conventional": "^20.0.0",
 		"aws-sdk-client-mock": "^4.0.0",
 		"fast-check": "^4.0.0",
 		"husky": "^9.0.0",
-		"tinybench": "^5.0.0"
+		"license-check-and-add": "4.0.5",
+		"tinybench": "^6.0.0"
+	},
+	"devEngines": {
+		"runtime": {
+			"name": "node",
+			"onFail": "error"
+		},
+		"packageManager": {
+			"name": "npm",
+			"onFail": "error"
+		}
 	},
 	"workspaces": [
-		"packages/*"
+		"packages/*",
+		".github"
 	]
 }

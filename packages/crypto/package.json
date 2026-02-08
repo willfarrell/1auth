@@ -1,6 +1,6 @@
 {
 	"name": "@1auth/crypto",
-	"version": "0.0.0-alpha.73",
+	"version": "0.0.0-beta.1",
 	"description": "",
 	"type": "module",
 	"engines": {
@@ -50,7 +50,6 @@
 	"homepage": "https://github.com/willfarrell/1auth",
 	"gitHead": "7a6c0fbb8ab71d6a2171e678697de9f237568431",
 	"dependencies": {
-		"@node-rs/argon2": "2.0.2",
-		"nanoid": "5.1.5"
+		"nanoid": "5.1.6"
 	}
 }

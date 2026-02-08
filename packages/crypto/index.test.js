@@ -10,11 +10,15 @@ import { describe, it } from "node:test";
 import crypto, {
 	charactersAlphaNumeric,
 	charactersNumeric,
+	// safeEqual,
+	// createArgon2,
 	createDigest,
 	createPepperedDigest,
 	createSaltedDigest,
 	createSeasonedDigest,
 	createSecretHash,
+	decodeArgon2,
+	encodeArgon2,
 	entropyToCharacterLength,
 	makeAsymmetricKeys,
 	makeAsymmetricSignature,
@@ -35,9 +39,9 @@ import crypto, {
 	symmetricRotation,
 	symmetricSignatureSign,
 	symmetricSignatureVerify,
+	// verifyArgon2,
 	verifyAsymmetricSignature,
 	verifySecretHash,
-	// safeEqual
 } from "../crypto/index.js";
 
 crypto({
@@ -195,20 +199,45 @@ describe("crypto", () => {
 	});
 
 	describe("hash", () => {
+		it("encodeArgon2() returns string that can be decoded", async () => {
+			const options = {
+				algorithm: "argon2id",
+				version: 19,
+				memoryCost: 15, // 2^memoryCost // Default 2 ** 12 = 4MB
+				timeCost: 3, // Default 3
+				parallelism: 1, // Default 1
+				nonceLength: 16,
+				nonce: randomBytes(16), // nonceLength,
+				hashLength: 64, // hashLength: 128 // Default 32
+				hash: randomBytes(64), // tagLength
+			};
+			const hash = encodeArgon2(options);
+			equal(typeof hash, "string");
+			const parts = decodeArgon2(hash);
+			equal(parts.algorithm, options.algorithm);
+			equal(parts.version, options.version);
+			equal(parts.memoryCost, options.memoryCost);
+			equal(parts.timeCost, options.timeCost);
+			equal(parts.parallelism, options.parallelism);
+			equal(parts.nonceLength, options.nonceLength);
+			deepEqual(parts.nonce, options.nonce);
+			equal(parts.hashLength, options.hashLength);
+			deepEqual(parts.hash, options.hash);
+		});
 		it("createSecretHash() returns hash that can be verified", async () => {
-			const value = "1auth";
-			const hash = await createSecretHash(value);
+			const message = "1auth";
+			const derivedKey = await createSecretHash(message);
 
-			const parts = parseSecretHash(hash);
-			equal(parts.type, "argon2id");
-			equal(parts.memoryCost, 32768);
+			const parts = decodeArgon2(derivedKey);
+			equal(parts.algorithm, "argon2id");
+			equal(parts.version, 19);
+			equal(parts.memoryCost, 15);
 			equal(parts.timeCost, 3);
 			equal(parts.parallelism, 1);
-			equal(parts.version, 19);
-			equal(parts.saltLength, 22);
-			equal(parts.hashLength, 86);
+			equal(parts.nonceLength, 16);
+			equal(parts.hashLength, 64);
 
-			const valid = await verifySecretHash(hash, value);
+			const valid = await verifySecretHash(derivedKey, message);
 			ok(valid);
 		});
 
@@ -216,14 +245,14 @@ describe("crypto", () => {
 			const value = "1auth";
 			const hash = await createSecretHash(value);
 
-			const parts = parseSecretHash(hash);
-			equal(parts.type, "argon2id");
-			equal(parts.memoryCost, 32768);
+			const parts = decodeArgon2(hash);
+			equal(parts.algorithm, "argon2id");
+			equal(parts.memoryCost, 15);
 			equal(parts.timeCost, 3);
 			equal(parts.parallelism, 1);
 			equal(parts.version, 19);
-			equal(parts.saltLength, 22);
-			equal(parts.hashLength, 86);
+			equal(parts.nonceLength, 16);
+			equal(parts.hashLength, 64);
 
 			const valid = await verifySecretHash(hash, `${value}fail`);
 			ok(!valid);
@@ -869,31 +898,3 @@ describe("crypto", () => {
 		});
 	});
 });
-const parseSecretHash = (str) => {
-	const optionMap = {
-		m: "memoryCost",
-		t: "timeCost",
-		p: "parallelism",
-		data: "associatedData",
-	};
-	const options = {};
-	let [, type, version, config, salt, hash] = str.split("$");
-
-	for (const pair of config.split(",")) {
-		const [key, value] = pair.split("=");
-		options[optionMap[key]] = Number.parseInt(value, 10);
-	}
-	if (version) {
-		version = Number.parseInt(version.replace("v=", ""), 10);
-	}
-	if (options.associatedData) {
-		options.associatedData = undefined;
-	}
-	return {
-		...options,
-		type,
-		version,
-		saltLength: salt.length,
-		hashLength: hash.length,
-	};
-};

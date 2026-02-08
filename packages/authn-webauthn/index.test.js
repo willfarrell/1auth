@@ -14,12 +14,12 @@ import authn, { getOptions as authnGetOptions } from "../authn/index.js";
 // import * as mockAuthnDynamoDBTable from "../authn/table/dynamodb.js";
 import * as mockAuthnSQLTable from "../authn/table/sql.js";
 import webauthn, {
-	// getOptions as webauthnGetOptions,
 	authenticate as webauthnAuthenticate,
 	count as webauthnCount,
 	create as webauthnCreate,
 	createChallenge as webauthnCreateChallenge,
 	expire as webauthnExpire,
+	getOptions as webauthnGetOptions,
 	list as webauthnList,
 	remove as webauthnRemove,
 	select as webauthnSelect,
@@ -355,7 +355,7 @@ const tests = (config) => {
 		ok(registrationOptions.user.id);
 		equal(registrationOptions.user.name, username);
 		deepEqual(registrationOptions.authenticatorSelection, {
-			residentKey: "preferred",
+			residentKey: "discouraged",
 			userVerification: "preferred",
 			requireResidentKey: false,
 		});
@@ -490,6 +490,51 @@ const tests = (config) => {
 		equal(authnDB.length, 1);
 	});
 
+	describe("with custom options", () => {
+		let originalOptions;
+
+		test.before(() => {
+			originalOptions = { ...webauthnGetOptions() };
+		});
+
+		test.afterEach(() => {
+			webauthn(originalOptions);
+		});
+
+		it("Can create WebAuthn with residentKey and userVerification options", async () => {
+			webauthn({
+				...originalOptions,
+				residentKey: "preferred",
+				userVerification: "required",
+			});
+
+			const { secret: registrationOptions } = await webauthnCreate(sub);
+
+			deepEqual(registrationOptions.authenticatorSelection, {
+				residentKey: "preferred",
+				userVerification: "required",
+				requireResidentKey: false,
+			});
+		});
+
+		it("Can create WebAuthn with preferredAuthenticatorType option", async () => {
+			webauthn({
+				...originalOptions,
+				preferredAuthenticatorType: "localDevice",
+			});
+
+			const { secret: registrationOptions } = await webauthnCreate(sub);
+
+			deepEqual(registrationOptions.hints, ["client-device"]);
+			deepEqual(registrationOptions.authenticatorSelection, {
+				residentKey: "discouraged",
+				userVerification: "preferred",
+				requireResidentKey: false,
+				authenticatorAttachment: "platform",
+			});
+		});
+	});
+
 	const overrideCreateChallenge = async (sub, token) => {
 		await store.update(
 			authnGetOptions().table,
@@ -575,7 +620,7 @@ const registrationOptionsOverride = {
 	attestation: "none",
 	excludeCredentials: [],
 	authenticatorSelection: {
-		residentKey: "preferred",
+		residentKey: "discouraged",
 		userVerification: "preferred",
 		requireResidentKey: false,
 	},
