@@ -1,6 +1,6 @@
 {
 	"name": "@1auth/messenger-email-address",
-	"version": "0.0.0-alpha.73",
+	"version": "0.0.0-beta.1",
 	"description": "",
 	"type": "module",
 	"engines": {
@@ -50,9 +50,9 @@
 	"homepage": "https://github.com/willfarrell/1auth",
 	"gitHead": "7a6c0fbb8ab71d6a2171e678697de9f237568431",
 	"dependencies": {
-		"@1auth/authn": "0.0.0-alpha.73",
-		"@1auth/crypto": "0.0.0-alpha.73",
-		"@1auth/messenger": "0.0.0-alpha.73",
-		"tr46": "5.1.1"
+		"@1auth/authn": "0.0.0-beta.1",
+		"@1auth/crypto": "0.0.0-beta.1",
+		"@1auth/messenger": "0.0.0-beta.1",
+		"tr46": "6.0.0"
 	}
 }

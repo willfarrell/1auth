@@ -1,3 +1,5 @@
+// Copyright 2003 - 2026 will Farrell, and 1Auth contributors.
+// SPDX-License-Identifier: MIT
 export const name = "authentications";
 export const timeToLiveKey = "remove";
 export const create = async (client, table = name) => {
