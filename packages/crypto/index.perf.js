@@ -34,11 +34,11 @@ const value = "1auth";
 const hash = await createSecretHash(value);
 const hashFastest = await createSecretHash(value, {
 	timeCost: 1,
-	memoryCost: 2 ** 3,
+	memoryCost: 3,
 	parallelism: 1,
 });
 const hashTimeCost2 = await createSecretHash(value, { timeCost: 6 });
-const hashMemoryCost2 = await createSecretHash(value, { memoryCost: 2 ** 16 });
+const hashMemoryCost2 = await createSecretHash(value, { memoryCost: 16 });
 const hashParallelism2 = await createSecretHash(value, { parallelism: 2 });
 const { encryptionKey } = symmetricGenerateEncryptionKey(sub);
 const encryptedValue = symmetricEncrypt(value, { sub, encryptionKey });
@@ -76,7 +76,7 @@ suite
 	.add("createSecretHash (fastest)", async () => {
 		await createSecretHash(value, {
 			timeCost: 1,
-			memoryCost: 2 ** 3,
+			memoryCost: 3,
 			parallelism: 1,
 		});
 	})
@@ -84,7 +84,7 @@ suite
 		await createSecretHash(value, { timeCost: 6 });
 	})
 	.add("createSecretHash x 2 memoryCost", async () => {
-		await createSecretHash(value, { memoryCost: 2 ** 16 });
+		await createSecretHash(value, { memoryCost: 16 });
 	})
 	.add("createSecretHash x 2 parallelism", async () => {
 		await createSecretHash(value, { parallelism: 2 });
