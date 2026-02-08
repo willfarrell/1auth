@@ -1,3 +1,5 @@
+// Copyright 2003 - 2026 will Farrell, and 1Auth contributors.
+// SPDX-License-Identifier: MIT
 import { DatabaseSync } from "node:sqlite";
 import { setTimeout } from "node:timers/promises";
 

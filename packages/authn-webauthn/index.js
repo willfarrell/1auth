@@ -1,3 +1,5 @@
+// Copyright 2003 - 2026 will Farrell, and 1Auth contributors.
+// SPDX-License-Identifier: MIT
 import { lookup as accountLookup } from "@1auth/account";
 import {
 	authenticate as authnAuthenticate,
