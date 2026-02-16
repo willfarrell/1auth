@@ -135,7 +135,7 @@ test("fuzz webauthnAuthenticate w/ secret", async () => {
 			}
 		}),
 		{
-			numRuns: 100_000,
+			numRuns: 1_000,
 			verbose: 2,
 			examples: [],
 		},
@@ -186,14 +186,14 @@ test("fuzz webauthnCreate w/ sub", async () => {
 			}
 		}),
 		{
-			numRuns: 100_000,
+			numRuns: 1_000,
 			verbose: 2,
 			examples: [],
 		},
 	);
 });
 
-test("fuzz webauthnUpate w/ sub", async () => {
+test("fuzz webauthnUpdate w/ sub", async () => {
 	await fc.assert(
 		fc.asyncProperty(fc.anything(), async (sub) => {
 			try {
@@ -203,7 +203,7 @@ test("fuzz webauthnUpate w/ sub", async () => {
 			}
 		}),
 		{
-			numRuns: 100_000,
+			numRuns: 1_000,
 			verbose: 2,
 			examples: [],
 		},

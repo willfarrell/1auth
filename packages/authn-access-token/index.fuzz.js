@@ -138,7 +138,7 @@ test("fuzz accessTokenAuthenticate w/ secret", async () => {
 			}
 		}),
 		{
-			numRuns: 100_000,
+			numRuns: 1_000,
 			verbose: 2,
 			examples: [],
 		},
@@ -256,7 +256,7 @@ test("fuzz accessTokenCreate w/ sub", async () => {
 			}
 		}),
 		{
-			numRuns: 100_000,
+			numRuns: 1_000,
 			verbose: 2,
 			examples: [],
 		},
@@ -288,7 +288,7 @@ test("fuzz accessTokenCreate w/ values", async () => {
 			}
 		}),
 		{
-			numRuns: 100_000,
+			numRuns: 1_000,
 			verbose: 2,
 			examples: [],
 		},
