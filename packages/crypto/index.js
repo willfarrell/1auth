@@ -34,13 +34,17 @@ const defaults = {
 	digestChecksumEncoding: undefined,
 	digestChecksumSalt: undefined, // randomChecksumSalt()
 	digestChecksumPepper: undefined, // randomChecksumPepper()
+	// Password hashing defaults - based on OWASP Password Storage Cheat Sheet
+	// https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html
+	// OWASP minimums: 19 MiB memory, 2 iterations, 1 parallelism
+	// We use 32 MiB (exceeds minimum) for enhanced security
 	secretArgon2Algorithm: "argon2id",
-	secretArgon2Version: 19, // argon2id
-	secretArgon2Parallelism: 1, // argon2id
-	secretArgon2MemoryCost: 15, // argon2id
-	secretArgon2TimeCost: 3, // argon2id
-	secretArgon2NonceLength: 16, // argon2id
-	secretArgon2HashLength: 64, // argon2id
+	secretArgon2Version: 19,
+	secretArgon2Parallelism: 1, // OWASP: 1 (matches)
+	secretArgon2MemoryCost: 15, // 2^15 KiB = 32 MiB (exceeds OWASP minimum of 19 MiB)
+	secretArgon2TimeCost: 3, // OWASP: 2 (we use 3 for better security)
+	secretArgon2NonceLength: 16,
+	secretArgon2HashLength: 64,
 
 	defaultEncoding: "base64",
 	defaultHashAlgorithm: "sha3-384",
@@ -179,7 +183,7 @@ export const randomAlphaNumeric = (characterLength) => {
 export const randomNumeric = (characterLength) => {
 	let value = "";
 	for (let i = characterLength; i--; ) {
-		value += randomInt(9);
+		value += randomInt(0, 10);
 	}
 	return value;
 };
