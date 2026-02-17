@@ -1,7 +1,7 @@
 {
 	"name": "@1auth/messenger-email-address",
 	"version": "0.0.0-beta.1",
-	"description": "",
+	"description": "Email address messenger for email verification and notifications",
 	"type": "module",
 	"engines": {
 		"node": ">=24"

@@ -1,7 +1,7 @@
 {
 	"name": "@1auth/session",
 	"version": "0.0.0-beta.1",
-	"description": "",
+	"description": "Secure session management with expiration and encryption support",
 	"type": "module",
 	"engines": {
 		"node": ">=24"

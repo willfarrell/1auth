@@ -442,7 +442,7 @@ export const symmetricGenerateEncryptionKey = (
 	{ encryptionKey, signatureSecret } = {},
 ) => {
 	encryptionKey ??= options.symmetricEncryptionKey;
-	signatureSecret ??= options.symemeticSignatureSecret;
+	signatureSecret ??= options.symmetricSignatureSecret;
 
 	const rowEncryptionKey = symmetricRandomEncryptionKey();
 	const rowEncryptedKey = symmetricEncrypt(rowEncryptionKey, {
@@ -539,7 +539,7 @@ export const symmetricDecryptKey = (
 	{ sub, encryptionKey, signatureSecret } = {},
 ) => {
 	encryptionKey ??= options.symmetricEncryptionKey;
-	signatureSecret ??= options.symemeticSignatureSecret;
+	signatureSecret ??= options.symmetricSignatureSecret;
 	return Buffer.from(
 		symmetricDecrypt(encryptedKey, {
 			encryptionKey,

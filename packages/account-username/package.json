@@ -1,7 +1,7 @@
 {
 	"name": "@1auth/account-username",
 	"version": "0.0.0-beta.1",
-	"description": "",
+	"description": "Username validation and management for account authentication",
 	"type": "module",
 	"engines": {
 		"node": ">=24"

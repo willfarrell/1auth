@@ -1,7 +1,7 @@
 {
 	"name": "@1auth/crypto",
 	"version": "0.0.0-beta.1",
-	"description": "",
+	"description": "Cryptographic utilities for encryption, hashing, and signing with modern algorithms",
 	"type": "module",
 	"engines": {
 		"node": ">=24"

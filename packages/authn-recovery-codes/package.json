@@ -1,7 +1,7 @@
 {
 	"name": "@1auth/authn-recovery-codes",
 	"version": "0.0.0-beta.1",
-	"description": "",
+	"description": "One-time recovery code generation and verification for account recovery",
 	"type": "module",
 	"engines": {
 		"node": ">=24"

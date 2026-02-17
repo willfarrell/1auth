@@ -1,7 +1,7 @@
 {
 	"name": "@1auth/notify",
 	"version": "0.0.0-beta.1",
-	"description": "",
+	"description": "Base notification interface for sending messages through various channels",
 	"type": "module",
 	"engines": {
 		"node": ">=24"

@@ -1,7 +1,7 @@
 {
 	"name": "@1auth/account",
 	"version": "0.0.0-beta.1",
-	"description": "",
+	"description": "User account management with encrypted storage and lifecycle operations",
 	"type": "module",
 	"engines": {
 		"node": ">=24"

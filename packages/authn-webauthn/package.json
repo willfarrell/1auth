@@ -1,7 +1,7 @@
 {
 	"name": "@1auth/authn-webauthn",
 	"version": "0.0.0-beta.1",
-	"description": "",
+	"description": "WebAuthn/FIDO2 authentication implementation for passwordless login",
 	"type": "module",
 	"engines": {
 		"node": ">=24"

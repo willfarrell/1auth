@@ -34,7 +34,7 @@
 		"test:postgres:update": "docker pull postgres",
 		"test:postgres": "docker run -p 5432:5432 -e POSTGRES_PASSWORD=postgres postgres",
 		"rm": "npm run rm:node_modules && npm run rm:lock",
-		"rm:lock": "find . -name 'pacakge-lock.json' -type d -prune -exec rm -rf '{}' +",
+		"rm:lock": "find . -name 'package-lock.json' -type d -prune -exec rm -rf '{}' +",
 		"rm:node_modules": "find . -name 'node_modules' -type d -prune -exec rm -rf '{}' +",
 		"update": "npm update --workspaces && npm install --workspaces",
 		"outdated": "npm outdated --workspaces",

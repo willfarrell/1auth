@@ -1,7 +1,7 @@
 {
 	"name": "@1auth/store-dynamodb",
 	"version": "0.0.0-beta.1",
-	"description": "",
+	"description": "AWS DynamoDB storage implementation for serverless persistence",
 	"type": "module",
 	"engines": {
 		"node": ">=24"

@@ -1,7 +1,7 @@
 {
 	"name": "@1auth/notify-sqs",
 	"version": "0.0.0-beta.1",
-	"description": "",
+	"description": "AWS SQS notification implementation for scalable message queuing",
 	"type": "module",
 	"engines": {
 		"node": ">=24"
