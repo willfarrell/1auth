@@ -251,23 +251,6 @@ test("fuzz emailAddressCreate w/ `emailAddress`", async () => {
 	);
 });
 
-// test("fuzz emailAddressCreate w/ `values`", async () => {
-// 	await fc.assert(
-// 		fc.asyncProperty(fc.anything(), async (values) => {
-// 			try {
-// 				await emailAddressCreate(sub, testMessenger.value, values);
-// 			} catch (e) {
-// 				catchError(values, e);
-// 			}
-// 		}),
-// 		{
-// 			numRuns: 10,
-// 			verbose: 2,
-// 			examples: [],
-// 		},
-// 	);
-// });
-
 test("fuzz emailAddressCreate w/ `values`", async () => {
 	await fc.assert(
 		fc.asyncProperty(fc.anything(), async (values) => {

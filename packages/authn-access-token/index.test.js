@@ -186,6 +186,17 @@ const tests = (config) => {
 		});
 	});
 
+	describe("`count`", () => {
+		it("Will throw with ({sub:undefined})", async () => {
+			try {
+				await accessTokenCount(undefined);
+				ok(false);
+			} catch (e) {
+				equal(e.message, "401 Unauthorized");
+			}
+		});
+	});
+
 	describe("`remove`", () => {
 		it("Will throw with ({sub:undefined})", async () => {
 			try {

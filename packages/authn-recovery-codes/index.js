@@ -54,6 +54,9 @@ export const authenticate = async (username, secret) => {
 };
 
 export const count = async (sub) => {
+	if (!sub || typeof sub !== "string") {
+		throw new Error("401 Unauthorized", { cause: { sub } });
+	}
 	return await authnCount(options.secret, sub);
 };
 

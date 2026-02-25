@@ -103,7 +103,6 @@ export const challenge = ({
 		);
 		if (!verified) throw new Error("Failed verifyAuthenticationResponse");
 		value.authenticator.credential.counter = authenticationInfo.newCounter;
-		// value.authenticator = jsonEncodeSecret(value.authenticator)
 		return true;
 	},
 	cleanup = async (sub, value, { sourceId } = {}) => {
@@ -150,8 +149,8 @@ const defaults = {
 	challenge: challenge(),
 };
 const options = {};
-export default (params) => {
-	Object.assign(options, authnGetOptions(), defaults, params);
+export default (opt = {}) => {
+	Object.assign(options, authnGetOptions(), defaults, opt);
 };
 export const getOptions = () => options;
 
@@ -291,7 +290,7 @@ export const createChallenge = async (sub) => {
 
 	if (!allowCredentials.length) {
 		if (options.log) {
-			options.log("@1auth/auth-webauthn allowCredentials is empty");
+			options.log("@1auth/authn-webauthn allowCredentials is empty");
 		}
 		return {};
 	}
@@ -337,14 +336,12 @@ export const remove = async (sub, id) => {
 
 const jsonEncodeSecret = (value) => {
 	if (!value) return value;
-	// value.credential.id = credentialNormalize(value.credential.id);
 	value.credential.publicKey = credentialNormalize(value.credential.publicKey);
 	value.attestationObject = credentialNormalize(value.attestationObject);
 	return value;
 };
 
 const jsonParseSecret = (value) => {
-	// value.credential.id = credentialBuffer(value.credential.id);
 	value.credential.publicKey = credentialBuffer(value.credential.publicKey);
 	value.attestationObject = credentialBuffer(value.attestationObject);
 	return value;

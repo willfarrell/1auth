@@ -5,8 +5,8 @@ const options = {
 	client: () => {},
 };
 
-export default (params) => {
-	Object.assign(options, params);
+export default (opt = {}) => {
+	Object.assign(options, opt);
 };
 
 /*

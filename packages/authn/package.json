@@ -12,6 +12,7 @@
 	},
 	"main": "./index.js",
 	"module": "./index.js",
+	"sideEffects": false,
 	"exports": {
 		".": {
 			"import": "./index.js"

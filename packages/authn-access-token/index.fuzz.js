@@ -262,22 +262,6 @@ test("fuzz accessTokenCreate w/ sub", async () => {
 		},
 	);
 });
-// test("fuzz accessTokenCreate w/ values", async () => {
-// 	await fc.assert(
-// 		fc.asyncProperty(fc.anything(), async (values) => {
-//       try {
-//   		  await accessTokenCreate(sub, values);
-//   		} catch (e) {
-//   			catchError(values, e);
-//   		}
-// 		}),
-// 		{
-// 			numRuns: 100_000,
-// 			verbose: 2,
-// 			examples: [],
-// 		},
-// 	);
-// });
 test("fuzz accessTokenCreate w/ values", async () => {
 	await fc.assert(
 		fc.asyncProperty(fc.string(), async (values) => {

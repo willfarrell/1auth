@@ -84,4 +84,23 @@ describe("store-sqlite", () => {
 			deepEqual(parameters, ["a", "b", "c", "d"]);
 		});
 	});
+	describe("makeSqlParts with default placeholder", () => {
+		it("Should format {insert} with ? placeholder", async () => {
+			store.default({ placeholder: "?" });
+			const { insert, parameters } = store.makeSqlParts({}, { a: "a", b: "b" });
+			equal(insert, '("a", "b") VALUES (?,?)');
+			deepEqual(parameters, ["a", "b"]);
+		});
+
+		it("Should format {where} with ? placeholder", async () => {
+			store.default({ placeholder: "?" });
+			const { where, parameters } = store.makeSqlParts({
+				a: "a",
+				bc: ["b", "c"],
+				d: "d",
+			});
+			equal(where, 'WHERE "a" = ? AND "bc" IN (?,?) AND "d" = ?');
+			deepEqual(parameters, ["a", "b", "c", "d"]);
+		});
+	});
 });

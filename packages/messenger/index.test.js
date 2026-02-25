@@ -176,6 +176,15 @@ const tests = (config) => {
 		mocks.storeClient.after?.();
 	});
 
+	it("Can NOT count messengers with ({sub:undefined})", async () => {
+		try {
+			await messengerCount(messengerType, undefined);
+			ok(false);
+		} catch (e) {
+			equal(e.message, "401 Unauthorized");
+		}
+	});
+
 	it("Can create a messenger on an account", async () => {
 		const messengerId = await messengerCreate(messengerType, sub, {
 			value: messengerValue,

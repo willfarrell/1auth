@@ -13,8 +13,8 @@ const options = {
 	log: false,
 };
 
-export default (params) => {
-	Object.assign(options, params);
+export default (opt = {}) => {
+	Object.assign(options, opt);
 	// requires need for AWS access
 	//   options.queueUrl ??= options.client
 	//     .send(new GetQueueUrlCommand({ QueueName: options.queueName }))

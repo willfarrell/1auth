@@ -59,7 +59,10 @@ export const exists = async (value) => {
 };
 
 export const count = async (sub) => {
-	return await messengerCount(options.secret, sub);
+	if (!sub || typeof sub !== "string") {
+		throw new Error("401 Unauthorized", { cause: { sub } });
+	}
+	return await messengerCount(options.id, sub);
 };
 
 export const lookup = async (emailAddress) => {

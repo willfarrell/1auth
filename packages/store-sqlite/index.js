@@ -11,8 +11,8 @@ const options = {
 	placeholder: "?",
 };
 
-export default (params) => {
-	Object.assign(options, params);
+export default (opt = {}) => {
+	Object.assign(options, opt);
 };
 
 export const exists = async (table, filters) => {
@@ -52,7 +52,7 @@ export const select = async (table, filters = {}, fields = []) => {
 	return await options.client
 		.query(sql, parameters)
 		.then((res) => res?.[0])
-		// Workaround because an expire filter doesn't exists yet'
+		// Workaround because an expire filter doesn't exist yet
 		.then((row) => {
 			parseValues(row);
 			return row;
@@ -73,7 +73,7 @@ export const selectList = async (table, filters = {}, fields = []) => {
 	const sql = `SELECT ${select} FROM ${table} ${where}`;
 	return await options.client
 		.query(sql, parameters)
-		// Workaround because an expire filter doesn't exists yet'
+		// Workaround because an expire filter doesn't exist yet
 		.then((rows) => {
 			return rows.map((row) => {
 				parseValues(row);
@@ -245,7 +245,6 @@ export const makeSqlParts = (
 				parameters = parameters.concat(value);
 				return sql;
 			}
-			// const sql = '"' + key + '" = $' + idx++;
 			const sql = `"${key}" = ${getPlaceholder(idx++)}`;
 			parameters.push(value);
 			return sql;

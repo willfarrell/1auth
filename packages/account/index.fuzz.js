@@ -115,22 +115,6 @@ test("fuzz accountLookup w/ sub", async () => {
 	);
 });
 
-// test("fuzz accountCreate w/ values", async () => {
-// 	await fc.assert(
-// 		fc.asyncProperty(fc.anything(), async (values) => {
-//       try {
-//   		  await accountCreate(values);
-//   		} catch (e) {
-//   			catchError(values, e);
-//   		}
-// 		}),
-// 		{
-// 			numRuns: 100_000,
-// 			verbose: 2,
-// 			examples: [],
-// 		},
-// 	);
-// });
 test("fuzz accountCreate w/ values", async () => {
 	await fc.assert(
 		fc.asyncProperty(fc.string(), async (values) => {
@@ -164,22 +148,6 @@ test("fuzz accountUpdate w/ sub", async () => {
 		},
 	);
 });
-// test("fuzz accountUpdate w/ values", async () => {
-// 	await fc.assert(
-//     fc.asyncProperty(fc.anything(), async (values) => {
-//       try {
-//   		  await accountUpdate(sub, values);
-//   		} catch (e) {
-//   			catchError(values, e);
-//   		}
-// 		}),
-// 		{
-// 			numRuns: 100_000,
-// 			verbose: 2,
-// 			examples: [],
-// 		},
-// 	);
-// });
 test("fuzz accountUpdate w/ values", async () => {
 	await fc.assert(
 		fc.asyncProperty(fc.string(), async (values) => {

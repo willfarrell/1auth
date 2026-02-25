@@ -35,8 +35,8 @@ const defaults = {
 	encryptedFields: [],
 };
 const options = {};
-export default (params) => {
-	Object.assign(options, defaults, params);
+export default (opt = {}) => {
+	Object.assign(options, defaults, opt);
 };
 export const getOptions = () => options;
 
@@ -66,7 +66,7 @@ export const lookup = async (sub) => {
 };
 
 export const create = async (values = {}) => {
-	const sub = await options.randomSubject.create(options.subPrefix);
+	const sub = await options.randomSubject.create();
 
 	const { encryptionKey, encryptedKey } = symmetricGenerateEncryptionKey(sub);
 	const encryptedValues = symmetricEncryptFields(
@@ -84,7 +84,7 @@ export const create = async (values = {}) => {
 		update: now,
 	};
 	if (options.idGenerate) {
-		params.id = await options.randomId.create(options.idPrefix);
+		params.id = await options.randomId.create();
 	}
 	await options.store.insert(options.table, params);
 

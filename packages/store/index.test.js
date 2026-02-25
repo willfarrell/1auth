@@ -145,6 +145,12 @@ const tests = (store, mocks) => {
 			const result = await store.select(table, { sub: "sub_000", id: row.id });
 			ok(expire < result[mocks.table.timeToLiveKey]);
 		});
+		it("Should not mutate the input values object on insert", async () => {
+			const row = { sub: "sub_000", value: "x" };
+			const rowCopy = structuredClone(row);
+			await store.insert(table, row);
+			deepEqual(row, rowCopy);
+		});
 		it("Should add in `timeToLiveKey` when `expire` is updated", async () => {
 			const expire = nowInSeconds() + 86400;
 			const row = { id: 1, sub: "sub_000", value: "a" };

@@ -28,7 +28,19 @@ Only the latest major version is supported for security updates.
 
 ## Threat model
 
+The primary threats this library is designed to mitigate:
+
+- **Credential stuffing / brute force:** Timing-safe authentication with minimum duration (`setTimeout`), Argon2id password hashing with configurable cost.
+- **Session hijacking:** HMAC-signed session IDs, encrypted session storage, per-session encryption keys.
+- **Credential theft at rest:** Per-record ChaCha20-Poly1305 encryption with per-user derived keys.
+- **Account enumeration:** Constant-time authentication responses via `setTimeout` to prevent timing side-channels.
+- **Token replay:** OTP tokens are expired/removed after single use.
+
 ## Trust Boundaries
+
+- **Client ↔ Application Server:** All user inputs (credentials, tokens, session IDs) are validated at entry.
+- **Application Server ↔ Database:** All sensitive fields are encrypted before storage; digests are used for lookups instead of plaintext.
+- **Application Server ↔ Notification Service:** Tokens are sent through notification channels, never returned in API responses directly.
 
 ## Reporting a Vulnerability
 

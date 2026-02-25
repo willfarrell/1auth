@@ -74,6 +74,9 @@ export const exists = async (type, value) => {
 };
 
 export const count = async (type, sub) => {
+	if (!sub || typeof sub !== "string") {
+		throw new Error("401 Unauthorized", { cause: { sub } });
+	}
 	const messengers = await options.store.selectList(
 		options.table,
 		{ sub, type },
@@ -200,7 +203,7 @@ export const create = async (type, sub, values) => {
 		update: now, // in case new digests need to be created
 	};
 	if (options.idGenerate) {
-		params.id = options.randomId.create(options.idPrefix);
+		params.id = await options.randomId.create();
 	}
 	const id = await options.store.insert(options.table, params);
 
@@ -283,9 +286,8 @@ export const remove = async (type, sub, id) => {
 	);
 
 	if (!messenger) {
-		throw new Error("401 Unauthorized");
+		throw new Error("401 Unauthorized", { cause: { sub, id } });
 	}
-	// await authnRemove(options.token, sub, id);
 	await authnGetOptions().store.remove(authnGetOptions().table, {
 		sub,
 		sourceId: id,

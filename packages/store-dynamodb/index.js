@@ -24,8 +24,8 @@ const options = {
 	timeToLiveKey: "remove",
 };
 
-export default (params) => {
-	Object.assign(options, params);
+export default (opt = {}) => {
+	Object.assign(options, opt);
 };
 
 export const exists = async (table, filters) => {
@@ -184,7 +184,8 @@ const queryCommand = async (table, filters = {}, fields = []) => {
 		.then((res) => res.Items.map(unmarshall));
 };
 
-export const insert = async (table, values = {}) => {
+export const insert = async (table, inputValues = {}) => {
+	const values = structuredClone(inputValues);
 	if (options.log) {
 		options.log(`@1auth/store-${options.id} insert(`, table, values, ")");
 	}
@@ -315,7 +316,7 @@ export const remove = async (table, filters = {}) => {
 // Can only be used with recovery-codes for now
 export const removeList = async (table, filters = {}) => {
 	if (options.log) {
-		options.log("@1auth/store-dynamodb removeList(", table, filters, ")");
+		options.log(`@1auth/store-${options.id} removeList(`, table, filters, ")");
 	}
 
 	const deleteRequests = [];

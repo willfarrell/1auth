@@ -9,7 +9,7 @@ import {
 import { createSeasonedDigest, symmetricDecryptFields } from "@1auth/crypto";
 
 // Only allow characters that are safe to encode
-// not allowed because it can be used to declare and extension
+// not allowed because it can be used to declare an extension
 let usernameBlacklistRegExp;
 const options = {
 	id: "username",
@@ -18,8 +18,8 @@ const options = {
 	minLength: 1,
 	maxLength: 32,
 };
-export default (params) => {
-	Object.assign(options, accountOptions(), params);
+export default (opt = {}) => {
+	Object.assign(options, accountOptions(), opt);
 	if (options.usernameBlacklist.length) {
 		usernameBlacklistRegExp = new RegExp(
 			`(${options.usernameBlacklist.map((value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`,
