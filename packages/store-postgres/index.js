@@ -156,6 +156,21 @@ export const update = async (table, filters = {}, inputValues = {}) => {
 	await options.client.query(sql, parameters);
 };
 
+export const updateList = async (table, filtersList = [], values = {}) => {
+	if (options.log) {
+		options.log(
+			`@1auth/store-${options.id} updateList(`,
+			table,
+			filtersList,
+			values,
+			")",
+		);
+	}
+	return Promise.allSettled(
+		filtersList.map((filters) => update(table, filters, values)),
+	);
+};
+
 export const remove = async (table, filters = {}) => {
 	if (options.log) {
 		options.log(`@1auth/store-${options.id} remove(`, table, filters, ")");

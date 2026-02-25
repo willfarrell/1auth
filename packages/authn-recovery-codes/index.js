@@ -3,10 +3,8 @@
 import {
 	authenticate as authnAuthenticate,
 	count as authnCount,
-	// create as authnCreate,
 	createList as authnCreateList,
 	getOptions as authnGetOptions,
-	//select as authnSelect,
 	list as authnList,
 	remove as authnRemove,
 	removeList as authnRemoveList,
@@ -14,6 +12,7 @@ import {
 import {
 	createSecretHash,
 	makeRandomConfigObject,
+	nowInSeconds,
 	verifySecretHash,
 } from "@1auth/crypto";
 
@@ -57,10 +56,6 @@ export const authenticate = async (username, secret) => {
 export const count = async (sub) => {
 	return await authnCount(options.secret, sub);
 };
-
-// export const select = async (sub, id) => {
-//   return await authnSelect(options.secret, sub, id);
-// };
 
 export const list = async (sub) => {
 	return await authnList(options.secret, sub);
@@ -121,5 +116,3 @@ const createSecrets = async (sub, count = options.count) => {
 	await authnCreateList(options.secret, sub, secrets);
 	return secrets;
 };
-
-const nowInSeconds = () => Math.floor(Date.now() / 1000);

@@ -115,7 +115,7 @@ export const validateLength = (value) => {
 };
 
 export const validateAllowedChar = (value) => {
-	// TODO URL encode compare
+	// allowedCharRegExp only permits URL-safe chars, no encoding needed
 	if (!options.allowedCharRegExp.test(value)) {
 		return "400 Bad Request";
 	}

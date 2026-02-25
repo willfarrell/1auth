@@ -14,6 +14,7 @@ import {
 	createDigest,
 	createSecretHash,
 	makeRandomConfigObject,
+	nowInSeconds,
 	verifySecretHash,
 } from "@1auth/crypto";
 
@@ -92,7 +93,7 @@ export const lookup = async (username) => {
 	const authn = await options.store.select(options.table, { digest });
 	if (authn) {
 		const now = nowInSeconds();
-		if (authn.expire < now) {
+		if (authn.expire && authn.expire < now) {
 			return;
 		}
 		return authn;
@@ -135,5 +136,3 @@ export const remove = async (sub, id) => {
 	await authnRemove(options.secret, sub, id);
 	await options.notify.trigger("authn-access-token-remove", sub);
 };
-
-const nowInSeconds = () => Math.floor(Date.now() / 1000);

@@ -4,12 +4,12 @@ import account, {
 	create as accountCreate,
 	remove as accountRemove,
 } from "../account/index.js";
-// import * as mockAccountDynamoDBTable from "../account/table/dynamodb.js";
+import * as mockAccountDynamoDBTable from "../account/table/dynamodb.js";
 import * as mockAccountSQLTable from "../account/table/sql.js";
 import accountUsername, {
 	create as accountUsernameCreate,
 } from "../account-username/index.js";
-// import * as mockAuthnDynamoDBTable from "../authn/table/dynamodb.js";
+import * as mockAuthnDynamoDBTable from "../authn/table/dynamodb.js";
 import * as mockAuthnSQLTable from "../authn/table/sql.js";
 import crypto, {
 	randomChecksumPepper,
@@ -32,12 +32,12 @@ import session, {
 	verify as sessionVerify,
 } from "../session/index.js";
 import * as storeDynamoDB from "../store-dynamodb/index.js";
+import * as mockDynamoDB from "../store-dynamodb/mock.js";
 import * as storePostgres from "../store-postgres/index.js";
 import * as storeSQLite from "../store-sqlite/index.js";
-// import * as mockDynamoDB from "../store-dynamodb/mock.js";
 // import * as mockPostgres from "../store-postgres/mock.js";
 import * as mockSQLite from "../store-sqlite/mock.js";
-// import * as mockSessionDynamoDBTable from "./table/dynamodb.js";
+import * as mockSessionDynamoDBTable from "./table/dynamodb.js";
 import * as mockSessionSQLTable from "./table/sql.js";
 
 crypto({
@@ -95,17 +95,20 @@ const mockStores = {
 			storeSession: mockSessionSQLTable,
 		},
 	},
-	// TODO
-	// dynamodb: {
-	//   store: storeDynamoDB,
-	//   mocks :{
-	// 		...mockNotify,
-	// 	  ...mockDynamoDB,
-	// 		storeAccount: mockAccountDynamoDBTable,
-	// 		storeAuthn: mockAuthnDynamoDBTable,
-	// 		storeSession: mockSessionDynamoDBTable, // is working
-	//    }
-	// },
+	...(mockDynamoDB.isReady()
+		? {
+				dynamodb: {
+					store: storeDynamoDB,
+					mocks: {
+						...mockNotify,
+						...mockDynamoDB,
+						storeAccount: mockAccountDynamoDBTable,
+						storeAuthn: mockAuthnDynamoDBTable,
+						storeSession: mockSessionDynamoDBTable,
+					},
+				},
+			}
+		: {}),
 };
 
 account();
@@ -476,7 +479,7 @@ const tests = (config) => {
 		ok(verify);
 	});
 };
-describe("session", () => {
+describe("session", { concurrency: 1 }, () => {
 	for (const storeKey of Object.keys(mockStores)) {
 		describe(`using store-${storeKey}`, () => {
 			tests(mockStores[storeKey]);

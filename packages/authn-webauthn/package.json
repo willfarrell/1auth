@@ -29,7 +29,15 @@
 		"type": "github",
 		"url": "https://github.com/sponsors/willfarrell"
 	},
-	"keywords": [],
+	"keywords": [
+		"1auth",
+		"OWASP",
+		"ASVS",
+		"authentication",
+		"WebAuthn",
+		"passkey",
+		"FIDO2"
+	],
 	"author": {
 		"name": "1auth contributors",
 		"url": "https://github.com/willfarrell/1auth/graphs/contributors"

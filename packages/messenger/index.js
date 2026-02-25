@@ -9,6 +9,7 @@ import {
 	createSeasonedDigest,
 	createSecretHash,
 	makeRandomConfigObject,
+	nowInSeconds,
 	randomNumeric,
 	symmetricDecryptFields,
 	symmetricEncryptFields,
@@ -255,7 +256,7 @@ export const verifyToken = async (type, sub, token, sourceId) => {
 		}
 		return messengers;
 	});
-	await authnVerify(options.token, sub, token);
+	await authnVerify({ ...options.token, sourceId }, sub, token);
 	await options.store.update(
 		options.table,
 		{ sub, id: sourceId },
@@ -314,5 +315,3 @@ export const remove = async (type, sub, id) => {
 		options.notify.trigger(`messenger-${type}-remove`, sub),
 	]);
 };
-
-const nowInSeconds = () => Math.floor(Date.now() / 1000);

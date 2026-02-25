@@ -15,10 +15,14 @@
 	"exports": {
 		".": {
 			"import": "./index.js"
+		},
+		"./table/*": {
+			"import": "./table/*"
 		}
 	},
 	"files": [
-		"index.js"
+		"index.js",
+		"table"
 	],
 	"scripts": {
 		"test": "npm run test:unit",
@@ -29,7 +33,13 @@
 		"type": "github",
 		"url": "https://github.com/sponsors/willfarrell"
 	},
-	"keywords": [],
+	"keywords": [
+		"1auth",
+		"OWASP",
+		"ASVS",
+		"SQLite",
+		"database"
+	],
 	"author": {
 		"name": "1auth contributors",
 		"url": "https://github.com/willfarrell/1auth/graphs/contributors"

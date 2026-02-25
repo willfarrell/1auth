@@ -55,15 +55,22 @@ export const storeClient = {
 };
 
 let ready;
-const waitForStart = async () => {
+const maxRetries = 30;
+const waitForStart = async (attempt = 0) => {
 	if (ready) return;
 	try {
 		await storeClient.query("SELECT 1");
 		ready = 1;
 	} catch (error) {
+		if (attempt >= maxRetries) {
+			console.warn("PostgreSQL not available, skipping PostgreSQL tests");
+			return;
+		}
 		console.info("Waiting for postgres to start...", error);
 		await setTimeout(500);
-		return await waitForStart();
+		return await waitForStart(attempt + 1);
 	}
 };
 await waitForStart();
+
+export const isReady = () => !!ready;

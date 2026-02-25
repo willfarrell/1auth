@@ -15,10 +15,14 @@
 	"exports": {
 		".": {
 			"import": "./index.js"
+		},
+		"./table/*": {
+			"import": "./table/*"
 		}
 	},
 	"files": [
-		"index.js"
+		"index.js",
+		"table"
 	],
 	"scripts": {
 		"run": "docker run -p 8000:8000 amazon/dynamodb-local",
@@ -30,7 +34,14 @@
 		"type": "github",
 		"url": "https://github.com/sponsors/willfarrell"
 	},
-	"keywords": [],
+	"keywords": [
+		"1auth",
+		"OWASP",
+		"ASVS",
+		"DynamoDB",
+		"AWS",
+		"database"
+	],
 	"author": {
 		"name": "1auth contributors",
 		"url": "https://github.com/willfarrell/1auth/graphs/contributors"

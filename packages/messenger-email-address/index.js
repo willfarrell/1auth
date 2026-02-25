@@ -108,7 +108,8 @@ export const sanitize = (value) => {
 	// not a valid email
 	if (!domain) return value;
 
-	username = username.trimStart().split("+")[0].toLowerCase(); // TODO puntycode?
+	// punycode/IDNA only applies to domains (RFC 5891), not local part (RFC 6531)
+	username = username.trimStart().split("+")[0].toLowerCase();
 	domain = toASCII(domain).trimEnd().toLowerCase();
 
 	if (optionalDotDomainsMap[domain]) {

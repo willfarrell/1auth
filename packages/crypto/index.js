@@ -125,35 +125,12 @@ export const makeOptionsBuffer = (
 
 export const getOptions = () => options;
 
-// *** entropy *** //
-// export const characterPoolSize = (value) => {
-//   const chars = value.split('')
-//   let min = chars[0].charCodeAt()
-//   let max = chars[0].charCodeAt()
-//   for(const char of value.split('')) {
-//     const code = char.charCodeAt()
-//     if (code < min) {
-//       min = code
-//     } else if (max < code) {
-//       max = code
-//     }
-//   }
-//   return max - min
-// }
-
 // *** Helpers *** //
 // Ref: https://therootcompany.com/blog/how-many-bits-of-entropy-per-character/
 export const entropyToCharacterLength = (bits, characterPoolSize) => {
 	// bits*ln(2)/ln(characterPoolSize)
 	return Math.ceil((bits * Math.LN2) / Math.log(characterPoolSize));
 };
-/* export const characterLengthToEntropy = (
-  characterLength,
-  characterPoolSize,
-) => {
-  // log_2(characterPoolSize^characterLength)
-  return Math.floor(Math.log2(characterPoolSize ** characterLength));
-}; */
 
 // *** Random generators *** //
 export { randomBytes, randomInt, randomUUID } from "node:crypto";
@@ -757,6 +734,8 @@ export const verifyAsymmetricSignature = async (
 		Buffer.from(signature, options.asymmetricSignatureEncoding),
 	);
 };
+
+export const nowInSeconds = () => Math.floor(Date.now() / 1000);
 
 export const safeEqual = (input, expected) => {
 	const bufferInput = Buffer.from(input);

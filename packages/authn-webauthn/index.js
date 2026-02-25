@@ -14,7 +14,7 @@ import {
 	update as authnUpdate,
 	verify as authnVerify,
 } from "@1auth/authn";
-import { makeRandomConfigObject } from "@1auth/crypto";
+import { makeRandomConfigObject, nowInSeconds } from "@1auth/crypto";
 
 import {
 	generateAuthenticationOptions,
@@ -189,7 +189,7 @@ export const verify = async (
 	});
 
 	if (notify) {
-		await options.notify.trigger("authn-webauthn-create", sub); // TODO add in user.name
+		await options.notify.trigger("authn-webauthn-create", sub, { name });
 	}
 	return { id, secret: value };
 };
@@ -261,8 +261,17 @@ const verifyToken = async (sub, credential) => {
 };
 
 export const createChallenge = async (sub) => {
-	// TODO remove previous challenges
-	// const challenge = options.challenge.create();
+	// Remove previous challenges for this user
+	const previousChallenges = await authnList(
+		options.challenge,
+		sub,
+		undefined,
+		["id"],
+	);
+	for (const prev of previousChallenges) {
+		await authnRemove(options.challenge, sub, prev.id);
+	}
+
 	const now = nowInSeconds();
 
 	const credentials = await authnList(options.secret, sub, undefined, [
@@ -352,5 +361,3 @@ const credentialNormalize = (value) => {
 const credentialBuffer = (value) => {
 	return Buffer.from(credentialNormalize(value));
 };
-
-const nowInSeconds = () => Math.floor(Date.now() / 1000);

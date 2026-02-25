@@ -3,6 +3,7 @@
 import {
 	createSeasonedDigest,
 	makeRandomConfigObject,
+	nowInSeconds,
 	safeEqual,
 	symmetricDecrypt,
 	symmetricDecryptFields,
@@ -63,7 +64,7 @@ export const lookup = async (sid, value = {}) => {
 	const session = await options.store.select(options.table, { digest });
 	if (session) {
 		const now = nowInSeconds();
-		if (session.expire < now) {
+		if (session.expire && session.expire < now) {
 			return;
 		}
 		const encodedValue = options.encode(value);
@@ -220,9 +221,8 @@ export const verify = (sidWithSignature) => {
 	return symmetricSignatureVerify(sidWithSignature);
 };
 
-// guest or onboard session to authenticated
+// TODO guest or onboard session to authenticated
 // export const rotate = async (sub, meta) => {
 //   await remove()
 //   return create()
 // }
-const nowInSeconds = () => Math.floor(Date.now() / 1000);

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 import {
 	makeRandomConfigObject,
+	nowInSeconds,
 	symmetricDecryptFields,
 	symmetricEncryptFields,
 	symmetricGenerateEncryptionKey,
@@ -139,23 +140,3 @@ export const remove = async (sub) => {
 	// Should trigger removal of credentials and messengers
 	await options.store.remove(options.table, { sub });
 };
-
-/* export const expire = async (sub) => {
-  const expire = nowInSeconds() + 90 * 24 * 60 * 60
-  await options.store.update(options.table, { sub }, { expire })
-  await options.notify.trigger('account-expire', sub)
-  // TODO clear sessions
-}
-
-export const recover = async (sub) => {
-  await options.store.update(options.table, { sub }, { expire: null })
-  await options.notify.trigger('account-recover', sub)
-} */
-
-// TODO manage onboard state
-
-// TODO save notification settings
-
-// TODO authorize management?
-
-const nowInSeconds = () => Math.floor(Date.now() / 1000);

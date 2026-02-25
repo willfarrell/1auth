@@ -4,14 +4,14 @@ import account, {
 	create as accountCreate,
 	remove as accountRemove,
 } from "../account/index.js";
-// import * as mockAccountDynamoDBTable from "../account/table/dynamodb.js";
+import * as mockAccountDynamoDBTable from "../account/table/dynamodb.js";
 import * as mockAccountSQLTable from "../account/table/sql.js";
 import accountUsername, {
 	create as accountUsernameCreate,
 	exists as accountUsernameExists,
 } from "../account-username/index.js";
 import authn, { getOptions as authnGetOptions } from "../authn/index.js";
-// import * as mockAuthnDynamoDBTable from "../authn/table/dynamodb.js";
+import * as mockAuthnDynamoDBTable from "../authn/table/dynamodb.js";
 import * as mockAuthnSQLTable from "../authn/table/sql.js";
 import accessToken, {
 	authenticate as accessTokenAuthenticate,
@@ -34,9 +34,9 @@ import crypto, {
 import * as notify from "../notify/index.js";
 import * as mockNotify from "../notify/mock.js";
 import * as storeDynamoDB from "../store-dynamodb/index.js";
+import * as mockDynamoDB from "../store-dynamodb/mock.js";
 import * as storePostgres from "../store-postgres/index.js";
 import * as storeSQLite from "../store-sqlite/index.js";
-// import * as mockDynamoDB from "../store-dynamodb/mock.js";
 // import * as mockPostgres from "../store-postgres/mock.js";
 import * as mockSQLite from "../store-sqlite/mock.js";
 
@@ -93,16 +93,19 @@ const mockStores = {
 			storeAuthn: mockAuthnSQLTable,
 		},
 	},
-	// TODO
-	// dynamodb: {
-	//   store: storeDynamoDB,
-	//   mocks :{
-	// 		...mockNotify,
-	// 	  ...mockDynamoDB,
-	// 		storeAccount: mockAccountDynamoDBTable,
-	// 		storeAuthn: mockAuthnDynamoDBTable,
-	//   }
-	// },
+	...(mockDynamoDB.isReady()
+		? {
+				dynamodb: {
+					store: storeDynamoDB,
+					mocks: {
+						...mockNotify,
+						...mockDynamoDB,
+						storeAccount: mockAccountDynamoDBTable,
+						storeAuthn: mockAuthnDynamoDBTable,
+					},
+				},
+			}
+		: {}),
 };
 
 account();
@@ -275,7 +278,7 @@ const tests = (config) => {
 		equal(row, undefined);
 	});
 	it("Can select an access token with { id } (exists)", async () => {
-		const { id } = await accessTokenCreate(sub); // TODO id is undefined
+		const { id } = await accessTokenCreate(sub);
 		const row = await accessTokenSelect(sub, id);
 		ok(row);
 	});
@@ -294,7 +297,7 @@ const tests = (config) => {
 		equal(row.length, 0);
 	});
 };
-describe("authn-access-token", () => {
+describe("authn-access-token", { concurrency: 1 }, () => {
 	for (const storeKey of Object.keys(mockStores)) {
 		describe(`using store-${storeKey}`, () => {
 			tests(mockStores[storeKey]);

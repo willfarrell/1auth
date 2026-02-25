@@ -220,6 +220,26 @@ const tests = (store, mocks) => {
 			equal(mocks.log.mock.calls.length, 3);
 		});
 	});
+	describe("updateList", () => {
+		it("Should update multiple rows in store", async () => {
+			const rows = [
+				{ id: 1, sub: "sub_000", value: "a" },
+				{ id: 2, sub: "sub_000", value: "b" },
+			];
+			await store.insertList(table, rows);
+			await store.updateList(
+				table,
+				[
+					{ sub: "sub_000", id: rows[0].id },
+					{ sub: "sub_000", id: rows[1].id },
+				],
+				{ value: "z" },
+			);
+			const result = await store.selectList(table, { sub: "sub_000" });
+			equal(result[0].value, "z");
+			equal(result[1].value, "z");
+		});
+	});
 	describe("remove", () => {
 		it("Should remove rows in store using {id:[], sub:''}", async () => {
 			const rows = [

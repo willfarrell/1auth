@@ -14,8 +14,7 @@ import webauthn, {
 	create as webauthnCreate,
 	list as webauthnList,
 	remove as webauthnRemove,
-	update as webauthnUpdate,
-} from "../authn-recovery-codes/index.js";
+} from "../authn-webauthn/index.js";
 
 import crypto, {
 	randomChecksumPepper,
@@ -56,7 +55,6 @@ const mocks = {
 };
 
 let sub;
-let testSecret;
 const username = "username";
 
 test.before(async () => {
@@ -75,13 +73,15 @@ test.before(async () => {
 		encryptedFields: ["value", "name"],
 		authenticationDuration: 0,
 	});
+	webauthn({
+		origin: "https://localhost",
+		name: "Test",
+	});
 });
 
 test.beforeEach(async () => {
 	sub = await accountCreate();
 	await accountUsernameCreate(sub, username);
-	webauthn({ count: 1 });
-	testSecret = await webauthnCreate(sub).then((res) => res[0]);
 });
 
 test.afterEach(async () => {
@@ -113,7 +113,7 @@ test("fuzz webauthnAuthenticate w/ username", async () => {
 	await fc.assert(
 		fc.asyncProperty(fc.anything(), async (username) => {
 			try {
-				await webauthnAuthenticate(username, testSecret.value);
+				await webauthnAuthenticate(username, "secret");
 			} catch (e) {
 				catchError(username, e);
 			}
@@ -193,28 +193,11 @@ test("fuzz webauthnCreate w/ sub", async () => {
 	);
 });
 
-test("fuzz webauthnUpdate w/ sub", async () => {
-	await fc.assert(
-		fc.asyncProperty(fc.anything(), async (sub) => {
-			try {
-				await webauthnUpdate(sub);
-			} catch (e) {
-				catchError(sub, e);
-			}
-		}),
-		{
-			numRuns: 1_000,
-			verbose: 2,
-			examples: [],
-		},
-	);
-});
-
 test("fuzz webauthnRemove w/ sub", async () => {
 	await fc.assert(
 		fc.asyncProperty(fc.anything(), async (sub) => {
 			try {
-				await webauthnRemove(sub, testSecret.id);
+				await webauthnRemove(sub, "id");
 			} catch (e) {
 				catchError(sub, e);
 			}

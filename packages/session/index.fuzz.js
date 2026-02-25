@@ -229,23 +229,25 @@ test("fuzz sessionCreate w/ value", async () => {
 		},
 	);
 });
-// TODO throws due tp missing columns ..
-// test("fuzz sessionCreate w/ values", async () => {
-// 	await fc.assert(
-// 		fc.asyncProperty(fc.anything(), async (values) => {
-//       try {
-//   		  await sessionCreate(sub, testSession.value, values);
-//   		} catch (e) {
-//   			catchError(values, e);
-//   		}
-// 		}),
-// 		{
-// 			numRuns: 100_000,
-// 			verbose: 2,
-// 			examples: [],
-// 		},
-// 	);
-// });
+test("fuzz sessionCreate w/ values", async () => {
+	await fc.assert(
+		fc.asyncProperty(
+			fc.record({ metadata: fc.anything() }, { withDeletedKeys: true }),
+			async (values) => {
+				try {
+					await sessionCreate(sub, testSession.value, values);
+				} catch (e) {
+					catchError(values, e);
+				}
+			},
+		),
+		{
+			numRuns: 100_000,
+			verbose: 2,
+			examples: [],
+		},
+	);
+});
 
 test("fuzz sessionCheck w/ sub", async () => {
 	await fc.assert(
