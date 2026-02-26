@@ -162,7 +162,7 @@ export const updateList = async (table, filtersList = [], values = {}) => {
 			")",
 		);
 	}
-	return Promise.allSettled(
+	return await Promise.allSettled(
 		filtersList.map((filters) => update(table, filters, values)),
 	);
 };
@@ -223,8 +223,6 @@ export const makeSqlParts = (
 	const insertParts = [];
 	const updateParts = [];
 	for (const key of keys) {
-		// insertParts.push("$" + idx);
-		// updateParts.push('"' + key + '" = $' + idx);
 		insertParts.push(getPlaceholder(idx));
 		updateParts.push(`"${key}" = ${getPlaceholder(idx)}`);
 		idx++;

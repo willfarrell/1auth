@@ -44,7 +44,7 @@ export const exists = async (sub) => {
 	if (!sub || typeof sub !== "string") {
 		throw new Error("404 Not Found", { cause: { sub } });
 	}
-	return options.store.exists(options.table, { sub });
+	return await options.store.exists(options.table, { sub });
 };
 
 export const lookup = async (sub) => {

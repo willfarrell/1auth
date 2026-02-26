@@ -67,7 +67,7 @@ export const getOptions = () => options;
 
 export const exists = async (type, value) => {
 	const valueDigest = createSeasonedDigest(value);
-	return options.store.exists(options.table, {
+	return await options.store.exists(options.table, {
 		type,
 		digest: valueDigest,
 	});

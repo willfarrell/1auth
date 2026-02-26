@@ -67,11 +67,11 @@ export const select = async (table, filters = {}, fields = []) => {
 const getItem = async (table, filters = {}, fields = []) => {
 	let indexName; // must be length of >=3
 	if (filters.digest) {
-		indexName ??= "digest";
+		indexName = "digest";
 	} else if (filters.sub && !filters.id) {
-		indexName ??= "sub";
+		indexName = "sub";
 	} else if (filters.id && !filters.sub) {
-		indexName ??= "key";
+		indexName = "key";
 	}
 	if (indexName) {
 		return await queryCommand(table, filters, fields).then((res) => res?.[0]);
@@ -92,13 +92,6 @@ const getItem = async (table, filters = {}, fields = []) => {
 			.send(new GetItemCommand(commandParams))
 			.then((res) => unmarshall(res.Item));
 	} catch (e) {
-		// if (e.message === "The provided key element does not match the schema") {
-		// 	 return await queryCommand(table, filters, fields).then((res) => res[0]);
-		// }
-		// ResourceNotFoundException
-		// if (e.message === "Requested resource not found") {
-		// 	 return;
-		// }
 		if (e.message === "No value defined: {}") {
 			return;
 		}
@@ -277,7 +270,7 @@ export const updateList = async (table, filtersList = [], values = {}) => {
 			")",
 		);
 	}
-	return Promise.allSettled(
+	return await Promise.allSettled(
 		filtersList.map((filters) => update(table, filters, values)),
 	);
 };

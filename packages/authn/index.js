@@ -167,7 +167,7 @@ export const update = async (
 		options.encryptedFields,
 	);
 
-	return options.store.update(
+	return await options.store.update(
 		options.table,
 		{ sub, id },
 		{
@@ -178,7 +178,7 @@ export const update = async (
 };
 
 export const subject = async (username) => {
-	return Promise.all(
+	return await Promise.all(
 		options.usernameExists.map((exists) => {
 			return exists(username);
 		}),

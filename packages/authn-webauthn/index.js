@@ -38,7 +38,10 @@ export const token = ({
 			...value,
 			response,
 		});
-		if (!verified) throw new Error("Failed verifyRegistrationResponse");
+		if (!verified)
+			throw new Error("Failed verifyRegistrationResponse", {
+				cause: { response },
+			});
 		return { registrationInfo: jsonEncodeSecret(registrationInfo) };
 	},
 	...params
@@ -82,7 +85,6 @@ export const challenge = ({
 	type = "challenge",
 	otp = true,
 	expire = 10 * 60,
-	// create: () => randomAlphaNumeric(challenge.minLength),
 	encode = (value) => {
 		value.authenticator = jsonEncodeSecret(value.authenticator);
 		const encodedValue = JSON.stringify(value);
@@ -101,7 +103,10 @@ export const challenge = ({
 				response,
 			},
 		);
-		if (!verified) throw new Error("Failed verifyAuthenticationResponse");
+		if (!verified)
+			throw new Error("Failed verifyAuthenticationResponse", {
+				cause: { response },
+			});
 		value.authenticator.credential.counter = authenticationInfo.newCounter;
 		return true;
 	},
@@ -221,22 +226,6 @@ const createToken = async (sub) => {
 			residentKey: options.residentKey,
 			userVerification: options.userVerification,
 		},
-		// extras?
-		// timeout
-		// pubKeyCredParams: [
-		//   {
-		//     type: 'public-key',
-		//     alg: -8 // EdDSA
-		//   },
-		//   {
-		//     type: 'public-key',
-		//     alg: -7 // ES256
-		//   },
-		//   {
-		//     type: 'public-key',
-		//     alg: -257 // RS256
-		//   }
-		// ]
 	};
 	const secret = await generateRegistrationOptions(registrationOptions);
 	const value = {

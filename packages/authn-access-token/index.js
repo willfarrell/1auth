@@ -78,7 +78,7 @@ export const exists = async (username) => {
 		throw new Error("404 Not Found", { cause: { username } });
 	}
 	const digest = createDigest(username);
-	return options.store.exists(options.table, { digest });
+	return await options.store.exists(options.table, { digest });
 };
 
 export const count = async (sub) => {

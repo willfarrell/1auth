@@ -556,7 +556,9 @@ export const symmetricDecrypt = (
 	);
 
 	if (encryptedDataPacket === false) {
-		throw new Error("Signature incorrect");
+		throw new Error("Signature incorrect", {
+			cause: { signedEncryptedDataPacket },
+		});
 	}
 	const iv = Buffer.from(
 		encryptedDataPacket.substring(0, symmetricEncryptionEncodingLengths.iv),
@@ -647,7 +649,10 @@ export const symmetricRotation = (
 		return data;
 	},
 ) => {
-	if (oldOptions.sub !== newOptions.sub) throw new Error("Mismatching `sub`");
+	if (oldOptions.sub !== newOptions.sub)
+		throw new Error("Mismatching `sub`", {
+			cause: { sub: oldOptions.sub },
+		});
 
 	const oldEncryptedValuesClone = structuredClone(oldEncryptedValues);
 	// Don't use structuredClone, converts Buffer to Uint8Array ...

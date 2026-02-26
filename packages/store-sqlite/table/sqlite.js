@@ -32,11 +32,12 @@ export const drop = async (client, table = name) => {
 	return await client.query(sql);
 };
 
-export const emptyRow = () => ({
-	id: 0,
-	sub: null,
-	value: null,
-	digest: null,
-	expire: null,
-	remove: null,
-});
+export const emptyRow = () =>
+	Object.assign(Object.create(null), {
+		id: 0,
+		sub: null,
+		value: null,
+		digest: null,
+		expire: null,
+		remove: null,
+	});

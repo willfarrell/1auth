@@ -30,7 +30,7 @@ export default (opt = {}) => {
 export const exists = async (username) => {
 	const usernameSanitized = sanitize(username);
 	const usernameDigest = createSeasonedDigest(usernameSanitized);
-	return options.store.exists(options.table, {
+	return await options.store.exists(options.table, {
 		digest: usernameDigest,
 	});
 };

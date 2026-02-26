@@ -34,7 +34,7 @@ export const count = async (table, filters = {}) => {
 	const sql = `SELECT COUNT(*) AS count FROM ${table} ${where}`;
 	return await options.client
 		.query(sql, parameters)
-		.then((res) => res[0].count);
+		.then((res) => Number(res[0].count));
 };
 
 export const select = async (table, filters = {}, fields = []) => {
@@ -166,7 +166,7 @@ export const updateList = async (table, filtersList = [], values = {}) => {
 			")",
 		);
 	}
-	return Promise.allSettled(
+	return await Promise.allSettled(
 		filtersList.map((filters) => update(table, filters, values)),
 	);
 };
@@ -221,8 +221,6 @@ export const makeSqlParts = (
 	const insertParts = [];
 	const updateParts = [];
 	for (const key of keys) {
-		// insertParts.push("$" + idx);
-		// updateParts.push('"' + key + '" = $' + idx);
 		insertParts.push(getPlaceholder(idx));
 		updateParts.push(`"${key}" = ${getPlaceholder(idx)}`);
 		idx++;
