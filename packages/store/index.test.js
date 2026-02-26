@@ -181,6 +181,21 @@ const tests = (store, mocks) => {
 			deepStrictEqual(result, [Object.assign(emptyRow(), rows[0])]);
 			strictEqual(mocks.log.mock.calls.length, 2);
 		});
+		it("Should return only requested fields", async () => {
+			const rows = [
+				{ id: 1, sub: "sub_000", value: "a" },
+				{ id: 2, sub: "sub_000", value: "b" },
+			];
+			await store.insertList(table, rows);
+			const result = await store.selectList(table, { sub: "sub_000" }, [
+				"value",
+			]);
+			strictEqual(result.length, 2);
+			for (const row of result) {
+				ok(row.value);
+				strictEqual(row.id, undefined);
+			}
+		});
 	});
 	describe("insertList", () => {
 		it("Should return array of id's after inserted", async () => {

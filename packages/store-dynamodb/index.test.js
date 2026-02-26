@@ -69,5 +69,13 @@ describe("store-dynamodb", () => {
 			);
 			equal(UpdateExpression, "SET #id = :id, #sub = :sub");
 		});
+		it("Should format {ProjectionExpression} properly", async () => {
+			const { ProjectionExpression, AttributesToGet } = store.makeQueryParams(
+				{ id: [1, 2], sub: "sub_000" },
+				["value"],
+			);
+			equal(ProjectionExpression, ":value");
+			deepEqual(AttributesToGet, [":value"]);
+		});
 	});
 });

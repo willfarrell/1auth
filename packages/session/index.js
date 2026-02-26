@@ -220,9 +220,3 @@ export const sign = (sid) => {
 export const verify = (sidWithSignature) => {
 	return symmetricSignatureVerify(sidWithSignature);
 };
-
-// TODO guest or onboard session to authenticated
-// export const rotate = async (sub, meta) => {
-//   await remove()
-//   return create()
-// }

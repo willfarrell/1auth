@@ -172,6 +172,15 @@ const queryCommand = async (table, filters = {}, fields = []) => {
 	// return in the same order they were inserted
 	commandParams.ScanIndexForward = false;
 
+	if (fields.length) {
+		for (const field of fields) {
+			commandParams.ExpressionAttributeNames[`#${field}`] = field;
+		}
+		commandParams.ProjectionExpression = fields
+			.map((field) => `#${field}`)
+			.join(", ");
+	}
+
 	return await options.client
 		.send(new QueryCommand(commandParams))
 		.then((res) => res.Items.map(unmarshall));

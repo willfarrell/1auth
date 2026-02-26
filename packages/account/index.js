@@ -88,7 +88,7 @@ export const create = async (values = {}) => {
 	}
 	await options.store.insert(options.table, params);
 
-	// TODO update guest session, attach sub
+	// If caller has a guest session, use session.rotate(guestSub, guestSessionId, sub, deviceMeta) to transition it.
 	return sub;
 };
 
