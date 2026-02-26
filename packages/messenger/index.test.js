@@ -49,9 +49,9 @@ crypto({
 	symmetricSignatureSecret: symmetricRandomSignatureSecret(),
 	digestChecksumSalt: randomChecksumSalt(),
 	digestChecksumPepper: randomChecksumPepper(),
-	secretTimeCost: 1,
-	secretMemoryCost: 2 ** 3,
-	secretParallelism: 1,
+	secretArgon2TimeCost: 1,
+	secretArgon2MemoryCost: 2 ** 3,
+	secretArgon2Parallelism: 1,
 });
 notify.default({
 	client: (...args) => mocks.notifyClient(...args),
@@ -301,7 +301,7 @@ const tests = (config) => {
 		// notify additional messenger
 		const notifyCall2 = mocks.notifyClient.mock.calls[2].arguments[0];
 		deepEqual(notifyCall2, {
-			data: undefined,
+			data: {},
 			id: `messenger-${messengerType}-create`,
 			options: {
 				messengers: [
@@ -380,7 +380,7 @@ const tests = (config) => {
 		deepEqual(mocks.notifyClient.mock.calls[1].arguments[0], {
 			id: `messenger-${messengerType}-remove-self`,
 			sub,
-			data: undefined,
+			data: {},
 			options: {
 				messengers: [
 					{
@@ -393,7 +393,7 @@ const tests = (config) => {
 		deepEqual(mocks.notifyClient.mock.calls[2].arguments[0], {
 			id: `messenger-${messengerType}-remove`,
 			sub,
-			data: undefined,
+			data: {},
 			options: {},
 		});
 

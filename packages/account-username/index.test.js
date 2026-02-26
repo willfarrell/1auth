@@ -195,7 +195,7 @@ const tests = (config) => {
 			deepEqual(mocks.notifyClient.mock.calls[0].arguments[0], {
 				id: "account-username-change",
 				sub,
-				data: undefined,
+				data: {},
 				options: {},
 			});
 		});

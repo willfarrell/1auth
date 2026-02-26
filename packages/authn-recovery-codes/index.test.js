@@ -45,9 +45,9 @@ crypto({
 	symmetricSignatureSecret: symmetricRandomSignatureSecret(),
 	digestChecksumSalt: randomChecksumSalt(),
 	digestChecksumPepper: randomChecksumPepper(),
-	secretTimeCost: 1,
-	secretMemoryCost: 2 ** 3,
-	secretParallelism: 1,
+	secretArgon2TimeCost: 1,
+	secretArgon2MemoryCost: 2 ** 3,
+	secretArgon2Parallelism: 1,
 });
 notify.default({
 	client: (...args) => mocks.notifyClient(...args),
@@ -246,7 +246,7 @@ const tests = (config) => {
 		deepEqual(mocks.notifyClient.mock.calls[0].arguments[0], {
 			id: "authn-recovery-codes-create",
 			sub,
-			data: undefined,
+			data: {},
 			options: {},
 		});
 		const userSub = await recoveryCodesAuthenticate(username, secrets[0].value);
@@ -271,7 +271,7 @@ const tests = (config) => {
 		deepEqual(mocks.notifyClient.mock.calls[1].arguments[0], {
 			id: "authn-recovery-codes-update",
 			sub,
-			data: undefined,
+			data: {},
 			options: {},
 		});
 		authnDB = await store.selectList(authnGetOptions().table, { sub });
@@ -288,7 +288,7 @@ const tests = (config) => {
 		deepEqual(mocks.notifyClient.mock.calls[1].arguments[0], {
 			id: "authn-recovery-codes-remove",
 			sub,
-			data: undefined,
+			data: {},
 			options: {},
 		});
 
@@ -310,7 +310,7 @@ const tests = (config) => {
 		deepEqual(mocks.notifyClient.mock.calls[1].arguments[0], {
 			id: "authn-recovery-codes-remove",
 			sub,
-			data: undefined,
+			data: {},
 			options: {},
 		});
 

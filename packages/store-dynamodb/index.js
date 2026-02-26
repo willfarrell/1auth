@@ -232,7 +232,8 @@ export const insertList = async (table, rows = []) => {
 	return ids;
 };
 
-export const update = async (table, filters = {}, values = {}) => {
+export const update = async (table, filters = {}, inputValues = {}) => {
+	const values = structuredClone(inputValues);
 	if (options.log) {
 		options.log(
 			`@1auth/store-${options.id} update(`,

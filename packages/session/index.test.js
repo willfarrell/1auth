@@ -45,9 +45,9 @@ crypto({
 	symmetricSignatureSecret: symmetricRandomSignatureSecret(),
 	digestChecksumSalt: randomChecksumSalt(),
 	digestChecksumPepper: randomChecksumPepper(),
-	secretTimeCost: 1,
-	secretMemoryCost: 2 ** 3,
-	secretParallelism: 1,
+	secretArgon2TimeCost: 1,
+	secretArgon2MemoryCost: 2 ** 3,
+	secretArgon2Parallelism: 1,
 });
 notify.default({
 	client: (...args) => mocks.notifyClient(...args),
@@ -355,7 +355,7 @@ const tests = (config) => {
 			deepEqual(mocks.notifyClient.mock.calls[0].arguments[0], {
 				id: "authn-session-new-device",
 				sub,
-				data: undefined,
+				data: {},
 				options: {},
 			});
 		});
@@ -382,7 +382,7 @@ const tests = (config) => {
 			deepEqual(mocks.notifyClient.mock.calls[0].arguments[0], {
 				id: "authn-session-new-device",
 				sub,
-				data: undefined,
+				data: {},
 				options: {},
 			});
 		});

@@ -185,7 +185,7 @@ export const check = async (sub, value = {}) => {
 			return;
 		}
 	}
-	options.notify.trigger("authn-session-new-device", sub);
+	await options.notify.trigger("authn-session-new-device", sub);
 };
 
 export const expire = async (sub, id) => {

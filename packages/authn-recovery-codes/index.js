@@ -97,7 +97,7 @@ export const remove = async (sub, id) => {
 		const ids = await options.store
 			.selectList(options.table, {
 				sub,
-				type: `${options.id}-${options.secret.type}`,
+				type: `${options.secret.id}-${options.secret.type}`,
 			})
 			.then((res) => res.map((item) => item.id));
 		await authnRemoveList(options.secret, sub, ids);
