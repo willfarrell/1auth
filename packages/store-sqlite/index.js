@@ -189,6 +189,16 @@ const normalizeValues = (values) => {
 	values.lastused &&= new Date(values.lastused * 1000).toISOString();
 	values.expire &&= new Date(values.expire * 1000).toISOString();
 	values.remove &&= new Date(values.remove * 1000).toISOString();
+	for (const [key, v] of Object.entries(values)) {
+		if (v !== null && typeof v !== "string" && typeof v !== "number") {
+			values[key] =
+				v === undefined
+					? null
+					: typeof v === "object"
+						? JSON.stringify(v)
+						: String(v);
+		}
+	}
 };
 
 const parseValues = (values) => {
