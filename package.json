@@ -83,7 +83,7 @@
 			"cookie": "0.7.2"
 		},
 		"license-check-and-add": {
-			"minimatch": "10.2.2"
+			"minimatch": "^10.2.2"
 		}
 	},
 	"devEngines": {

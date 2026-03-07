@@ -1,0 +1,60 @@
+{
+	"name": "@1auth/store-d1",
+	"version": "0.0.0-beta.1",
+	"description": "Cloudflare D1 storage implementation for serverless SQLite persistence",
+	"type": "module",
+	"engines": {
+		"node": ">=24"
+	},
+	"engineStrict": true,
+	"publishConfig": {
+		"access": "public"
+	},
+	"main": "./index.js",
+	"module": "./index.js",
+	"sideEffects": false,
+	"exports": {
+		".": {
+			"import": "./index.js"
+		},
+		"./table/*": {
+			"import": "./table/*"
+		}
+	},
+	"files": [
+		"index.js",
+		"table"
+	],
+	"scripts": {
+		"test": "npm run test:unit",
+		"test:unit": "node --test"
+	},
+	"license": "MIT",
+	"funding": {
+		"type": "github",
+		"url": "https://github.com/sponsors/willfarrell"
+	},
+	"keywords": [
+		"1auth",
+		"OWASP",
+		"ASVS",
+		"cloudflare",
+		"d1",
+		"workers",
+		"database"
+	],
+	"author": {
+		"name": "1auth contributors",
+		"url": "https://github.com/willfarrell/1auth/graphs/contributors"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/willfarrell/1auth.git",
+		"directory": "packages/store-d1"
+	},
+	"bugs": {
+		"url": "https://github.com/willfarrell/1auth/issues"
+	},
+	"homepage": "https://github.com/willfarrell/1auth",
+	"dependencies": {}
+}
