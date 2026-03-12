@@ -2,7 +2,7 @@
 	"name": "1auth.js.org",
 	"description": "SvelteKit SSR",
 	"private": true,
-	"version": "0.0.0-beta.1",
+	"version": "0.0.0-beta.2",
 	"type": "module",
 	"scripts": {
 		"start": "vite dev",

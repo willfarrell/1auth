@@ -1,6 +1,6 @@
 {
 	"name": "@1auth/session",
-	"version": "0.0.0-beta.1",
+	"version": "0.0.0-beta.2",
 	"description": "Secure session management with expiration and encryption support",
 	"type": "module",
 	"engines": {

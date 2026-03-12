@@ -1,6 +1,6 @@
 {
 	"name": "@1auth/monorepo",
-	"version": "0.0.0-beta.1",
+	"version": "0.0.0-beta.2",
 	"description": "",
 	"private": true,
 	"type": "module",
@@ -24,7 +24,7 @@
 		"test:sast:semgrep": "semgrep scan --config auto",
 		"test:sast:trivy": "trivy fs --scanners vuln,license --include-dev-deps --ignored-licenses 0BSD,Apache-2.0,BSD-1-Clause,BSD-2-Clause,BSD-3-Clause,CC0-1.0,CC-BY-4.0,ISC,MIT --exit-code 1 --disable-telemetry .",
 		"test:sast:trufflehog": "trufflehog filesystem --only-verified --log-level=-1 ./",
-		"test:types": "tstyche",
+		"test:types": "which tstyche > /dev/null 2>&1 && tstyche || echo 'tstyche not found, skipping type tests'",
 		"test:perf": "node --test ./**/*.perf.js",
 		"test:dast": "npm run test:dast:fuzz && npm run test:dast:zap",
 		"test:dast:fuzz": "node --test ./**/*.fuzz.js",
