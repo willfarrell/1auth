@@ -27,6 +27,10 @@ export const create = async (client, table = name) => {
 						AttributeType: "S",
 					},
 					{
+						AttributeName: "digest",
+						AttributeType: "S",
+					},
+					{
 						AttributeName: "expire",
 						AttributeType: "N",
 					},
@@ -49,6 +53,10 @@ export const create = async (client, table = name) => {
 								AttributeName: "sub",
 								KeyType: "HASH",
 							},
+							{
+								AttributeName: "type",
+								KeyType: "RANGE",
+							},
 						],
 						Projection: {
 							ProjectionType: "INCLUDE",
@@ -56,8 +64,38 @@ export const create = async (client, table = name) => {
 								"id",
 								"encryptionKey",
 								"value",
+								"digest",
 								"name",
+								"otp",
+								"sourceId",
 								"create",
+								"update",
+								"verify",
+								"expire",
+								"lastused",
+							],
+						},
+					},
+					{
+						IndexName: "digest",
+						KeySchema: [
+							{
+								AttributeName: "digest",
+								KeyType: "HASH",
+							},
+						],
+						Projection: {
+							ProjectionType: "INCLUDE",
+							NonKeyAttributes: [
+								"id",
+								"sub",
+								"encryptionKey",
+								"value",
+								"name",
+								"otp",
+								"sourceId",
+								"create",
+								"update",
 								"verify",
 								"expire",
 								"lastused",

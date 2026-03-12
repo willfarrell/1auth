@@ -1,7 +1,7 @@
 {
 	"name": "@1auth/messenger",
-	"version": "0.0.0-beta.1",
-	"description": "",
+	"version": "0.0.0-beta.2",
+	"description": "Messaging framework for sending notifications and verification codes",
 	"type": "module",
 	"engines": {
 		"node": ">=24"
@@ -12,18 +12,18 @@
 	},
 	"main": "./index.js",
 	"module": "./index.js",
+	"sideEffects": false,
 	"exports": {
 		".": {
-			"import": {
-				"types": "./index.d.ts",
-				"default": "./index.js"
-			}
+			"import": "./index.js"
+		},
+		"./table/*": {
+			"import": "./table/*"
 		}
 	},
-	"types": "index.d.ts",
 	"files": [
 		"index.js",
-		"index.d.ts"
+		"table"
 	],
 	"scripts": {
 		"test": "npm run test:unit",
@@ -34,7 +34,14 @@
 		"type": "github",
 		"url": "https://github.com/sponsors/willfarrell"
 	},
-	"keywords": [],
+	"keywords": [
+		"1auth",
+		"OWASP",
+		"ASVS",
+		"messenger",
+		"notification",
+		"verification"
+	],
 	"author": {
 		"name": "1auth contributors",
 		"url": "https://github.com/willfarrell/1auth/graphs/contributors"
@@ -50,7 +57,7 @@
 	"homepage": "https://github.com/willfarrell/1auth",
 	"gitHead": "7a6c0fbb8ab71d6a2171e678697de9f237568431",
 	"dependencies": {
-		"@1auth/authn": "0.0.0-beta.1",
-		"@1auth/crypto": "0.0.0-beta.1"
+		"@1auth/authn": "0.0.0-beta.2",
+		"@1auth/crypto": "0.0.0-beta.2"
 	}
 }

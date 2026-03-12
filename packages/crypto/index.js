@@ -34,13 +34,17 @@ const defaults = {
 	digestChecksumEncoding: undefined,
 	digestChecksumSalt: undefined, // randomChecksumSalt()
 	digestChecksumPepper: undefined, // randomChecksumPepper()
+	// Password hashing defaults - based on OWASP Password Storage Cheat Sheet
+	// https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html
+	// OWASP minimums: 19 MiB memory, 2 iterations, 1 parallelism
+	// We use 32 MiB (exceeds minimum) for enhanced security
 	secretArgon2Algorithm: "argon2id",
-	secretArgon2Version: 19, // argon2id
-	secretArgon2Parallelism: 1, // argon2id
-	secretArgon2MemoryCost: 15, // argon2id
-	secretArgon2TimeCost: 3, // argon2id
-	secretArgon2NonceLength: 16, // argon2id
-	secretArgon2HashLength: 64, // argon2id
+	secretArgon2Version: 19,
+	secretArgon2Parallelism: 1, // OWASP: 1 (matches)
+	secretArgon2MemoryCost: 15, // 2^15 KiB = 32 MiB (exceeds OWASP minimum of 19 MiB)
+	secretArgon2TimeCost: 3, // OWASP: 2 (we use 3 for better security)
+	secretArgon2NonceLength: 16,
+	secretArgon2HashLength: 64,
 
 	defaultEncoding: "base64",
 	defaultHashAlgorithm: "sha3-384",
@@ -121,35 +125,12 @@ export const makeOptionsBuffer = (
 
 export const getOptions = () => options;
 
-// *** entropy *** //
-// export const characterPoolSize = (value) => {
-//   const chars = value.split('')
-//   let min = chars[0].charCodeAt()
-//   let max = chars[0].charCodeAt()
-//   for(const char of value.split('')) {
-//     const code = char.charCodeAt()
-//     if (code < min) {
-//       min = code
-//     } else if (max < code) {
-//       max = code
-//     }
-//   }
-//   return max - min
-// }
-
 // *** Helpers *** //
 // Ref: https://therootcompany.com/blog/how-many-bits-of-entropy-per-character/
 export const entropyToCharacterLength = (bits, characterPoolSize) => {
 	// bits*ln(2)/ln(characterPoolSize)
 	return Math.ceil((bits * Math.LN2) / Math.log(characterPoolSize));
 };
-/* export const characterLengthToEntropy = (
-  characterLength,
-  characterPoolSize,
-) => {
-  // log_2(characterPoolSize^characterLength)
-  return Math.floor(Math.log2(characterPoolSize ** characterLength));
-}; */
 
 // *** Random generators *** //
 export { randomBytes, randomInt, randomUUID } from "node:crypto";
@@ -179,7 +160,7 @@ export const randomAlphaNumeric = (characterLength) => {
 export const randomNumeric = (characterLength) => {
 	let value = "";
 	for (let i = characterLength; i--; ) {
-		value += randomInt(9);
+		value += randomInt(0, 10);
 	}
 	return value;
 };
@@ -442,7 +423,7 @@ export const symmetricGenerateEncryptionKey = (
 	{ encryptionKey, signatureSecret } = {},
 ) => {
 	encryptionKey ??= options.symmetricEncryptionKey;
-	signatureSecret ??= options.symemeticSignatureSecret;
+	signatureSecret ??= options.symmetricSignatureSecret;
 
 	const rowEncryptionKey = symmetricRandomEncryptionKey();
 	const rowEncryptedKey = symmetricEncrypt(rowEncryptionKey, {
@@ -539,7 +520,7 @@ export const symmetricDecryptKey = (
 	{ sub, encryptionKey, signatureSecret } = {},
 ) => {
 	encryptionKey ??= options.symmetricEncryptionKey;
-	signatureSecret ??= options.symemeticSignatureSecret;
+	signatureSecret ??= options.symmetricSignatureSecret;
 	return Buffer.from(
 		symmetricDecrypt(encryptedKey, {
 			encryptionKey,
@@ -575,7 +556,9 @@ export const symmetricDecrypt = (
 	);
 
 	if (encryptedDataPacket === false) {
-		throw new Error("Signature incorrect");
+		throw new Error("Signature incorrect", {
+			cause: { signedEncryptedDataPacket },
+		});
 	}
 	const iv = Buffer.from(
 		encryptedDataPacket.substring(0, symmetricEncryptionEncodingLengths.iv),
@@ -666,7 +649,10 @@ export const symmetricRotation = (
 		return data;
 	},
 ) => {
-	if (oldOptions.sub !== newOptions.sub) throw new Error("Mismatching `sub`");
+	if (oldOptions.sub !== newOptions.sub)
+		throw new Error("Mismatching `sub`", {
+			cause: { sub: oldOptions.sub },
+		});
 
 	const oldEncryptedValuesClone = structuredClone(oldEncryptedValues);
 	// Don't use structuredClone, converts Buffer to Uint8Array ...
@@ -753,6 +739,8 @@ export const verifyAsymmetricSignature = async (
 		Buffer.from(signature, options.asymmetricSignatureEncoding),
 	);
 };
+
+export const nowInSeconds = () => Math.floor(Date.now() / 1000);
 
 export const safeEqual = (input, expected) => {
 	const bufferInput = Buffer.from(input);

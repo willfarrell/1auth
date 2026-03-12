@@ -84,4 +84,23 @@ describe("store-postgres", () => {
 			deepEqual(parameters, ["a", "b", "c", "d"]);
 		});
 	});
+	describe("makeSqlParts with default placeholder", () => {
+		it("Should format {insert} with $ placeholder", async () => {
+			store.default({ placeholder: "$" });
+			const { insert, parameters } = store.makeSqlParts({}, { a: "a", b: "b" });
+			equal(insert, '("a", "b") VALUES ($1,$2)');
+			deepEqual(parameters, ["a", "b"]);
+		});
+
+		it("Should format {where} with $ placeholder", async () => {
+			store.default({ placeholder: "$" });
+			const { where, parameters } = store.makeSqlParts({
+				a: "a",
+				bc: ["b", "c"],
+				d: "d",
+			});
+			equal(where, 'WHERE "a" = $1 AND "bc" IN ($2,$3) AND "d" = $4');
+			deepEqual(parameters, ["a", "b", "c", "d"]);
+		});
+	});
 });

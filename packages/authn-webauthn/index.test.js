@@ -4,14 +4,14 @@ import account, {
 	create as accountCreate,
 	remove as accountRemove,
 } from "../account/index.js";
-// import * as mockAccountDynamoDBTable from "../account/table/dynamodb.js";
+import * as mockAccountDynamoDBTable from "../account/table/dynamodb.js";
 import * as mockAccountSQLTable from "../account/table/sql.js";
 import accountUsername, {
 	create as accountUsernameCreate,
 	exists as accountUsernameExists,
 } from "../account-username/index.js";
 import authn, { getOptions as authnGetOptions } from "../authn/index.js";
-// import * as mockAuthnDynamoDBTable from "../authn/table/dynamodb.js";
+import * as mockAuthnDynamoDBTable from "../authn/table/dynamodb.js";
 import * as mockAuthnSQLTable from "../authn/table/sql.js";
 import webauthn, {
 	authenticate as webauthnAuthenticate,
@@ -37,9 +37,9 @@ import crypto, {
 import * as notify from "../notify/index.js";
 import * as mockNotify from "../notify/mock.js";
 import * as storeDynamoDB from "../store-dynamodb/index.js";
+import * as mockDynamoDB from "../store-dynamodb/mock.js";
 import * as storePostgres from "../store-postgres/index.js";
 import * as storeSQLite from "../store-sqlite/index.js";
-// import * as mockDynamoDB from "../store-dynamodb/mock.js";
 // import * as mockPostgres from "../store-postgres/mock.js";
 import * as mockSQLite from "../store-sqlite/mock.js";
 
@@ -48,9 +48,9 @@ crypto({
 	symmetricSignatureSecret: symmetricRandomSignatureSecret(),
 	digestChecksumSalt: randomChecksumSalt(),
 	digestChecksumPepper: randomChecksumPepper(),
-	secretTimeCost: 1,
-	secretMemoryCost: 2 ** 3,
-	secretParallelism: 1,
+	secretArgon2TimeCost: 1,
+	secretArgon2MemoryCost: 2 ** 3,
+	secretArgon2Parallelism: 1,
 });
 notify.default({
 	client: (...args) => mocks.notifyClient(...args),
@@ -96,16 +96,19 @@ const mockStores = {
 			storeAuthn: mockAuthnSQLTable,
 		},
 	},
-	// TODO
-	// dynamodb: {
-	//   store: storeDynamoDB,
-	//   mocks :{
-	// 		...mockNotify,
-	// 	  ...mockDynamoDB,
-	// 		storeAccount: mockAccountDynamoDBTable,
-	// 		storeAuthn: mockAuthnDynamoDBTable,
-	//    }
-	// },
+	...(mockDynamoDB.isReady()
+		? {
+				dynamodb: {
+					store: storeDynamoDB,
+					mocks: {
+						...mockNotify,
+						...mockDynamoDB,
+						storeAccount: mockAccountDynamoDBTable,
+						storeAuthn: mockAuthnDynamoDBTable,
+					},
+				},
+			}
+		: {}),
 };
 
 account();
@@ -241,7 +244,7 @@ const tests = (config) => {
 			}
 		});
 		it("Can select an WebAuthn with { id } (exists)", async () => {
-			await webauthnCreate(sub); // TODO id is undefined
+			await webauthnCreate(sub);
 			const [token] = await store.selectList(authnGetOptions().table, { sub });
 			await overrideCreateChallenge(sub, token);
 			const { id } = await webauthnVerify(
@@ -378,7 +381,7 @@ const tests = (config) => {
 		deepEqual(mocks.notifyClient.mock.calls[0].arguments[0], {
 			id: "authn-webauthn-create",
 			sub,
-			data: undefined,
+			data: { name: "PassKey" },
 			options: {},
 		});
 
@@ -388,7 +391,7 @@ const tests = (config) => {
 		equal(secret.type, "WebAuthn-secret");
 		equal(secret.otp, false);
 		equal(secret.value.length, 1741);
-		equal(secret.expire, null);
+		ok(!secret.expire);
 
 		count = await webauthnCount(sub);
 		equal(count, 1);
@@ -434,14 +437,16 @@ const tests = (config) => {
 		await overrideCreateChallenge(sub, db0[0]);
 		await webauthnVerify(sub, registrationResponse, { name: "PassKey" });
 
-		// TODO finish
-		// await webauthnCreate(sub);
-		// const [token] = await store.selectList(authnGetOptions().table, { sub });
-		// await overrideCreateChallenge(sub, token);
-		// await webauthnVerify(sub, registrationResponse, { name: "Yubikey" });
+		await webauthnCreate(sub);
+		const [token] = await store.selectList(authnGetOptions().table, {
+			sub,
+			type: "WebAuthn-token",
+		});
+		await overrideCreateChallenge(sub, token);
+		await webauthnVerify(sub, registrationResponse, { name: "Yubikey" }, false);
 
-		// let count = await webauthnCount(sub);
-		// equal(count, 2);
+		const count = await webauthnCount(sub);
+		equal(count, 2);
 	});
 	it("Can remove WebAuthn on an account", async () => {
 		await webauthnCreate(sub);
@@ -459,7 +464,7 @@ const tests = (config) => {
 		deepEqual(mocks.notifyClient.mock.calls[1].arguments[0], {
 			id: "authn-webauthn-remove",
 			sub,
-			data: undefined,
+			data: {},
 			options: {},
 		});
 
@@ -583,7 +588,7 @@ const tests = (config) => {
 		);
 	};
 };
-describe("authn-webauthn", () => {
+describe("authn-webauthn", { concurrency: 1 }, () => {
 	for (const storeKey of Object.keys(mockStores)) {
 		describe(`using store-${storeKey}`, () => {
 			tests(mockStores[storeKey]);

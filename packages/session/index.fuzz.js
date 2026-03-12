@@ -35,9 +35,9 @@ crypto({
 	symmetricSignatureSecret: symmetricRandomSignatureSecret(),
 	digestChecksumSalt: randomChecksumSalt(),
 	digestChecksumPepper: randomChecksumPepper(),
-	secretTimeCost: 1,
-	secretMemoryCost: 2 ** 3,
-	secretParallelism: 1,
+	secretArgon2TimeCost: 1,
+	secretArgon2MemoryCost: 2 ** 3,
+	secretArgon2Parallelism: 1,
 });
 notify.default({
 	client: (...args) => mocks.notifyClient(...args),
@@ -229,23 +229,25 @@ test("fuzz sessionCreate w/ value", async () => {
 		},
 	);
 });
-// TODO throws due tp missing columns ..
-// test("fuzz sessionCreate w/ values", async () => {
-// 	await fc.assert(
-// 		fc.asyncProperty(fc.anything(), async (values) => {
-//       try {
-//   		  await sessionCreate(sub, testSession.value, values);
-//   		} catch (e) {
-//   			catchError(values, e);
-//   		}
-// 		}),
-// 		{
-// 			numRuns: 100_000,
-// 			verbose: 2,
-// 			examples: [],
-// 		},
-// 	);
-// });
+test("fuzz sessionCreate w/ values", async () => {
+	await fc.assert(
+		fc.asyncProperty(
+			fc.record({ metadata: fc.anything() }, { withDeletedKeys: true }),
+			async (values) => {
+				try {
+					await sessionCreate(sub, testSession.value, values);
+				} catch (e) {
+					catchError(values, e);
+				}
+			},
+		),
+		{
+			numRuns: 100_000,
+			verbose: 2,
+			examples: [],
+		},
+	);
+});
 
 test("fuzz sessionCheck w/ sub", async () => {
 	await fc.assert(

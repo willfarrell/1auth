@@ -4,14 +4,14 @@ import account, {
 	create as accountCreate,
 	remove as accountRemove,
 } from "../account/index.js";
-// import * as mockAccountDynamoDBTable from "../account/table/dynamodb.js";
+import * as mockAccountDynamoDBTable from "../account/table/dynamodb.js";
 import * as mockAccountSQLTable from "../account/table/sql.js";
 import accountUsername, {
 	create as accountUsernameCreate,
 	exists as accountUsernameExists,
 } from "../account-username/index.js";
 import authn, { getOptions as authnGetOptions } from "../authn/index.js";
-// import * as mockAuthnDynamoDBTable from "../authn/table/dynamodb.js";
+import * as mockAuthnDynamoDBTable from "../authn/table/dynamodb.js";
 import * as mockAuthnSQLTable from "../authn/table/sql.js";
 import recoveryCodes, {
 	authenticate as recoveryCodesAuthenticate,
@@ -34,9 +34,9 @@ import crypto, {
 import * as notify from "../notify/index.js";
 import * as mockNotify from "../notify/mock.js";
 import * as storeDynamoDB from "../store-dynamodb/index.js";
+import * as mockDynamoDB from "../store-dynamodb/mock.js";
 import * as storePostgres from "../store-postgres/index.js";
 import * as storeSQLite from "../store-sqlite/index.js";
-// import * as mockDynamoDB from "../store-dynamodb/mock.js";
 // import * as mockPostgres from "../store-postgres/mock.js";
 import * as mockSQLite from "../store-sqlite/mock.js";
 
@@ -45,9 +45,9 @@ crypto({
 	symmetricSignatureSecret: symmetricRandomSignatureSecret(),
 	digestChecksumSalt: randomChecksumSalt(),
 	digestChecksumPepper: randomChecksumPepper(),
-	secretTimeCost: 1,
-	secretMemoryCost: 2 ** 3,
-	secretParallelism: 1,
+	secretArgon2TimeCost: 1,
+	secretArgon2MemoryCost: 2 ** 3,
+	secretArgon2Parallelism: 1,
 });
 notify.default({
 	client: (...args) => mocks.notifyClient(...args),
@@ -93,16 +93,19 @@ const mockStores = {
 			storeAuthn: mockAuthnSQLTable,
 		},
 	},
-	// TODO
-	// dynamodb: {
-	//   store: storeDynamoDB,
-	//   mocks :{
-	// 		...mockNotify,
-	// 	  ...mockDynamoDB,
-	// 		storeAccount: mockAccountDynamoDBTable,
-	// 		storeAuthn: mockAuthnDynamoDBTable,
-	//    }
-	// },
+	...(mockDynamoDB.isReady()
+		? {
+				dynamodb: {
+					store: storeDynamoDB,
+					mocks: {
+						...mockNotify,
+						...mockDynamoDB,
+						storeAccount: mockAccountDynamoDBTable,
+						storeAuthn: mockAuthnDynamoDBTable,
+					},
+				},
+			}
+		: {}),
 };
 
 account();
@@ -243,7 +246,7 @@ const tests = (config) => {
 		deepEqual(mocks.notifyClient.mock.calls[0].arguments[0], {
 			id: "authn-recovery-codes-create",
 			sub,
-			data: undefined,
+			data: {},
 			options: {},
 		});
 		const userSub = await recoveryCodesAuthenticate(username, secrets[0].value);
@@ -268,7 +271,7 @@ const tests = (config) => {
 		deepEqual(mocks.notifyClient.mock.calls[1].arguments[0], {
 			id: "authn-recovery-codes-update",
 			sub,
-			data: undefined,
+			data: {},
 			options: {},
 		});
 		authnDB = await store.selectList(authnGetOptions().table, { sub });
@@ -285,7 +288,7 @@ const tests = (config) => {
 		deepEqual(mocks.notifyClient.mock.calls[1].arguments[0], {
 			id: "authn-recovery-codes-remove",
 			sub,
-			data: undefined,
+			data: {},
 			options: {},
 		});
 
@@ -307,7 +310,7 @@ const tests = (config) => {
 		deepEqual(mocks.notifyClient.mock.calls[1].arguments[0], {
 			id: "authn-recovery-codes-remove",
 			sub,
-			data: undefined,
+			data: {},
 			options: {},
 		});
 
@@ -367,7 +370,7 @@ const tests = (config) => {
 		equal(row.length, 0);
 	});
 };
-describe("authn-recovery-codes", () => {
+describe("authn-recovery-codes", { concurrency: 1 }, () => {
 	for (const storeKey of Object.keys(mockStores)) {
 		describe(`using store-${storeKey}`, () => {
 			tests(mockStores[storeKey]);

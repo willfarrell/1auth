@@ -14,7 +14,7 @@ import {
 	update as authnUpdate,
 	verify as authnVerify,
 } from "@1auth/authn";
-import { makeRandomConfigObject } from "@1auth/crypto";
+import { makeRandomConfigObject, nowInSeconds } from "@1auth/crypto";
 
 import {
 	generateAuthenticationOptions,
@@ -38,7 +38,10 @@ export const token = ({
 			...value,
 			response,
 		});
-		if (!verified) throw new Error("Failed verifyRegistrationResponse");
+		if (!verified)
+			throw new Error("Failed verifyRegistrationResponse", {
+				cause: { response },
+			});
 		return { registrationInfo: jsonEncodeSecret(registrationInfo) };
 	},
 	...params
@@ -82,7 +85,6 @@ export const challenge = ({
 	type = "challenge",
 	otp = true,
 	expire = 10 * 60,
-	// create: () => randomAlphaNumeric(challenge.minLength),
 	encode = (value) => {
 		value.authenticator = jsonEncodeSecret(value.authenticator);
 		const encodedValue = JSON.stringify(value);
@@ -101,9 +103,11 @@ export const challenge = ({
 				response,
 			},
 		);
-		if (!verified) throw new Error("Failed verifyAuthenticationResponse");
+		if (!verified)
+			throw new Error("Failed verifyAuthenticationResponse", {
+				cause: { response },
+			});
 		value.authenticator.credential.counter = authenticationInfo.newCounter;
-		// value.authenticator = jsonEncodeSecret(value.authenticator)
 		return true;
 	},
 	cleanup = async (sub, value, { sourceId } = {}) => {
@@ -150,8 +154,8 @@ const defaults = {
 	challenge: challenge(),
 };
 const options = {};
-export default (params) => {
-	Object.assign(options, authnGetOptions(), defaults, params);
+export default (opt = {}) => {
+	Object.assign(options, authnGetOptions(), defaults, opt);
 };
 export const getOptions = () => options;
 
@@ -189,7 +193,7 @@ export const verify = async (
 	});
 
 	if (notify) {
-		await options.notify.trigger("authn-webauthn-create", sub); // TODO add in user.name
+		await options.notify.trigger("authn-webauthn-create", sub, { name });
 	}
 	return { id, secret: value };
 };
@@ -222,22 +226,6 @@ const createToken = async (sub) => {
 			residentKey: options.residentKey,
 			userVerification: options.userVerification,
 		},
-		// extras?
-		// timeout
-		// pubKeyCredParams: [
-		//   {
-		//     type: 'public-key',
-		//     alg: -8 // EdDSA
-		//   },
-		//   {
-		//     type: 'public-key',
-		//     alg: -7 // ES256
-		//   },
-		//   {
-		//     type: 'public-key',
-		//     alg: -257 // RS256
-		//   }
-		// ]
 	};
 	const secret = await generateRegistrationOptions(registrationOptions);
 	const value = {
@@ -261,8 +249,17 @@ const verifyToken = async (sub, credential) => {
 };
 
 export const createChallenge = async (sub) => {
-	// TODO remove previous challenges
-	// const challenge = options.challenge.create();
+	// Remove previous challenges for this user
+	const previousChallenges = await authnList(
+		options.challenge,
+		sub,
+		undefined,
+		["id"],
+	);
+	for (const prev of previousChallenges) {
+		await authnRemove(options.challenge, sub, prev.id);
+	}
+
 	const now = nowInSeconds();
 
 	const credentials = await authnList(options.secret, sub, undefined, [
@@ -282,7 +279,7 @@ export const createChallenge = async (sub) => {
 
 	if (!allowCredentials.length) {
 		if (options.log) {
-			options.log("@1auth/auth-webauthn allowCredentials is empty");
+			options.log("@1auth/authn-webauthn allowCredentials is empty");
 		}
 		return {};
 	}
@@ -328,14 +325,12 @@ export const remove = async (sub, id) => {
 
 const jsonEncodeSecret = (value) => {
 	if (!value) return value;
-	// value.credential.id = credentialNormalize(value.credential.id);
 	value.credential.publicKey = credentialNormalize(value.credential.publicKey);
 	value.attestationObject = credentialNormalize(value.attestationObject);
 	return value;
 };
 
 const jsonParseSecret = (value) => {
-	// value.credential.id = credentialBuffer(value.credential.id);
 	value.credential.publicKey = credentialBuffer(value.credential.publicKey);
 	value.attestationObject = credentialBuffer(value.attestationObject);
 	return value;
@@ -352,5 +347,3 @@ const credentialNormalize = (value) => {
 const credentialBuffer = (value) => {
 	return Buffer.from(credentialNormalize(value));
 };
-
-const nowInSeconds = () => Math.floor(Date.now() / 1000);

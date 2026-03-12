@@ -11,8 +11,8 @@ const options = {
 	placeholder: "$",
 };
 
-export default (params) => {
-	Object.assign(options, params);
+export default (opt = {}) => {
+	Object.assign(options, opt);
 };
 
 export const exists = async (table, filters) => {
@@ -34,7 +34,7 @@ export const count = async (table, filters = {}) => {
 	const sql = `SELECT COUNT(*) AS count FROM ${table} ${where}`;
 	return await options.client
 		.query(sql, parameters)
-		.then((res) => res[0].count);
+		.then((res) => Number(res[0].count));
 };
 
 export const select = async (table, filters = {}, fields = []) => {
@@ -52,7 +52,7 @@ export const select = async (table, filters = {}, fields = []) => {
 	return await options.client
 		.query(sql, parameters)
 		.then((res) => res?.[0])
-		// Workaround because an expire filter doesn't exists yet'
+		// Workaround because an expire filter doesn't exist yet
 		.then((row) => {
 			parseValues(row);
 			return row;
@@ -73,7 +73,7 @@ export const selectList = async (table, filters = {}, fields = []) => {
 	const sql = `SELECT ${select} FROM ${table} ${where}`;
 	return await options.client
 		.query(sql, parameters)
-		// Workaround because an expire filter doesn't exists yet'
+		// Workaround because an expire filter doesn't exist yet
 		.then((rows) => {
 			return rows.map((row) => {
 				parseValues(row);
@@ -156,6 +156,21 @@ export const update = async (table, filters = {}, inputValues = {}) => {
 	await options.client.query(sql, parameters);
 };
 
+export const updateList = async (table, filtersList = [], values = {}) => {
+	if (options.log) {
+		options.log(
+			`@1auth/store-${options.id} updateList(`,
+			table,
+			filtersList,
+			values,
+			")",
+		);
+	}
+	return await Promise.allSettled(
+		filtersList.map((filters) => update(table, filters, values)),
+	);
+};
+
 export const remove = async (table, filters = {}) => {
 	if (options.log) {
 		options.log(`@1auth/store-${options.id} remove(`, table, filters, ")");
@@ -206,8 +221,6 @@ export const makeSqlParts = (
 	const insertParts = [];
 	const updateParts = [];
 	for (const key of keys) {
-		// insertParts.push("$" + idx);
-		// updateParts.push('"' + key + '" = $' + idx);
 		insertParts.push(getPlaceholder(idx));
 		updateParts.push(`"${key}" = ${getPlaceholder(idx)}`);
 		idx++;
@@ -228,7 +241,6 @@ export const makeSqlParts = (
 				parameters = parameters.concat(value);
 				return sql;
 			}
-			// const sql = '"' + key + '" = $' + idx++;
 			const sql = `"${key}" = ${getPlaceholder(idx++)}`;
 			parameters.push(value);
 			return sql;

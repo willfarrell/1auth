@@ -105,11 +105,17 @@ export const truncate = async (client, table = name) => {
 };
 
 export const drop = async (client, table = name) => {
-	await client.send(
-		new DeleteTableCommand({
-			TableName: table,
-		}),
-	);
+	try {
+		await client.send(
+			new DeleteTableCommand({
+				TableName: table,
+			}),
+		);
+	} catch (e) {
+		if (e.name !== "ResourceNotFoundException") {
+			throw e;
+		}
+	}
 };
 
 export const emptyRow = () => ({

@@ -15,15 +15,22 @@ export const storeClient = new DynamoDBClient({
 });
 
 let ready;
-const waitForStart = async () => {
+const maxRetries = 30;
+const waitForStart = async (attempt = 0) => {
 	if (ready) return;
 	try {
 		await storeClient.send(new ListTablesCommand());
 		ready = 1;
 	} catch (error) {
+		if (attempt >= maxRetries) {
+			console.warn("DynamoDB local not available, skipping DynamoDB tests");
+			return;
+		}
 		console.info("Waiting for dynamodb to start...", error);
 		await setTimeout(500);
-		return waitForStart();
+		return waitForStart(attempt + 1);
 	}
 };
 await waitForStart();
+
+export const isReady = () => !!ready;

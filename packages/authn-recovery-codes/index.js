@@ -3,10 +3,8 @@
 import {
 	authenticate as authnAuthenticate,
 	count as authnCount,
-	// create as authnCreate,
 	createList as authnCreateList,
 	getOptions as authnGetOptions,
-	//select as authnSelect,
 	list as authnList,
 	remove as authnRemove,
 	removeList as authnRemoveList,
@@ -14,6 +12,7 @@ import {
 import {
 	createSecretHash,
 	makeRandomConfigObject,
+	nowInSeconds,
 	verifySecretHash,
 } from "@1auth/crypto";
 
@@ -55,12 +54,11 @@ export const authenticate = async (username, secret) => {
 };
 
 export const count = async (sub) => {
+	if (!sub || typeof sub !== "string") {
+		throw new Error("401 Unauthorized", { cause: { sub } });
+	}
 	return await authnCount(options.secret, sub);
 };
-
-// export const select = async (sub, id) => {
-//   return await authnSelect(options.secret, sub, id);
-// };
 
 export const list = async (sub) => {
 	return await authnList(options.secret, sub);
@@ -99,7 +97,7 @@ export const remove = async (sub, id) => {
 		const ids = await options.store
 			.selectList(options.table, {
 				sub,
-				type: `${options.id}-${options.secret.type}`,
+				type: `${options.secret.id}-${options.secret.type}`,
 			})
 			.then((res) => res.map((item) => item.id));
 		await authnRemoveList(options.secret, sub, ids);
@@ -121,5 +119,3 @@ const createSecrets = async (sub, count = options.count) => {
 	await authnCreateList(options.secret, sub, secrets);
 	return secrets;
 };
-
-const nowInSeconds = () => Math.floor(Date.now() / 1000);

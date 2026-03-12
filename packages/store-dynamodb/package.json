@@ -1,7 +1,7 @@
 {
 	"name": "@1auth/store-dynamodb",
-	"version": "0.0.0-beta.1",
-	"description": "",
+	"version": "0.0.0-beta.2",
+	"description": "AWS DynamoDB storage implementation for serverless persistence",
 	"type": "module",
 	"engines": {
 		"node": ">=24"
@@ -12,18 +12,18 @@
 	},
 	"main": "./index.js",
 	"module": "./index.js",
+	"sideEffects": false,
 	"exports": {
 		".": {
-			"import": {
-				"types": "./index.d.ts",
-				"default": "./index.js"
-			}
+			"import": "./index.js"
+		},
+		"./table/*": {
+			"import": "./table/*"
 		}
 	},
-	"types": "index.d.ts",
 	"files": [
 		"index.js",
-		"index.d.ts"
+		"table"
 	],
 	"scripts": {
 		"run": "docker run -p 8000:8000 amazon/dynamodb-local",
@@ -35,7 +35,14 @@
 		"type": "github",
 		"url": "https://github.com/sponsors/willfarrell"
 	},
-	"keywords": [],
+	"keywords": [
+		"1auth",
+		"OWASP",
+		"ASVS",
+		"DynamoDB",
+		"AWS",
+		"database"
+	],
 	"author": {
 		"name": "1auth contributors",
 		"url": "https://github.com/willfarrell/1auth/graphs/contributors"

@@ -9,6 +9,7 @@ import {
 	createSeasonedDigest,
 	createSecretHash,
 	makeRandomConfigObject,
+	nowInSeconds,
 	randomNumeric,
 	symmetricDecryptFields,
 	symmetricEncryptFields,
@@ -66,13 +67,16 @@ export const getOptions = () => options;
 
 export const exists = async (type, value) => {
 	const valueDigest = createSeasonedDigest(value);
-	return options.store.exists(options.table, {
+	return await options.store.exists(options.table, {
 		type,
 		digest: valueDigest,
 	});
 };
 
 export const count = async (type, sub) => {
+	if (!sub || typeof sub !== "string") {
+		throw new Error("401 Unauthorized", { cause: { sub } });
+	}
 	const messengers = await options.store.selectList(
 		options.table,
 		{ sub, type },
@@ -199,7 +203,7 @@ export const create = async (type, sub, values) => {
 		update: now, // in case new digests need to be created
 	};
 	if (options.idGenerate) {
-		params.id = options.randomId.create(options.idPrefix);
+		params.id = await options.randomId.create();
 	}
 	const id = await options.store.insert(options.table, params);
 
@@ -255,7 +259,7 @@ export const verifyToken = async (type, sub, token, sourceId) => {
 		}
 		return messengers;
 	});
-	await authnVerify(options.token, sub, token);
+	await authnVerify({ ...options.token, sourceId }, sub, token);
 	await options.store.update(
 		options.table,
 		{ sub, id: sourceId },
@@ -282,9 +286,8 @@ export const remove = async (type, sub, id) => {
 	);
 
 	if (!messenger) {
-		throw new Error("401 Unauthorized");
+		throw new Error("401 Unauthorized", { cause: { sub, id } });
 	}
-	// await authnRemove(options.token, sub, id);
 	await authnGetOptions().store.remove(authnGetOptions().table, {
 		sub,
 		sourceId: id,
@@ -314,5 +317,3 @@ export const remove = async (type, sub, id) => {
 		options.notify.trigger(`messenger-${type}-remove`, sub),
 	]);
 };
-
-const nowInSeconds = () => Math.floor(Date.now() / 1000);

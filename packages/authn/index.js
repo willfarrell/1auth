@@ -3,6 +3,7 @@
 import { setTimeout } from "node:timers/promises";
 import {
 	makeRandomConfigObject,
+	nowInSeconds,
 	symmetricDecryptFields,
 	symmetricEncryptFields,
 	symmetricGenerateEncryptionKey,
@@ -35,19 +36,9 @@ export default (opt = {}) => {
 };
 export const getOptions = () => options;
 
-// export const exists = async (credentialOptions, sub, params) => {
-//   const type = makeType(credentialOptions);
-//   const list = await options.store.selectList(options.table, {
-//     ...params,
-//     sub,
-//     type,
-//   });
-//   return list.length > 1;
-// };
-
 export const count = async (credentialOptions, sub) => {
 	if (!sub || typeof sub !== "string") {
-		throw new Error("401 Unauthorized", { cause: { sub, id } });
+		throw new Error("401 Unauthorized", { cause: { sub } });
 	}
 	const type = makeType(credentialOptions);
 	const credentials = await options.store.selectList(
@@ -72,7 +63,7 @@ export const count = async (credentialOptions, sub) => {
 
 export const list = async (credentialOptions, sub, params, fields) => {
 	if (!sub || typeof sub !== "string") {
-		throw new Error("401 Unauthorized", { cause: { sub, id } });
+		throw new Error("401 Unauthorized", { cause: { sub } });
 	}
 	const type = makeType(credentialOptions);
 	const items = await options.store.selectList(
@@ -84,14 +75,13 @@ export const list = async (credentialOptions, sub, params, fields) => {
 		},
 		fields,
 	);
-	// const now = nowInSeconds();
+	const now = nowInSeconds();
 	const list = [];
 	for (let i = items.length; i--; ) {
 		const item = items[i];
-		// TODO need filter for expire
-		// if (credential.expire < now) {
-		//   continue;
-		// }
+		if (item.expire && item.expire < now) {
+			continue;
+		}
 		const { encryptionKey: encryptedKey } = item;
 		item.encryptionKey = undefined;
 		const decryptedItem = symmetricDecryptFields(
@@ -167,11 +157,7 @@ export const update = async (
 	credentialOptions,
 	{ id, sub, encryptionKey, encryptedKey, value, ...values },
 ) => {
-	// if (!sub || typeof sub !== "string") {
-	// 	throw new Error("401 Unauthorized", { cause: { sub } });
-	// }
 	const now = nowInSeconds();
-	// const type = makeType(credentialOptions);
 
 	const encodedValue = await credentialOptions.encode(value);
 
@@ -181,7 +167,7 @@ export const update = async (
 		options.encryptedFields,
 	);
 
-	return options.store.update(
+	return await options.store.update(
 		options.table,
 		{ sub, id },
 		{
@@ -192,7 +178,7 @@ export const update = async (
 };
 
 export const subject = async (username) => {
-	return Promise.all(
+	return await Promise.all(
 		options.usernameExists.map((exists) => {
 			return exists(username);
 		}),
@@ -256,7 +242,6 @@ export const authenticate = async (credentialOptions, username, secret) => {
 			if (otp) {
 				await expire(credentialOptions, sub, id, { lastused: now });
 			} else {
-				const now = nowInSeconds();
 				await options.store.update(
 					options.table,
 					{ id, sub },
@@ -292,7 +277,6 @@ export const verifySecret = async (_credentialOptions, sub, id) => {
 	if (!id || typeof id !== "string") {
 		throw new Error("404 Not Found", { cause: { sub, id } });
 	}
-	// const type = makeType(credentialOptions);
 	const now = nowInSeconds();
 	await options.store.update(
 		options.table,
@@ -301,7 +285,6 @@ export const verifySecret = async (_credentialOptions, sub, id) => {
 	);
 };
 
-// TODO add in sourceId as filter for messengers
 export const verify = async (credentialOptions, sub, input) => {
 	const timeout = setTimeout(options.authenticationDuration);
 	if (!sub || typeof sub !== "string") {
@@ -315,11 +298,12 @@ export const verify = async (credentialOptions, sub, input) => {
 	}
 
 	const type = makeType(credentialOptions);
+	const filters = { sub, type };
+	if (credentialOptions.sourceId) {
+		filters.sourceId = credentialOptions.sourceId;
+	}
 
-	const credentials = await options.store.selectList(options.table, {
-		sub,
-		type,
-	});
+	const credentials = await options.store.selectList(options.table, filters);
 
 	const now = nowInSeconds();
 	let valid;
@@ -327,7 +311,7 @@ export const verify = async (credentialOptions, sub, input) => {
 	let skipExpiredCount = 0;
 	for (credential of credentials) {
 		// skip expired
-		if (credential.expire < now) {
+		if (credential.expire && credential.expire < now) {
 			skipExpiredCount += 1;
 			continue;
 		}
@@ -378,7 +362,6 @@ export const expire = async (_credentialOptions, sub, id, values = {}) => {
 	if (!id || typeof id !== "string") {
 		throw new Error("404 Not Found", { cause: { sub, id } });
 	}
-	// const type = makeType(credentialOptions);
 	await options.store.update(
 		options.table,
 		{ sub, id },
@@ -428,12 +411,5 @@ export const select = async (credentialOptions, sub, id) => {
 	return decryptedItem;
 };
 
-// TODO manage onboard state
-
-// TODO save notification settings
-
-// TODO authorize management?
-
-const makeType = (credentialOptions) =>
+export const makeType = (credentialOptions) =>
 	`${credentialOptions.id}-${credentialOptions.type}`;
-const nowInSeconds = () => Math.floor(Date.now() / 1000);

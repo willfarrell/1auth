@@ -59,7 +59,10 @@ export const exists = async (value) => {
 };
 
 export const count = async (sub) => {
-	return await messengerCount(options.secret, sub);
+	if (!sub || typeof sub !== "string") {
+		throw new Error("401 Unauthorized", { cause: { sub } });
+	}
+	return await messengerCount(options.id, sub);
 };
 
 export const lookup = async (emailAddress) => {
@@ -68,7 +71,7 @@ export const lookup = async (emailAddress) => {
 };
 
 export const list = async (sub) => {
-	return messengerList(options.id, sub);
+	return await messengerList(options.id, sub);
 };
 
 export const select = async (sub, id) => {
@@ -92,7 +95,7 @@ export const remove = async (sub, id) => {
 };
 
 export const createToken = async (sub, sourceId) => {
-	return messengerCreateToken(options.id, sub, sourceId);
+	return await messengerCreateToken(options.id, sub, sourceId);
 };
 
 export const verifyToken = async (sub, token, sourceId) => {
@@ -108,7 +111,8 @@ export const sanitize = (value) => {
 	// not a valid email
 	if (!domain) return value;
 
-	username = username.trimStart().split("+")[0].toLowerCase(); // TODO puntycode?
+	// punycode/IDNA only applies to domains (RFC 5891), not local part (RFC 6531)
+	username = username.trimStart().split("+")[0].toLowerCase();
 	domain = toASCII(domain).trimEnd().toLowerCase();
 
 	if (optionalDotDomainsMap[domain]) {

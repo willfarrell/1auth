@@ -4,14 +4,14 @@ import account, {
 	create as accountCreate,
 	remove as accountRemove,
 } from "../account/index.js";
-// import * as mockAccountDynamoDBTable from "../account/table/dynamodb.js";
+import * as mockAccountDynamoDBTable from "../account/table/dynamodb.js";
 import * as mockAccountSQLTable from "../account/table/sql.js";
 import accountUsername, {
 	create as accountUsernameCreate,
 	exists as accountUsernameExists,
 } from "../account-username/index.js";
 import authn, { getOptions as authnGetOptions } from "../authn/index.js";
-// import * as mockAuthnDynamoDBTable from "../authn/table/dynamodb.js";
+import * as mockAuthnDynamoDBTable from "../authn/table/dynamodb.js";
 import * as mockAuthnSQLTable from "../authn/table/sql.js";
 import crypto, {
 	createSeasonedDigest,
@@ -36,12 +36,12 @@ import messenger, {
 import * as notify from "../notify/index.js";
 import * as mockNotify from "../notify/mock.js";
 import * as storeDynamoDB from "../store-dynamodb/index.js";
+import * as mockDynamoDB from "../store-dynamodb/mock.js";
 import * as storePostgres from "../store-postgres/index.js";
 import * as storeSQLite from "../store-sqlite/index.js";
-// import * as mockDynamoDB from "../store-dynamodb/mock.js";
 // import * as mockPostgres from "../store-postgres/mock.js";
 import * as mockSQLite from "../store-sqlite/mock.js";
-// import * as mockMessengerDynamoDBTable from "./table/dynamodb.js";
+import * as mockMessengerDynamoDBTable from "./table/dynamodb.js";
 import * as mockMessengerSQLTable from "./table/sql.js";
 
 crypto({
@@ -49,9 +49,9 @@ crypto({
 	symmetricSignatureSecret: symmetricRandomSignatureSecret(),
 	digestChecksumSalt: randomChecksumSalt(),
 	digestChecksumPepper: randomChecksumPepper(),
-	secretTimeCost: 1,
-	secretMemoryCost: 2 ** 3,
-	secretParallelism: 1,
+	secretArgon2TimeCost: 1,
+	secretArgon2MemoryCost: 2 ** 3,
+	secretArgon2Parallelism: 1,
 });
 notify.default({
 	client: (...args) => mocks.notifyClient(...args),
@@ -99,17 +99,20 @@ const mockStores = {
 			storeMessenger: mockMessengerSQLTable,
 		},
 	},
-	// TODO
-	// dynamodb: {
-	//   store: storeDynamoDB,
-	//   mocks :{
-	// 		...mockNotify,
-	//     ...mockDynamoDB,
-	// 	storeAccount: mockAccountDynamoDBTable,
-	// storeAuthn: mockAuthnDynamoDBTable,
-	//  storeMessenger: mockMessengerDynamoDBTable,
-	//    }
-	// },
+	...(mockDynamoDB.isReady()
+		? {
+				dynamodb: {
+					store: storeDynamoDB,
+					mocks: {
+						...mockNotify,
+						...mockDynamoDB,
+						storeAccount: mockAccountDynamoDBTable,
+						storeAuthn: mockAuthnDynamoDBTable,
+						storeMessenger: mockMessengerDynamoDBTable,
+					},
+				},
+			}
+		: {}),
 };
 
 account();
@@ -171,6 +174,15 @@ const tests = (config) => {
 		await mocks.storeAuthn.drop(mocks.storeClient);
 		await mocks.storeAccount.drop(mocks.storeClient);
 		mocks.storeClient.after?.();
+	});
+
+	it("Can NOT count messengers with ({sub:undefined})", async () => {
+		try {
+			await messengerCount(messengerType, undefined);
+			ok(false);
+		} catch (e) {
+			equal(e.message, "401 Unauthorized");
+		}
 	});
 
 	it("Can create a messenger on an account", async () => {
@@ -289,7 +301,7 @@ const tests = (config) => {
 		// notify additional messenger
 		const notifyCall2 = mocks.notifyClient.mock.calls[2].arguments[0];
 		deepEqual(notifyCall2, {
-			data: undefined,
+			data: {},
 			id: `messenger-${messengerType}-create`,
 			options: {
 				messengers: [
@@ -368,7 +380,7 @@ const tests = (config) => {
 		deepEqual(mocks.notifyClient.mock.calls[1].arguments[0], {
 			id: `messenger-${messengerType}-remove-self`,
 			sub,
-			data: undefined,
+			data: {},
 			options: {
 				messengers: [
 					{
@@ -381,7 +393,7 @@ const tests = (config) => {
 		deepEqual(mocks.notifyClient.mock.calls[2].arguments[0], {
 			id: `messenger-${messengerType}-remove`,
 			sub,
-			data: undefined,
+			data: {},
 			options: {},
 		});
 
@@ -489,7 +501,7 @@ const tests = (config) => {
 		equal(messengers?.[0]?.value, messengerValue); // unencrypted
 	});
 };
-describe("messenger", () => {
+describe("messenger", { concurrency: 1 }, () => {
 	for (const storeKey of Object.keys(mockStores)) {
 		describe(`using store-${storeKey}`, () => {
 			tests(mockStores[storeKey]);

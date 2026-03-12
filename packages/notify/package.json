@@ -1,7 +1,7 @@
 {
 	"name": "@1auth/notify",
-	"version": "0.0.0-beta.1",
-	"description": "",
+	"version": "0.0.0-beta.2",
+	"description": "Base notification interface for sending messages through various channels",
 	"type": "module",
 	"engines": {
 		"node": ">=24"
@@ -12,18 +12,14 @@
 	},
 	"main": "./index.js",
 	"module": "./index.js",
+	"sideEffects": false,
 	"exports": {
 		".": {
-			"import": {
-				"types": "./index.d.ts",
-				"default": "./index.js"
-			}
+			"import": "./index.js"
 		}
 	},
-	"types": "index.d.ts",
 	"files": [
-		"index.js",
-		"index.d.ts"
+		"index.js"
 	],
 	"scripts": {
 		"test": "npm run test:unit",
@@ -34,7 +30,13 @@
 		"type": "github",
 		"url": "https://github.com/sponsors/willfarrell"
 	},
-	"keywords": [],
+	"keywords": [
+		"1auth",
+		"OWASP",
+		"ASVS",
+		"notification",
+		"events"
+	],
 	"author": {
 		"name": "1auth contributors",
 		"url": "https://github.com/willfarrell/1auth/graphs/contributors"

@@ -5,8 +5,8 @@ const options = {
 	client: () => {},
 };
 
-export default (params) => {
-	Object.assign(options, params);
+export default (opt = {}) => {
+	Object.assign(options, opt);
 };
 
 /*
@@ -17,6 +17,6 @@ notifyOptions: object of how and who to send message to
   - messengers: array of { id } or { type, value }
   - types: array of allowed types to be used
 */
-export const trigger = (id, sub, data, notifyOptions = {}) => {
-	options.client({ id, sub, data, options: notifyOptions });
+export const trigger = async (id, sub, data = {}, notifyOptions = {}) => {
+	await options.client({ id, sub, data, options: notifyOptions });
 };

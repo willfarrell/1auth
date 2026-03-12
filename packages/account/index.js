@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 import {
 	makeRandomConfigObject,
+	nowInSeconds,
 	symmetricDecryptFields,
 	symmetricEncryptFields,
 	symmetricGenerateEncryptionKey,
@@ -34,8 +35,8 @@ const defaults = {
 	encryptedFields: [],
 };
 const options = {};
-export default (params) => {
-	Object.assign(options, defaults, params);
+export default (opt = {}) => {
+	Object.assign(options, defaults, opt);
 };
 export const getOptions = () => options;
 
@@ -43,7 +44,7 @@ export const exists = async (sub) => {
 	if (!sub || typeof sub !== "string") {
 		throw new Error("404 Not Found", { cause: { sub } });
 	}
-	return options.store.exists(options.table, { sub });
+	return await options.store.exists(options.table, { sub });
 };
 
 export const lookup = async (sub) => {
@@ -65,7 +66,7 @@ export const lookup = async (sub) => {
 };
 
 export const create = async (values = {}) => {
-	const sub = await options.randomSubject.create(options.subPrefix);
+	const sub = await options.randomSubject.create();
 
 	const { encryptionKey, encryptedKey } = symmetricGenerateEncryptionKey(sub);
 	const encryptedValues = symmetricEncryptFields(
@@ -83,11 +84,11 @@ export const create = async (values = {}) => {
 		update: now,
 	};
 	if (options.idGenerate) {
-		params.id = await options.randomId.create(options.idPrefix);
+		params.id = await options.randomId.create();
 	}
 	await options.store.insert(options.table, params);
 
-	// TODO update guest session, attach sub
+	// If caller has a guest session, use session.rotate(guestSub, guestSessionId, sub, deviceMeta) to transition it.
 	return sub;
 };
 
@@ -139,23 +140,3 @@ export const remove = async (sub) => {
 	// Should trigger removal of credentials and messengers
 	await options.store.remove(options.table, { sub });
 };
-
-/* export const expire = async (sub) => {
-  const expire = nowInSeconds() + 90 * 24 * 60 * 60
-  await options.store.update(options.table, { sub }, { expire })
-  await options.notify.trigger('account-expire', sub)
-  // TODO clear sessions
-}
-
-export const recover = async (sub) => {
-  await options.store.update(options.table, { sub }, { expire: null })
-  await options.notify.trigger('account-recover', sub)
-} */
-
-// TODO manage onboard state
-
-// TODO save notification settings
-
-// TODO authorize management?
-
-const nowInSeconds = () => Math.floor(Date.now() / 1000);

@@ -4,14 +4,14 @@ import account, {
 	create as accountCreate,
 	remove as accountRemove,
 } from "../account/index.js";
-// import * as mockAccountDynamoDBTable from "../account/table/dynamodb.js";
+import * as mockAccountDynamoDBTable from "../account/table/dynamodb.js";
 import * as mockAccountSQLTable from "../account/table/sql.js";
 import accountUsername, {
 	create as accountUsernameCreate,
 	exists as accountUsernameExists,
 } from "../account-username/index.js";
 import authn, { getOptions as authnGetOptions } from "../authn/index.js";
-// import * as mockAuthnDynamoDBTable from "../authn/table/dynamodb.js";
+import * as mockAuthnDynamoDBTable from "../authn/table/dynamodb.js";
 import * as mockAuthnSQLTable from "../authn/table/sql.js";
 import crypto, {
 	randomChecksumPepper,
@@ -22,7 +22,7 @@ import crypto, {
 import messenger, {
 	getOptions as messengerGetOptions,
 } from "../messenger/index.js";
-// import * as mockMessengerDynamoDBTable from "../messenger/table/dynamodb.js";
+import * as mockMessengerDynamoDBTable from "../messenger/table/dynamodb.js";
 import * as mockMessengerSQLTable from "../messenger/table/sql.js";
 import emailAddress, {
 	count as emailAddressCount,
@@ -31,17 +31,20 @@ import emailAddress, {
 	exists as emailAddressExists,
 	list as emailAddressList,
 	lookup as emailAddressLookup,
+	mask as emailAddressMask,
 	remove as emailAddressRemove,
+	sanitize as emailAddressSanitize,
 	select as emailAddressSelect,
+	validate as emailAddressValidate,
 	verifyToken as emailAddressVerifyToken,
 } from "../messenger-email-address/index.js";
 // *** Setup Start *** //
 import * as notify from "../notify/index.js";
 import * as mockNotify from "../notify/mock.js";
 import * as storeDynamoDB from "../store-dynamodb/index.js";
+import * as mockDynamoDB from "../store-dynamodb/mock.js";
 import * as storePostgres from "../store-postgres/index.js";
 import * as storeSQLite from "../store-sqlite/index.js";
-// import * as mockDynamoDB from "../store-dynamodb/mock.js";
 // import * as mockPostgres from "../store-postgres/mock.js";
 import * as mockSQLite from "../store-sqlite/mock.js";
 
@@ -50,9 +53,9 @@ crypto({
 	symmetricSignatureSecret: symmetricRandomSignatureSecret(),
 	digestChecksumSalt: randomChecksumSalt(),
 	digestChecksumPepper: randomChecksumPepper(),
-	secretTimeCost: 1,
-	secretMemoryCost: 2 ** 3,
-	secretParallelism: 1,
+	secretArgon2TimeCost: 1,
+	secretArgon2MemoryCost: 2 ** 3,
+	secretArgon2Parallelism: 1,
 });
 notify.default({
 	client: (...args) => mocks.notifyClient(...args),
@@ -101,15 +104,21 @@ const mockStores = {
 			storeMessenger: mockMessengerSQLTable,
 		},
 	},
-	// TODO
-	// dynamodb: {
-	//   store: storeDynamoDB,
-	//   mocks :{
-	// 		...mockNotify,
-	//     ...mockDynamoDB,
-	// 	  storeMessenger: mockMessengerDynamoDBTable,
-	//    }
-	// },
+	...(mockDynamoDB.isReady()
+		? {
+				dynamodb: {
+					store: storeDynamoDB,
+					messenger: emailAddress,
+					mocks: {
+						...mockNotify,
+						...mockDynamoDB,
+						storeAccount: mockAccountDynamoDBTable,
+						storeAuthn: mockAuthnDynamoDBTable,
+						storeMessenger: mockMessengerDynamoDBTable,
+					},
+				},
+			}
+		: {}),
 };
 
 account();
@@ -171,6 +180,15 @@ const tests = (config) => {
 		await mocks.storeAuthn.drop(mocks.storeClient);
 		await mocks.storeAccount.drop(mocks.storeClient);
 		mocks.storeClient.after?.();
+	});
+
+	it("Can NOT count messengers with ({sub:undefined})", async () => {
+		try {
+			await emailAddressCount(undefined);
+			ok(false);
+		} catch (e) {
+			equal(e.message, "401 Unauthorized");
+		}
 	});
 
 	it("Can create a messenger on an account", async () => {
@@ -265,7 +283,7 @@ const tests = (config) => {
 		// notify additional messenger
 		const notifyCall2 = mocks.notifyClient.mock.calls[2].arguments[0];
 		deepEqual(notifyCall2, {
-			data: undefined,
+			data: {},
 			id: `messenger-${messengerType}-create`,
 			options: {
 				messengers: [
@@ -396,7 +414,7 @@ const tests = (config) => {
 		deepEqual(mocks.notifyClient.mock.calls[1].arguments[0], {
 			id: `messenger-${messengerType}-remove-self`,
 			sub,
-			data: undefined,
+			data: {},
 			options: {
 				messengers: [
 					{
@@ -409,7 +427,7 @@ const tests = (config) => {
 		deepEqual(mocks.notifyClient.mock.calls[2].arguments[0], {
 			id: `messenger-${messengerType}-remove`,
 			sub,
-			data: undefined,
+			data: {},
 			options: {},
 		});
 
@@ -529,7 +547,59 @@ const tests = (config) => {
 		equal(messenger?.[0]?.value, messengerValue); // unencrypted
 	});
 
-	// TODO sanitize, validate testings
+	// sanitize
+	it("Can sanitize: lowercase", () => {
+		equal(emailAddressSanitize("User@Example.COM"), "user@example.com");
+	});
+	it("Can sanitize: trim leading whitespace", () => {
+		equal(emailAddressSanitize("  user@example.com"), "user@example.com");
+	});
+	it("Can sanitize: strip plus addressing", () => {
+		equal(emailAddressSanitize("user+tag@example.com"), "user@example.com");
+	});
+	it("Can sanitize: optional dots for gmail", () => {
+		equal(emailAddressSanitize("user.name@gmail.com"), "username@gmail.com");
+	});
+	it("Can sanitize: alias domains", () => {
+		equal(emailAddressSanitize("user@proton.me"), "user@protonmail.com");
+	});
+	it("Can sanitize: IDN domain to ASCII", () => {
+		equal(emailAddressSanitize("user@münchen.de"), "user@xn--mnchen-3ya.de");
+	});
+	it("Can NOT sanitize: null", () => {
+		try {
+			emailAddressSanitize(null);
+		} catch (e) {
+			equal(e.message, "400 Bad Request");
+		}
+	});
+	it("Can NOT sanitize: non-string", () => {
+		try {
+			emailAddressSanitize(123);
+		} catch (e) {
+			equal(e.message, "400 Bad Request");
+		}
+	});
+	it("Can sanitize: no domain returns as-is", () => {
+		equal(emailAddressSanitize("nodomain"), "nodomain");
+	});
+
+	// validate
+	it("Can validate: valid email", () => {
+		equal(emailAddressValidate("user@example.com"), true);
+	});
+	it("Can NOT validate: invalid format", () => {
+		equal(emailAddressValidate("user[at]example.com"), "400 Bad Request");
+	});
+	it("Can NOT validate: blacklisted username", () => {
+		equal(emailAddressValidate("admin@example.com"), "409 Conflict");
+	});
+
+	// mask
+	it("Can mask email", () => {
+		equal(emailAddressMask("username@example.com"), "u...e@example.com");
+	});
+
 	it("Can create a messenger on an account w/ optionalDotDomains", async () => {
 		await emailAddressCreate(sub, "user.name@gmail.com");
 		const exists = emailAddressExists("username@gmail.com");
@@ -578,7 +648,7 @@ const tests = (config) => {
 		}
 	});
 };
-describe("messenger-email-address", () => {
+describe("messenger-email-address", { concurrency: 1 }, () => {
 	for (const storeKey of Object.keys(mockStores)) {
 		describe(`using store-${storeKey}`, () => {
 			tests(mockStores[storeKey]);

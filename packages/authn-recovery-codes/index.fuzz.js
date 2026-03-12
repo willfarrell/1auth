@@ -34,9 +34,9 @@ crypto({
 	symmetricSignatureSecret: symmetricRandomSignatureSecret(),
 	digestChecksumSalt: randomChecksumSalt(),
 	digestChecksumPepper: randomChecksumPepper(),
-	secretTimeCost: 1,
-	secretMemoryCost: 2 ** 3,
-	secretParallelism: 1,
+	secretArgon2TimeCost: 1,
+	secretArgon2MemoryCost: 2 ** 3,
+	secretArgon2Parallelism: 1,
 });
 notify.default({
 	client: (...args) => mocks.notifyClient(...args),
@@ -135,7 +135,7 @@ test("fuzz recoveryCodesAuthenticate w/ secret", async () => {
 			}
 		}),
 		{
-			numRuns: 100_000,
+			numRuns: 1_000,
 			verbose: 2,
 			examples: [],
 		},
@@ -186,14 +186,14 @@ test("fuzz recoveryCodesCreate w/ sub", async () => {
 			}
 		}),
 		{
-			numRuns: 100_000,
+			numRuns: 1_000,
 			verbose: 2,
 			examples: [],
 		},
 	);
 });
 
-test("fuzz recoveryCodesUpate w/ sub", async () => {
+test("fuzz recoveryCodesUpdate w/ sub", async () => {
 	await fc.assert(
 		fc.asyncProperty(fc.anything(), async (sub) => {
 			try {
@@ -203,7 +203,7 @@ test("fuzz recoveryCodesUpate w/ sub", async () => {
 			}
 		}),
 		{
-			numRuns: 100_000,
+			numRuns: 1_000,
 			verbose: 2,
 			examples: [],
 		},

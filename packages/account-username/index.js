@@ -9,7 +9,7 @@ import {
 import { createSeasonedDigest, symmetricDecryptFields } from "@1auth/crypto";
 
 // Only allow characters that are safe to encode
-// not allowed because it can be used to declare and extension
+// not allowed because it can be used to declare an extension
 let usernameBlacklistRegExp;
 const options = {
 	id: "username",
@@ -18,8 +18,8 @@ const options = {
 	minLength: 1,
 	maxLength: 32,
 };
-export default (params) => {
-	Object.assign(options, accountOptions(), params);
+export default (opt = {}) => {
+	Object.assign(options, accountOptions(), opt);
 	if (options.usernameBlacklist.length) {
 		usernameBlacklistRegExp = new RegExp(
 			`(${options.usernameBlacklist.map((value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`,
@@ -30,7 +30,7 @@ export default (params) => {
 export const exists = async (username) => {
 	const usernameSanitized = sanitize(username);
 	const usernameDigest = createSeasonedDigest(usernameSanitized);
-	return options.store.exists(options.table, {
+	return await options.store.exists(options.table, {
 		digest: usernameDigest,
 	});
 };
@@ -115,7 +115,7 @@ export const validateLength = (value) => {
 };
 
 export const validateAllowedChar = (value) => {
-	// TODO URL encode compare
+	// allowedCharRegExp only permits URL-safe chars, no encoding needed
 	if (!options.allowedCharRegExp.test(value)) {
 		return "400 Bad Request";
 	}

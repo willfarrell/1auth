@@ -2,15 +2,15 @@
 
 ## Roles
 
-### [Owner](TODO link to org group)
+### [Owner](https://github.com/orgs/1auth-js/teams/owner)
 
 Also known as a core maintainer. Have a long history with the project, have a deep understanding of the codebase, and decide the direction of the project.
 
-### [Security](TODO link to org group)
+### [Security](https://github.com/orgs/1auth-js/teams/security)
 
 Are responsible to respond and remediate security disclosures.
 
-### [Reviewer](TODO link to org group)
+### [Reviewer](https://github.com/orgs/1auth-js/teams/reviewer)
 
 Group of people responsible for reviewing pull requests.
 

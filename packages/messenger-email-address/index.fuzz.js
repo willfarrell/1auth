@@ -35,9 +35,9 @@ crypto({
 	symmetricSignatureSecret: symmetricRandomSignatureSecret(),
 	digestChecksumSalt: randomChecksumSalt(),
 	digestChecksumPepper: randomChecksumPepper(),
-	secretTimeCost: 1,
-	secretMemoryCost: 2 ** 3,
-	secretParallelism: 1,
+	secretArgon2TimeCost: 1,
+	secretArgon2MemoryCost: 2 ** 3,
+	secretArgon2Parallelism: 1,
 });
 notify.default({
 	client: (...args) => mocks.notifyClient(...args),
@@ -125,7 +125,7 @@ test("fuzz emailAddressExists w/ `username`", async () => {
 			}
 		}),
 		{
-			numRuns: 10,
+			numRuns: 100_000,
 			verbose: 2,
 			examples: [],
 		},
@@ -142,7 +142,7 @@ test("fuzz emailAddressLookup w/ `username`", async () => {
 			}
 		}),
 		{
-			numRuns: 10,
+			numRuns: 100_000,
 			verbose: 2,
 			examples: [],
 		},
@@ -159,7 +159,7 @@ test("fuzz emailAddressList w/ `sub`", async () => {
 			}
 		}),
 		{
-			numRuns: 10,
+			numRuns: 100_000,
 			verbose: 2,
 			examples: [],
 		},
@@ -176,7 +176,7 @@ test("fuzz emailAddressSelect w/ `sub`", async () => {
 			}
 		}),
 		{
-			numRuns: 10,
+			numRuns: 100_000,
 			verbose: 2,
 			examples: [],
 		},
@@ -193,7 +193,7 @@ test("fuzz emailAddressSelect w/ `id`", async () => {
 			}
 		}),
 		{
-			numRuns: 10,
+			numRuns: 100_000,
 			verbose: 2,
 			examples: [],
 		},
@@ -210,7 +210,7 @@ test("fuzz emailAddressCreate w/ `sub`", async () => {
 			}
 		}),
 		{
-			numRuns: 10,
+			numRuns: 1_000,
 			verbose: 2,
 			examples: [],
 		},
@@ -227,7 +227,7 @@ test("fuzz emailAddressCreate w/ `username`", async () => {
 			}
 		}),
 		{
-			numRuns: 10,
+			numRuns: 1_000,
 			verbose: 2,
 			examples: [],
 		},
@@ -244,29 +244,12 @@ test("fuzz emailAddressCreate w/ `emailAddress`", async () => {
 			}
 		}),
 		{
-			numRuns: 10,
+			numRuns: 1_000,
 			verbose: 2,
 			examples: [],
 		},
 	);
 });
-
-// test("fuzz emailAddressCreate w/ `values`", async () => {
-// 	await fc.assert(
-// 		fc.asyncProperty(fc.anything(), async (values) => {
-// 			try {
-// 				await emailAddressCreate(sub, testMessenger.value, values);
-// 			} catch (e) {
-// 				catchError(values, e);
-// 			}
-// 		}),
-// 		{
-// 			numRuns: 10,
-// 			verbose: 2,
-// 			examples: [],
-// 		},
-// 	);
-// });
 
 test("fuzz emailAddressCreate w/ `values`", async () => {
 	await fc.assert(
@@ -278,7 +261,7 @@ test("fuzz emailAddressCreate w/ `values`", async () => {
 			}
 		}),
 		{
-			numRuns: 10,
+			numRuns: 1_000,
 			verbose: 2,
 			examples: [],
 		},
@@ -295,7 +278,7 @@ test("fuzz emailAddressRemove w/ `sub`", async () => {
 			}
 		}),
 		{
-			numRuns: 10,
+			numRuns: 100_000,
 			verbose: 2,
 			examples: [],
 		},
@@ -312,7 +295,7 @@ test("fuzz emailAddressRemove w/ `id`", async () => {
 			}
 		}),
 		{
-			numRuns: 10,
+			numRuns: 100_000,
 			verbose: 2,
 			examples: [],
 		},
