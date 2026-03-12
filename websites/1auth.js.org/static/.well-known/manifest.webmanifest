@@ -1,0 +1,16 @@
+{
+	"name": "1auth",
+	"short_name": "1auth",
+	"icons": [
+		{
+			"src": "/favicon.svg",
+			"sizes": "any",
+			"type": "image/svg+xml"
+		}
+	],
+	"theme_color": "#0d7377",
+	"background_color": "#000000",
+	"display": "standalone",
+	"start_url": "/",
+	"prefer_related_applications": false
+}

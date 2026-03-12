@@ -134,4 +134,4 @@ session({
 
 ## License
 
-Licensed under [MIT License](LICENSE). Copyright (c) 1985-2025 [will Farrell](https://github.com/willfarrell) and all [contributors](https://github.com/willfarrell/1auth/graphs/contributors).
+Licensed under [MIT License](LICENSE). Copyright (c) 2020-2026 [will Farrell](https://github.com/willfarrell) and [contributors](https://github.com/willfarrell/1auth/graphs/contributors).
