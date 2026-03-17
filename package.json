@@ -85,8 +85,8 @@
 		"license-check-and-add": {
 			"minimatch": "^10.2.4"
 		},
-		"miniflare": {
-			"undici": "^7.24.0"
+		"@aws-sdk/xml-builder": {
+			"fast-xml-parser": "^5.5.6"
 		}
 	},
 	"devEngines": {
