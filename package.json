@@ -82,9 +82,6 @@
 		"@sveltejs/kit": {
 			"cookie": "^0.7.2"
 		},
-		"license-check-and-add": {
-			"minimatch": "^10.2.4"
-		},
 		"@aws-sdk/xml-builder": {
 			"fast-xml-parser": "^5.5.6"
 		}
