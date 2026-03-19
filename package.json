@@ -81,9 +81,6 @@
 	"overrides": {
 		"@sveltejs/kit": {
 			"cookie": "^0.7.2"
-		},
-		"@aws-sdk/xml-builder": {
-			"fast-xml-parser": "^5.5.6"
 		}
 	},
 	"devEngines": {
