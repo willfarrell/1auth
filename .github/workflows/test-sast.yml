@@ -57,7 +57,7 @@ jobs:
           exit-code: 0
           format: table
 
-license:
+  license:
     name: "License headers"
     runs-on: ubuntu-latest
     if: (github.actor != 'dependabot[bot]')
@@ -77,7 +77,9 @@ license:
           npm ci --ignore-scripts
       - name: License check
         run: |
-          npm run test:sast:license  lockfile:
+          npm run test:sast:license
+
+  lockfile:
     name: "lockfile-lint: SAST package-lock.json"
     runs-on: ubuntu-latest
     if: (github.actor != 'dependabot[bot]')
