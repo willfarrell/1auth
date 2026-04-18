@@ -19,7 +19,7 @@
 		"test:lint": "biome check --staged --no-errors-on-unmatched",
 		"test:unit": "node --test --test-concurrency 1 --experimental-test-coverage --test-coverage-lines=98 --test-coverage-branches=95 --test-coverage-functions=97 --test-coverage-exclude=**/mock.js --test-coverage-exclude=**/*.test.js --test-coverage-exclude=**/table/*",
 		"test:sast": "npm run test:sast:license && npm run test:sast:lockfile && npm run test:sast:trivy && npm run test:sast:semgrep && npm run test:sast:trufflehog",
-		"test:sast:license": "license-check-and-add check -f license.json",
+		"test:sast:license": "license-check-and-add check -f .license.config.json",
 		"test:sast:lockfile": "lockfile-lint --path package-lock.json --type npm --allowed-hosts npm --validate-https",
 		"test:sast:semgrep": "semgrep scan --config auto",
 		"test:sast:trivy": "trivy fs --scanners vuln,license --include-dev-deps --ignored-licenses 0BSD,Apache-2.0,BSD-1-Clause,BSD-2-Clause,BSD-3-Clause,CC0-1.0,CC-BY-4.0,ISC,MIT,Python-2.0 --exit-code 1 --disable-telemetry .",
@@ -39,8 +39,8 @@
 		"update": "npm update --workspaces && npm install --workspaces",
 		"outdated": "npm outdated --workspaces",
 		"audit": "npm audit fix --workspaces",
-		"release:license:add": "license-check-and-add add -f license.json",
-		"release:license:remove": "license-check-and-add remove -f license.json",
+		"release:license:add": "license-check-and-add add -f .license.config.json",
+		"release:license:remove": "license-check-and-add remove -f .license.config.json",
 		"release:sync": "npm version $npm_package_version --workspaces; find ./packages -name \"package.json\" -exec sed -i '' -E \"s|\\\"@1auth/(.*)\\\": ([^,]*)|\\\"@1auth/\\1\\\": $(npm pkg get version)|g\" {} \\; && npm run rm && npm install",
 		"release:tag": "git tag $npm_package_version && git push --tags"
 	},
@@ -82,7 +82,7 @@
 		"@sveltejs/kit": {
 			"cookie": "^0.7.2"
 		},
-		"mathjs": ">=15.2.0"
+		"fast-xml-parser": "5.5.8"
 	},
 	"devEngines": {
 		"runtime": {

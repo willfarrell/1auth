@@ -1,5 +1,5 @@
 {
-	"license": "license.template",
+	"license": ".license.template",
 	"licenseFormats": {
 		"js|ts": {
 			"eachLine": {
@@ -15,7 +15,7 @@
 		"commitlint.config.cjs",
 		"docs/**/*",
 		"LICENSE",
-		"license.template",
+		".license.template",
 		"**/.gitignore",
 		"**/*.fuzz.js",
 		"**/*.perf.js",
