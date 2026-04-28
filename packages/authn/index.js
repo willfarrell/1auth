@@ -26,7 +26,7 @@ const defaults = {
 	table: "authentications",
 	idGenerate: true,
 	randomId: randomId(),
-	authenticationDuration: 100, // minimum duration authentication should take (ms)
+	authenticationDuration: 250, // minimum duration authentication should take (ms), must exceed worst-case secret hash time
 	usernameExists: [], // hooks to allow what to be used as a username
 	encryptedFields: ["value"],
 };
@@ -216,7 +216,6 @@ export const authenticate = async (credentialOptions, username, secret) => {
 			continue;
 		}
 		// skip expired
-
 		if (credential.expire && credential.expire < now) {
 			skipExpiredCount += 1;
 			continue;
@@ -258,14 +257,15 @@ export const authenticate = async (credentialOptions, username, secret) => {
 
 	await timeout;
 	if (!valid) {
-		let cause = "invalid";
+		// cause is for developer debugging only, never expose to end users
+		let type = "invalid";
 		const credentialsCount = credentials.length - skipIgnoredCount;
 		if (credentialsCount === 0) {
-			cause = "missing";
+			type = "missing";
 		} else if (skipExpiredCount === credentialsCount) {
-			cause = "expired";
+			type = "expired";
 		}
-		throw new Error("401 Unauthorized", { cause });
+		throw new Error("401 Unauthorized", { cause: { type } });
 	}
 	return sub;
 };
@@ -334,7 +334,12 @@ export const verify = async (credentialOptions, sub, input) => {
 		if (valid) {
 			const { id, otp } = credential;
 			if (otp) {
-				await remove(credentialOptions, sub, id);
+				const consumed = await remove(credentialOptions, sub, id);
+				if (!consumed) {
+					// Already consumed by a concurrent request
+					valid = undefined;
+					continue;
+				}
 			}
 			break;
 		}
@@ -343,14 +348,15 @@ export const verify = async (credentialOptions, sub, input) => {
 	await timeout;
 
 	if (!valid) {
-		let cause = "invalid";
+		// cause is for developer debugging only, never expose to end users
+		let type = "invalid";
 		const credentialsCount = credentials.length;
 		if (credentialsCount === 0) {
-			cause = "missing";
+			type = "missing";
 		} else if (skipExpiredCount === credentialsCount) {
-			cause = "expired";
+			type = "expired";
 		}
-		throw new Error("401 Unauthorized", { cause });
+		throw new Error("401 Unauthorized", { cause: { type } });
 	}
 	return { ...credential, ...valid };
 };
@@ -377,7 +383,7 @@ export const remove = async (credentialOptions, sub, id) => {
 		throw new Error("404 Not Found", { cause: { sub, id } });
 	}
 	const type = makeType(credentialOptions);
-	await options.store.remove(options.table, { id, type, sub });
+	return await options.store.remove(options.table, { id, type, sub });
 };
 
 export const removeList = async (credentialOptions, sub, id) => {

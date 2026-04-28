@@ -191,7 +191,11 @@ export const insert = async (table, inputValues = {}) => {
 	if (options.log) {
 		options.log(`@1auth/store-${options.id} insert(`, table, values, ")");
 	}
-	if (values.expire && options.timeToLiveKey) {
+	if (
+		values.expire &&
+		options.timeToLiveKey &&
+		values[options.timeToLiveKey] == null
+	) {
 		values[options.timeToLiveKey] =
 			values.expire + options.timeToLiveExpireOffset;
 	}
@@ -213,7 +217,11 @@ export const insertList = async (table, rows = []) => {
 	const putRequests = [];
 	for (let i = 0, l = rows.length; i < l; i++) {
 		const values = structuredClone(rows[i]);
-		if (values.expire && options.timeToLiveKey) {
+		if (
+			values.expire &&
+			options.timeToLiveKey &&
+			values[options.timeToLiveKey] == null
+		) {
 			values[options.timeToLiveKey] =
 				values.expire + options.timeToLiveExpireOffset;
 		}
@@ -245,7 +253,11 @@ export const update = async (table, filters = {}, inputValues = {}) => {
 			")",
 		);
 	}
-	if (values.expire && options.timeToLiveKey) {
+	if (
+		values.expire &&
+		options.timeToLiveKey &&
+		values[options.timeToLiveKey] == null
+	) {
 		values[options.timeToLiveKey] =
 			values.expire + options.timeToLiveExpireOffset;
 	}
@@ -298,22 +310,27 @@ export const remove = async (table, filters = {}) => {
 		// Non-key attributes can't be used in DeleteItemCommand.
 		// Query to find matching items, then delete each by primary key.
 		const items = await queryCommand(table, filters);
+		let deleted = false;
 		for (const item of items) {
-			await options.client.send(
+			const res = await options.client.send(
 				new DeleteItemCommand({
 					TableName: table,
 					Key: marshall({ sub: item.sub, id: item.id }, marshallOptions),
+					ReturnValues: "ALL_OLD",
 				}),
 			);
+			if (res.Attributes) deleted = true;
 		}
-		return;
+		return deleted;
 	}
-	await options.client.send(
+	const res = await options.client.send(
 		new DeleteItemCommand({
 			TableName: table,
 			Key: marshall(key, marshallOptions),
+			ReturnValues: "ALL_OLD",
 		}),
 	);
+	return !!res.Attributes;
 };
 
 // Can only be used with recovery-codes for now

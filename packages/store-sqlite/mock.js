@@ -14,6 +14,9 @@ export const storeClient = {
 				return db.prepare(sql).all(...(parameters ?? []));
 			}
 			if (sql.substring(0, 6) === "DELETE") {
+				if (sql.includes("RETURNING")) {
+					return db.prepare(sql).get(...(parameters ?? []));
+				}
 				return db.prepare(sql).run(...(parameters ?? []));
 			}
 

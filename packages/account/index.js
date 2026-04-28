@@ -33,6 +33,9 @@ const defaults = {
 	randomId: randomId(),
 	randomSubject: randomSubject(),
 	encryptedFields: [],
+	// Grace window before the row is hard-deleted by the store cleanup sweep.
+	// Lets queued `account-remove` handlers cascade safely and enables recovery.
+	removeExpireOffset: 10 * 24 * 60 * 60,
 };
 const options = {};
 export default (opt = {}) => {
@@ -137,6 +140,11 @@ export const remove = async (sub) => {
 	if (!sub || typeof sub !== "string") {
 		throw new Error("404 Not Found", { cause: { sub } });
 	}
-	// Should trigger removal of credentials and messengers
-	await options.store.remove(options.table, { sub });
+	const expire = nowInSeconds();
+	await options.store.update(
+		options.table,
+		{ sub },
+		{ expire, remove: expire + options.removeExpireOffset },
+	);
+	await options.notify?.trigger("account-remove", sub);
 };

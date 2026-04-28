@@ -253,6 +253,28 @@ const tests = (config) => {
 		equal(userSub, sub);
 		count = await recoveryCodesCount(sub);
 		equal(count, 4);
+
+		ok(!("attempts" in authnDB), "attempts field should not be persisted");
+	});
+	it("A failed authenticate does not burn other codes and surfaces no attempts count", async () => {
+		const secrets = await recoveryCodesCreate(sub);
+		let caught;
+		try {
+			await recoveryCodesAuthenticate(username, "not-a-real-code");
+		} catch (e) {
+			caught = e;
+		}
+		equal(caught?.message, "401 Unauthorized");
+		equal(caught?.cause?.type, "invalid");
+		ok(
+			!("attempts" in (caught?.cause ?? {})),
+			"cause should not include attempts",
+		);
+
+		const userSub = await recoveryCodesAuthenticate(username, secrets[0].value);
+		equal(userSub, sub);
+		const count = await recoveryCodesCount(sub);
+		equal(count, 4);
 	});
 	it("Can update recovery codes on an account", async () => {
 		let secrets = await recoveryCodesCreate(sub);

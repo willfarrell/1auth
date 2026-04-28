@@ -289,7 +289,7 @@ const tests = (config) => {
 				await webauthnAuthenticate(username, {});
 			} catch (e) {
 				equal(e.message, "401 Unauthorized");
-				equal(e.cause, "missing");
+				equal(e.cause.type, "missing");
 			}
 		});
 		// it("Will throw when unverfied credentials", async () => {

@@ -89,7 +89,11 @@ export const insert = async (table, inputValues = {}) => {
 	if (options.log) {
 		options.log(`@1auth/store-${options.id} insert(`, table, values, ")");
 	}
-	if (values.expire && options.timeToLiveKey) {
+	if (
+		values.expire &&
+		options.timeToLiveKey &&
+		values[options.timeToLiveKey] == null
+	) {
 		values[options.timeToLiveKey] =
 			values.expire + options.timeToLiveExpireOffset;
 	}
@@ -110,7 +114,11 @@ export const insertList = async (table, rows = []) => {
 	const stmts = [];
 	for (let i = 0, l = rows.length; i < l; i++) {
 		const values = structuredClone(rows[i]);
-		if (values.expire && options.timeToLiveKey) {
+		if (
+			values.expire &&
+			options.timeToLiveKey &&
+			values[options.timeToLiveKey] == null
+		) {
 			values[options.timeToLiveKey] =
 				values.expire + options.timeToLiveExpireOffset;
 		}
@@ -133,7 +141,11 @@ export const update = async (table, filters = {}, inputValues = {}) => {
 			")",
 		);
 	}
-	if (values.expire && options.timeToLiveKey) {
+	if (
+		values.expire &&
+		options.timeToLiveKey &&
+		values[options.timeToLiveKey] == null
+	) {
 		values[options.timeToLiveKey] =
 			values.expire + options.timeToLiveExpireOffset;
 	}
@@ -166,11 +178,12 @@ export const remove = async (table, filters = {}) => {
 		options.log(`@1auth/store-${options.id} remove(`, table, filters, ")");
 	}
 	const { where, parameters } = makeSqlParts(filters);
-	const sql = `DELETE FROM ${table} ${where}`;
-	await options.client
+	const sql = `DELETE FROM ${table} ${where} RETURNING id`;
+	const res = await options.client
 		.prepare(sql)
 		.bind(...parameters)
-		.run();
+		.first();
+	return !!res?.id;
 };
 
 export const removeList = remove;

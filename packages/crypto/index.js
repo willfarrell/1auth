@@ -104,13 +104,13 @@ export default (opt = {}) => {
 		hashLength: options.secretArgon2HashLength, // argon2id
 	});
 
-	// Lengths
-	symmetricEncryptionEncodingLengths.iv = randomIV().toString(
-		options.symmetricEncryptionEncoding,
-	).length;
+	// Encoded lengths for parsing ciphertext packets (IV = 12 bytes, authTag = 16 bytes)
+	const encodedLength = (byteLength) =>
+		Buffer.alloc(byteLength).toString(options.symmetricEncryptionEncoding)
+			.length;
+	symmetricEncryptionEncodingLengths.iv = encodedLength(12);
 	symmetricEncryptionEncodingLengths.ivAndAuthTag =
-		symmetricEncryptionEncodingLengths.iv +
-		randomBytes(16).toString(options.symmetricEncryptionEncoding).length;
+		symmetricEncryptionEncodingLengths.iv + encodedLength(authTagLength);
 };
 
 export const makeOptionsBuffer = (
@@ -201,6 +201,10 @@ export const createSaltedValue = (value, { checksumSalt } = {}) => {
 	const newValue = value + checksumSalt;
 	return newValue;
 };
+// Deterministic encryption using a fixed IV (checksumPepper) to enable
+// privacy-compliant digest lookups. Rotating the pepper invalidates all
+// existing digests, supporting GDPR right-to-erasure workflows.
+// The ciphertexts are never stored directly - only their hashes are persisted.
 export const createPepperedValue = (
 	value,
 	{ checksumPepper, encryptionKey } = {},
@@ -480,7 +484,7 @@ export const symmetricEncrypt = (
 			authTagLength,
 		},
 	);
-	cipher.setAAD(sub);
+	cipher.setAAD(Buffer.from(sub, "utf8"));
 	const encryptedData =
 		cipher.update(data, decoding, encoding) + cipher.final(encoding);
 	const authTag = cipher.getAuthTag();
@@ -488,7 +492,8 @@ export const symmetricEncrypt = (
 	const encryptedDataPacket =
 		iv.toString(encoding) + authTag.toString(encoding) + encryptedData;
 
-	// add signature to end
+	// Encrypt-then-MAC: HMAC signature wraps the AEAD ciphertext so that
+	// signature secrets can be rotated independently without re-encryption.
 	return symmetricSignatureSign(encryptedDataPacket, { signatureSecret });
 };
 
@@ -586,7 +591,7 @@ export const symmetricDecrypt = (
 			authTagLength,
 		},
 	);
-	decipher.setAAD(sub);
+	decipher.setAAD(Buffer.from(sub, "utf8"));
 
 	decipher.setAuthTag(authTag);
 	const data =
@@ -625,11 +630,9 @@ export const symmetricSignatureVerify = (
 	{ hashAlgorithm, signatureSecret } = {},
 ) => {
 	if (typeof signedData !== "string") return false;
-	let lastIndexOf = signedData.lastIndexOf(".");
-	// Test for unsigned
-	if (lastIndexOf < 0) {
-		lastIndexOf = signedData.length;
-	}
+	const lastIndexOf = signedData.lastIndexOf(".");
+	// Reject unsigned data
+	if (lastIndexOf < 0) return false;
 	const data = signedData.substring(0, lastIndexOf);
 	const signedDataExpected = symmetricSignatureSign(data, {
 		hashAlgorithm,

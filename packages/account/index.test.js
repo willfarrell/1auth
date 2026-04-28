@@ -236,11 +236,35 @@ const tests = (config) => {
 				equal(e.message, "404 Not Found");
 			}
 		});
-		it("Can remove an account", async () => {
+		it("Can remove an account (soft-expire, row persists for cleanup)", async () => {
 			const sub = await accountCreate();
 			await accountRemove(sub);
 			const user = await store.select(accountGetOptions().table, { sub });
-			equal(user, undefined);
+			equal(user?.sub, sub);
+			ok(user.expire);
+			ok(user.remove);
+			equal(user.remove, user.expire + accountGetOptions().removeExpireOffset);
+		});
+		it("Notifies `account-remove` after marking expired", async () => {
+			const sub = await accountCreate();
+			await accountRemove(sub);
+			const calls = mocks.notifyClient.mock.calls;
+			const call = calls.find((c) => c.arguments[0]?.id === "account-remove");
+			ok(call, "notifyClient was not called with account-remove");
+			equal(call.arguments[0].sub, sub);
+		});
+		it("Honors a custom `removeExpireOffset`", async () => {
+			const opts = accountGetOptions();
+			const prev = opts.removeExpireOffset;
+			opts.removeExpireOffset = 60;
+			try {
+				const sub = await accountCreate();
+				await accountRemove(sub);
+				const user = await store.select(opts.table, { sub });
+				equal(user.remove, user.expire + 60);
+			} finally {
+				opts.removeExpireOffset = prev;
+			}
 		});
 	});
 };

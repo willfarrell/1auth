@@ -46,7 +46,8 @@ const defaults = {
 	randomSessionId: randomSessionId(),
 	expire: 15 * 60,
 	encryptedFields: ["value"],
-	encode: (value) => JSON.stringify(value ?? {}),
+	encode: (value) =>
+		JSON.stringify(value ?? {}, Object.keys(value ?? {}).sort()),
 	decode: (value) => JSON.parse(value),
 	checkMetadata: (oldSession, newSession) => safeEqual(oldSession, newSession),
 };
