@@ -105,6 +105,9 @@ dist
 # TernJS port file
 .tern-port
 
+# Generated AJV standalone validators
+=schema.default.js
+
 # OS
 .DS_Store
 

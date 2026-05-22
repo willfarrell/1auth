@@ -25,6 +25,7 @@
 		"**/*.yml",
 		"test/**/*",
 		"websites/**/*",
-		".DS_Store"
+		".DS_Store",
+		".gitleaks.toml"
 	]
 }
