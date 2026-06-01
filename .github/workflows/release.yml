@@ -56,9 +56,11 @@ jobs:
       - name: Pack
         id: pack
         run: |
+          # Pack only public workspaces; the private websites/* must not be published.
+          mapfile -t args < <(npm query '.workspace:not([private])' | jq -r '.[] | "--workspace", .location')
           {
             echo "packages<<EOF"
-            npm pack --workspaces --json
+            npm pack "${args[@]}" --json
             echo EOF
           } >> "$GITHUB_OUTPUT"
       - name: Build Attestations

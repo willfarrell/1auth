@@ -1,5 +1,5 @@
 {
-	"license": "license.template",
+	"license": ".license.template",
 	"licenseFormats": {
 		"js|ts": {
 			"eachLine": {
@@ -15,7 +15,7 @@
 		"commitlint.config.cjs",
 		"docs/**/*",
 		"LICENSE",
-		"license.template",
+		".license.template",
 		"**/.gitignore",
 		"**/*.fuzz.js",
 		"**/*.perf.js",
@@ -26,6 +26,7 @@
 		"test/**/*",
 		"websites/**/*",
 		".DS_Store",
-		".gitleaks.toml"
+		".gitleaks.toml",
+		"stryker.config.mjs"
 	]
 }
