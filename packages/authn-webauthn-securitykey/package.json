@@ -1,6 +1,6 @@
 {
 	"name": "@1auth/authn-webauthn-securitykey",
-	"version": "0.0.0-beta.3",
+	"version": "0.0.0-rc.0",
 	"description": "SecurityKey preset for @1auth/authn-webauthn",
 	"type": "module",
 	"engines": {
@@ -53,6 +53,6 @@
 	},
 	"homepage": "https://github.com/willfarrell/1auth",
 	"dependencies": {
-		"@1auth/authn-webauthn": "0.0.0-beta.3"
+		"@1auth/authn-webauthn": "0.0.0-rc.0"
 	}
 }
