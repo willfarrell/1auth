@@ -62,4 +62,6 @@ jobs:
         env:
           MUTATE_PACKAGE: ${{ matrix.package }}
         run: |
+          npm run test:dynamodb &
+          npm run test:postgres &
           npm run test:mutation

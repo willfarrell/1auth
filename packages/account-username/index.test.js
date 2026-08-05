@@ -4,9 +4,24 @@ import account, {
 	create as accountCreate,
 	getOptions as accountGetOptions,
 	remove as accountRemove,
-} from "../account/index.js";
-// import * as mockAccountDynamoDBTable from "../account/table/dynamodb.js";
-import * as mockAccountSQLTable from "../account/table/sql.js";
+} from "@1auth/account";
+// import * as mockAccountDynamoDBTable from "@1auth/account/table/dynamodb.js";
+import * as mockAccountSQLTable from "@1auth/account/table/sql.js";
+import crypto, {
+	randomChecksumPepper,
+	randomChecksumSalt,
+	symmetricRandomEncryptionKey,
+	symmetricRandomSignatureSecret,
+} from "@1auth/crypto";
+// *** Setup Start *** //
+import * as notify from "@1auth/notify";
+import * as storeDynamoDB from "@1auth/store-dynamodb";
+import * as storePostgres from "@1auth/store-postgres";
+import * as storeSQLite from "@1auth/store-sqlite";
+import * as mockNotify from "../notify/mock.js";
+// import * as mockDynamoDB from "../store-dynamodb/mock.js";
+// import * as mockPostgres from "../store-postgres/mock.js";
+import * as mockSQLite from "../store-sqlite/mock.js";
 import accountUsername, {
 	create as accountUsernameCreate,
 	exists as accountUsernameExists,
@@ -14,22 +29,7 @@ import accountUsername, {
 	recover as accountUsernameRecover,
 	update as accountUsernameUpdate,
 	validate as accountUsernameValidate,
-} from "../account-username/index.js";
-import crypto, {
-	randomChecksumPepper,
-	randomChecksumSalt,
-	symmetricRandomEncryptionKey,
-	symmetricRandomSignatureSecret,
-} from "../crypto/index.js";
-// *** Setup Start *** //
-import * as notify from "../notify/index.js";
-import * as mockNotify from "../notify/mock.js";
-import * as storeDynamoDB from "../store-dynamodb/index.js";
-import * as storePostgres from "../store-postgres/index.js";
-import * as storeSQLite from "../store-sqlite/index.js";
-// import * as mockDynamoDB from "../store-dynamodb/mock.js";
-// import * as mockPostgres from "../store-postgres/mock.js";
-import * as mockSQLite from "../store-sqlite/mock.js";
+} from "./index.js";
 
 crypto({
 	symmetricEncryptionKey: symmetricRandomEncryptionKey(),
