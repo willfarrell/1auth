@@ -6,6 +6,13 @@ import { describe, it, mock } from "node:test";
 import notify, { trigger } from "./index.js";
 
 describe("notify", () => {
+	// FIRST, before any test configures a client: the shipped default is a no-op,
+	// so an app that forgets to wire notify gets silence rather than a crash
+	it("should not throw with the default client", async () => {
+		await trigger("template-1", "user-123");
+		ok(true);
+	});
+
 	it("should configure with custom options", () => {
 		const client = mock.fn();
 		notify({ client });

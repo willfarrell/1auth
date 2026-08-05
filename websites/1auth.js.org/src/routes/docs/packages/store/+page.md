@@ -14,6 +14,7 @@ Store modules provide a common interface for database operations. All 1auth modu
 | Package | Backend | Notes |
 |---------|---------|-------|
 | [`@1auth/store-dynamodb`](/docs/packages/store-dynamodb) | AWS DynamoDB | Serverless, pay-per-request |
+| [`@1auth/store-sql`](/docs/packages/store-sql) | Any SQL database | Generic; the dialect packages below are copies of it |
 | [`@1auth/store-postgres`](/docs/packages/store-postgres) | PostgreSQL | Relational, self-hosted |
 | [`@1auth/store-sqlite`](/docs/packages/store-sqlite) | SQLite | Embedded, local development |
 | [`@1auth/store-d1`](/docs/packages/store-d1) | Cloudflare D1 | Edge, serverless SQLite |

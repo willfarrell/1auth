@@ -13,6 +13,7 @@ import accountUsername, {
 	lookup as accountUsernameLookup,
 	recover as accountUsernameRecover,
 	update as accountUsernameUpdate,
+	validate as accountUsernameValidate,
 } from "../account-username/index.js";
 import crypto, {
 	randomChecksumPepper,
@@ -218,6 +219,22 @@ const tests = (config) => {
 		});
 	});
 
+	describe("`notifyId`", () => {
+		test.afterEach(() => {
+			accountUsername({ notifyId: "account-username" });
+		});
+		it("Can notify with a custom template id prefix", async () => {
+			accountUsername({ notifyId: "account-handle" });
+			await accountUsernameCreate(sub, "username");
+			await accountUsernameRecover(sub);
+
+			equal(
+				mocks.notifyClient.mock.calls[0].arguments[0].id,
+				"account-handle-recover",
+			);
+		});
+	});
+
 	it("Should allow username with number charaters", async () => {
 		const usernameValue = "number_1234567890";
 		await accountUsernameCreate(sub, usernameValue);
@@ -306,6 +323,14 @@ const tests = (config) => {
 			await accountUsernameCreate(sub, usernameValue);
 		} catch (e) {
 			equal(e.message, "409 Conflict");
+		}
+	});
+	it("Should allow a black listed word after reconfiguring with an empty blacklist", () => {
+		accountUsername({ usernameBlacklist: [] });
+		try {
+			equal(accountUsernameValidate("user_admin_name"), true);
+		} finally {
+			accountUsername({ maxLength: 100, usernameBlacklist: ["admin"] });
 		}
 	});
 	it("Should throw when username already exists", async () => {

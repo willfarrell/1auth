@@ -1,6 +1,7 @@
 // Copyright 2003 - 2026 will Farrell, and 1Auth contributors.
 // SPDX-License-Identifier: MIT
 import {
+	assertSub,
 	makeRandomConfigObject,
 	nowInSeconds,
 	symmetricDecryptFields,
@@ -91,7 +92,6 @@ export const create = async (values = {}) => {
 	}
 	await options.store.insert(options.table, params);
 
-	// If caller has a guest session, use session.rotate(guestSub, guestSessionId, sub, deviceMeta) to transition it.
 	return sub;
 };
 
@@ -126,9 +126,7 @@ export const update = async (sub, values = {}) => {
 };
 
 export const expire = async (sub) => {
-	if (!sub || typeof sub !== "string") {
-		throw new Error("401 Unauthorized", { cause: { sub } });
-	}
+	assertSub(sub);
 	await options.store.update(
 		options.table,
 		{ sub },

@@ -1,5 +1,7 @@
-import { deepEqual, equal, ok } from "node:assert/strict";
+import { deepEqual, equal, notEqual, ok } from "node:assert/strict";
+import { sign as asymmetricSign, generateKeyPairSync } from "node:crypto";
 import { describe, it, test } from "node:test";
+import { isoBase64URL, isoCBOR } from "@simplewebauthn/server/helpers";
 import account, {
 	create as accountCreate,
 	remove as accountRemove,
@@ -18,14 +20,17 @@ import webauthn, {
 	count as webauthnCount,
 	create as webauthnCreate,
 	createChallenge as webauthnCreateChallenge,
+	createInstance as webauthnCreateInstance,
 	expire as webauthnExpire,
 	getOptions as webauthnGetOptions,
 	list as webauthnList,
 	remove as webauthnRemove,
+	secret as webauthnSecret,
 	select as webauthnSelect,
 	verify as webauthnVerify,
 } from "../authn-webauthn/index.js";
 import crypto, {
+	nowInSeconds,
 	randomChecksumPepper,
 	randomChecksumSalt,
 	symmetricDecrypt,
@@ -115,12 +120,20 @@ account();
 accountUsername();
 authn();
 webauthn();
+
+// Two isolated instances, each with its own `options`
+const passkey = webauthnCreateInstance();
+const securitykey = webauthnCreateInstance();
 // *** Setup End *** //
 
 let sub;
 const username = "username";
 const webauthnName = "1Auth";
 const webauthnOrigin = "http://localhost";
+const passkeyId = "WebAuthnPassKey";
+const securityKeyId = "WebAuthnSecurityKey";
+const passkeyNotifyId = "authn-webauthn-passkey";
+const securityKeyNotifyId = "authn-webauthn-securitykey";
 
 const tests = (config) => {
 	const store = config.store;
@@ -193,6 +206,36 @@ const tests = (config) => {
 			);
 			const count = await webauthnCount(sub);
 			equal(count, 1);
+		});
+		it("Will replace previous challenges rather than accumulate", async () => {
+			await webauthnCreate(sub);
+			const [token] = await store.selectList(authnGetOptions().table, { sub });
+			await overrideCreateChallenge(sub, token);
+			await webauthnVerify(
+				sub,
+				registrationResponse,
+				{ name: "PassKey" },
+				false,
+			);
+			await webauthnCreateChallenge(sub);
+			const afterFirst = await store.selectList(authnGetOptions().table, {
+				sub,
+				type: "WebAuthn-challenge",
+			});
+			await webauthnCreateChallenge(sub);
+			const afterSecond = await store.selectList(authnGetOptions().table, {
+				sub,
+				type: "WebAuthn-challenge",
+			});
+			// a second call removes the first challenge instead of leaving both
+			// redeemable
+			equal(afterSecond.length, afterFirst.length);
+			notEqual(afterSecond[0].id, afterFirst[0].id);
+		});
+		it("Can encode an absent secret without throwing", async () => {
+			// `encode` is handed whatever the credential config produced; a falsy
+			// value has to pass straight through rather than be dereferenced
+			equal(webauthnSecret().encode(undefined), undefined);
 		});
 		it("Can count with { sub } (unverified)", async () => {
 			await webauthnCreate(sub);
@@ -431,6 +474,90 @@ const tests = (config) => {
 		authnDB = authnDB.filter((item) => !item.expire);
 		equal(authnDB.length, 1);
 	});
+	it("Will reject a registration whose attestation does not verify", async () => {
+		await webauthnCreate(sub);
+		const [token] = await store.selectList(authnGetOptions().table, { sub });
+		await overrideCreateChallenge(sub, token);
+
+		// `fmt: "none"` can only throw or succeed, so it never reaches the
+		// "returned false" branch. A `packed` self-attestation with a signature from
+		// an unrelated key parses cleanly and simply fails to verify.
+		const attestation = isoCBOR.decodeFirst(
+			isoBase64URL.toBuffer(registrationResponse.response.attestationObject),
+		);
+		const { privateKey } = generateKeyPairSync("ec", {
+			namedCurve: "prime256v1",
+		});
+		attestation.set("fmt", "packed");
+		attestation.set(
+			"attStmt",
+			new Map([
+				["alg", -7],
+				[
+					"sig",
+					new Uint8Array(
+						asymmetricSign("sha256", Buffer.from("wrong"), privateKey),
+					),
+				],
+			]),
+		);
+
+		try {
+			await webauthnVerify(
+				sub,
+				{
+					...registrationResponse,
+					response: {
+						...registrationResponse.response,
+						attestationObject: isoBase64URL.fromBuffer(
+							isoCBOR.encode(attestation),
+						),
+					},
+				},
+				{ name: "PassKey" },
+				false,
+			);
+			throw new Error("expected 401 Unauthorized");
+		} catch (e) {
+			equal(e.message, "401 Unauthorized");
+		}
+	});
+	it("Will reject an assertion whose signature does not verify", async () => {
+		await webauthnCreate(sub);
+		const [token] = await store.selectList(authnGetOptions().table, { sub });
+		await overrideCreateChallenge(sub, token);
+		await webauthnVerify(sub, registrationResponse, { name: "PassKey" }, false);
+		await webauthnCreateChallenge(sub);
+		const [challengeRow] = await store.selectList(authnGetOptions().table, {
+			sub,
+			type: "WebAuthn-challenge",
+		});
+		await overrideGetChallenge(sub, challengeRow);
+
+		// A structurally valid DER ES256 signature from an unrelated key: it parses,
+		// so verification returns false rather than throwing, which is the path that
+		// has to become a 401 rather than an unhandled error.
+		const { privateKey } = generateKeyPairSync("ec", {
+			namedCurve: "prime256v1",
+		});
+		const bogus = asymmetricSign(
+			"sha256",
+			Buffer.from("not the data that was signed"),
+			privateKey,
+		);
+		try {
+			await webauthnAuthenticate(username, {
+				...authenticationResponse,
+				response: {
+					...authenticationResponse.response,
+					signature: bogus.toString("base64url"),
+				},
+			});
+			throw new Error("expected 401 Unauthorized");
+		} catch (e) {
+			equal(e.message, "401 Unauthorized");
+		}
+	});
 	it("Can create a 2nd WebAuthn on an account", async () => {
 		await webauthnCreate(sub);
 		const db0 = await store.selectList(authnGetOptions().table, { sub });
@@ -540,6 +667,213 @@ const tests = (config) => {
 		});
 	});
 
+	describe("with preferredAuthenticatorType per registration", () => {
+		const registerAs = async (preferredAuthenticatorType, response) => {
+			await webauthnCreate(sub, { preferredAuthenticatorType });
+			const [token] = await store.selectList(authnGetOptions().table, {
+				sub,
+				type: "WebAuthn-token",
+			});
+			await overrideCreateChallenge(sub, token);
+			return await webauthnVerify(sub, response, { name: "Device" }, false);
+		};
+
+		it("Will throw with an unknown type", async () => {
+			try {
+				await webauthnCreate(sub, { preferredAuthenticatorType: "phone" });
+			} catch (e) {
+				equal(e.message, "400 Bad Request");
+			}
+		});
+
+		it("Can choose the type without reconfiguring the instance", async () => {
+			const { secret: registrationOptions } = await webauthnCreate(sub, {
+				preferredAuthenticatorType: "remoteDevice",
+			});
+
+			deepEqual(registrationOptions.hints, ["hybrid"]);
+			equal(webauthnGetOptions().preferredAuthenticatorType, undefined);
+		});
+
+		it("Can register a localDevice PassKey", async () => {
+			ok(await registerAs("localDevice", registrationResponse));
+			equal(await webauthnCount(sub), 1);
+		});
+
+		it("Can register a securityKey", async () => {
+			ok(await registerAs("securityKey", registrationResponseSecurityKey));
+			equal(await webauthnCount(sub), 1);
+		});
+
+		it("Can NOT register a PassKey when a securityKey was asked for", async () => {
+			try {
+				await registerAs("securityKey", registrationResponse);
+				throw new Error("should not reach");
+			} catch (e) {
+				equal(e.message, "401 Unauthorized");
+			}
+			equal(await webauthnCount(sub), 0);
+		});
+
+		it("Can NOT register a securityKey when a PassKey was asked for", async () => {
+			try {
+				await registerAs("localDevice", registrationResponseSecurityKey);
+				throw new Error("should not reach");
+			} catch (e) {
+				equal(e.message, "401 Unauthorized");
+			}
+			equal(await webauthnCount(sub), 0);
+		});
+
+		it("Can NOT register a local PassKey when a remote one was asked for", async () => {
+			try {
+				await registerAs("remoteDevice", registrationResponse);
+				throw new Error("should not reach");
+			} catch (e) {
+				equal(e.message, "401 Unauthorized");
+			}
+			equal(await webauthnCount(sub), 0);
+		});
+	});
+
+	describe("with PassKey and SecurityKey instances", () => {
+		test.before(() => {
+			// PassKey: discoverable credential, usable as the only factor
+			passkey.configure({
+				name: webauthnName,
+				origin: webauthnOrigin,
+				notifyId: passkeyNotifyId,
+				residentKey: "required",
+				userVerification: "required",
+				preferredAuthenticatorType: "localDevice",
+				secret: passkey.secret({ id: passkeyId }),
+				token: passkey.token({ id: passkeyId, expire: 5 * 60 }),
+				challenge: passkey.challenge({ id: passkeyId, expire: 2 * 60 }),
+			});
+			// SecurityKey: roaming authenticator used as a second factor
+			securitykey.configure({
+				name: webauthnName,
+				origin: webauthnOrigin,
+				notifyId: securityKeyNotifyId,
+				residentKey: "discouraged",
+				userVerification: "required",
+				preferredAuthenticatorType: "securityKey",
+				secret: securitykey.secret({ id: securityKeyId }),
+				token: securitykey.token({ id: securityKeyId, expire: 5 * 60 }),
+				challenge: securitykey.challenge({
+					id: securityKeyId,
+					expire: 2 * 60,
+				}),
+			});
+		});
+
+		it("Can hold three independent configs", () => {
+			notEqual(passkey.getOptions(), securitykey.getOptions());
+			notEqual(passkey.getOptions(), webauthnGetOptions());
+			equal(passkey.getOptions().residentKey, "required");
+			equal(securitykey.getOptions().residentKey, "discouraged");
+			equal(webauthnGetOptions().residentKey, "discouraged");
+			equal(webauthnGetOptions().userVerification, "preferred");
+		});
+
+		it("Can create a PassKey only registration", async () => {
+			const { secret: registrationOptions } = await passkey.create(sub);
+
+			deepEqual(registrationOptions.hints, ["client-device"]);
+			deepEqual(registrationOptions.authenticatorSelection, {
+				residentKey: "required",
+				requireResidentKey: true,
+				userVerification: "required",
+				authenticatorAttachment: "platform",
+			});
+
+			const [token] = await store.selectList(authnGetOptions().table, { sub });
+			equal(token.type, `${passkeyId}-token`);
+			ok(token.expire - nowInSeconds() <= 5 * 60);
+		});
+
+		it("Can create a SecurityKey only registration", async () => {
+			const { secret: registrationOptions } = await securitykey.create(sub);
+
+			deepEqual(registrationOptions.hints, ["security-key"]);
+			deepEqual(registrationOptions.authenticatorSelection, {
+				residentKey: "discouraged",
+				requireResidentKey: false,
+				userVerification: "required",
+				authenticatorAttachment: "cross-platform",
+			});
+
+			const [token] = await store.selectList(authnGetOptions().table, { sub });
+			equal(token.type, `${securityKeyId}-token`);
+			ok(token.expire - nowInSeconds() <= 5 * 60);
+		});
+
+		it("Can NOT resolve a PassKey from the SecurityKey instance", async () => {
+			await register(passkey, passkeyId, "PassKey");
+
+			equal(await passkey.count(sub), 1);
+			equal(await securitykey.count(sub), 0);
+			equal(await webauthnCount(sub), 0);
+
+			deepEqual(await securitykey.createChallenge(sub), {});
+			const { secret: authenticationOptions } =
+				await passkey.createChallenge(sub);
+			deepEqual(authenticationOptions.allowCredentials, [
+				{ id: registrationResponse.id, type: "public-key" },
+			]);
+			equal(authenticationOptions.userVerification, "required");
+		});
+
+		it("Can NOT resolve a SecurityKey from the PassKey instance", async () => {
+			await register(securitykey, securityKeyId, "Yubikey");
+
+			equal(await securitykey.count(sub), 1);
+			equal(await passkey.count(sub), 0);
+			equal(await webauthnCount(sub), 0);
+
+			deepEqual(await passkey.createChallenge(sub), {});
+			ok((await securitykey.createChallenge(sub)).secret);
+		});
+
+		it("Can notify with the PassKey instance template ids", async () => {
+			const id = await register(passkey, passkeyId, "PassKey", true);
+			await passkey.expire(sub, id);
+
+			deepEqual(
+				mocks.notifyClient.mock.calls.map((call) => call.arguments[0].id),
+				[`${passkeyNotifyId}-create`, `${passkeyNotifyId}-expire`],
+			);
+		});
+
+		it("Can notify with the SecurityKey instance template ids", async () => {
+			const id = await register(securitykey, securityKeyId, "Yubikey", true);
+			await securitykey.remove(sub, id);
+
+			deepEqual(
+				mocks.notifyClient.mock.calls.map((call) => call.arguments[0].id),
+				[`${securityKeyNotifyId}-create`, `${securityKeyNotifyId}-remove`],
+			);
+		});
+
+		const register = async (instance, id, name, notify = false) => {
+			await instance.create(sub);
+			const [token] = await store.selectList(authnGetOptions().table, {
+				sub,
+				type: `${id}-token`,
+			});
+			await overrideCreateChallenge(sub, token);
+			const secret = await instance.verify(
+				sub,
+				id === securityKeyId
+					? registrationResponseSecurityKey
+					: registrationResponse,
+				{ name },
+				notify,
+			);
+			return secret.id;
+		};
+	});
+
 	const overrideCreateChallenge = async (sub, token) => {
 		await store.update(
 			authnGetOptions().table,
@@ -547,6 +881,12 @@ const tests = (config) => {
 			{
 				value: symmetricEncrypt(
 					JSON.stringify({
+						...JSON.parse(
+							symmetricDecrypt(token.value, {
+								sub,
+								encryptedKey: token.encryptionKey,
+							}),
+						),
 						expectedChallenge: registrationOptionsOverride.challenge,
 						expectedOrigin: webauthnOrigin,
 						expectedRPID: registrationOptionsOverride.rp.id,
@@ -651,6 +991,22 @@ const registrationResponse = {
 	type: "public-key",
 	clientExtensionResults: {},
 	authenticatorAttachment: "platform",
+};
+
+// Same credential with the BE/BS flags cleared, so it reads as hardware bound
+// rather than a synced passkey. `fmt: none` carries no attestation signature,
+// so flipping those two bits leaves the response verifiable.
+const registrationResponseSecurityKey = {
+	...registrationResponse,
+	response: {
+		...registrationResponse.response,
+		attestationObject:
+			"o2NmbXRkbm9uZWdhdHRTdG10oGhhdXRoRGF0YViYSZYN5YgOjGh0NBcPZHZgW4_krrmihjLHmVzzuoMdl2NFAAAAAAAAAAAAAAAAAAAAAAAAAAAAFPYpAzBvnzQSBqOxM-_18dTxos5apQECAyYgASFYIHvLwmeIblhH_Tpm7WYjlhnrA3OnL_GL5crvjQI7mjozIlgguEqNjVVHwqmD-QVmXu5ffyvtwhL4-gvD67AtxpjWhlc",
+		authenticatorData:
+			"SZYN5YgOjGh0NBcPZHZgW4_krrmihjLHmVzzuoMdl2NFAAAAAAAAAAAAAAAAAAAAAAAAAAAAFPYpAzBvnzQSBqOxM-_18dTxos5apQECAyYgASFYIHvLwmeIblhH_Tpm7WYjlhnrA3OnL_GL5crvjQI7mjozIlgguEqNjVVHwqmD-QVmXu5ffyvtwhL4-gvD67AtxpjWhlc",
+		transports: ["usb"],
+	},
+	authenticatorAttachment: "cross-platform",
 };
 
 const authenticationOptionsOverride = {

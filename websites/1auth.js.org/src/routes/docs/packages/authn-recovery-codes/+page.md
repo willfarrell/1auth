@@ -26,6 +26,31 @@ Recovery codes use sensible defaults:
 - **Entropy:** 112 bits per code
 - **Count:** 5 codes per account
 - **OTP:** Single-use (removed after use)
+- **`notifyId`:** `'authn-recovery-codes'` — prefix for the notify template ids: `{notifyId}-create`, `{notifyId}-update`, `{notifyId}-remove`
+
+## Codes are a batch, not a credential
+
+Every operation works on the whole set. There is no "add one more".
+
+```
+  create(sub)      ──►  N codes minted, all verified, all otp
+                        returned once, in the clear, never again
+
+  authenticate()   ──►  one code matches, and is consumed on the way out
+                        the rest are untouched -- N-1 remain
+
+  update(sub)      ──►  a fresh batch is minted FIRST, then the old batch
+                        is removed. an interruption leaves the user with
+                        too many codes, never with none
+
+  remove(sub)      ──►  the whole batch goes
+```
+
+The ordering in `update` is deliberate: minting before removing means a failure between the two
+is recoverable, where the reverse would lock the user out of their own recovery path.
+
+Codes are stored hashed like any other secret, so the list returned by `create` is the only
+time they exist in readable form. Show them once and tell the user to store them.
 
 ## API
 

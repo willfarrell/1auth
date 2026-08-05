@@ -15,6 +15,7 @@ import * as mockAuthnDynamoDBTable from "../authn/table/dynamodb.js";
 import * as mockAuthnSQLTable from "../authn/table/sql.js";
 import crypto, {
 	createSeasonedDigest,
+	nowInSeconds,
 	randomChecksumPepper,
 	randomChecksumSalt,
 	symmetricRandomEncryptionKey,
@@ -183,6 +184,50 @@ const tests = (config) => {
 		} catch (e) {
 			equal(e.message, "401 Unauthorized");
 		}
+	});
+
+	describe("`notifyId`", () => {
+		let originalOptions;
+		test.before(() => {
+			originalOptions = { ...messengerGetOptions() };
+		});
+		test.afterEach(() => {
+			messenger(originalOptions);
+		});
+		it("Can notify with a custom template id prefix", async () => {
+			messenger({ ...originalOptions, notifyId: "contact" });
+			const messengerId = await messengerCreate(messengerType, sub, {
+				value: messengerValue,
+				digest: createSeasonedDigest(messengerValue),
+			});
+			const { token } = mocks.notifyClient.mock.calls[0].arguments[0].data;
+			await messengerVerifyToken(messengerType, sub, token, messengerId);
+			await messengerRemove(messengerType, sub, messengerId);
+
+			// no `-create`, it only notifies the account's other verified messengers
+			deepEqual(
+				mocks.notifyClient.mock.calls.map((call) => call.arguments[0].id),
+				[
+					`contact-${messengerType}-verify`,
+					`contact-${messengerType}-remove-self`,
+					`contact-${messengerType}-remove`,
+				],
+			);
+		});
+	});
+
+	it("Will not count an expired messenger", async () => {
+		const messengerId = await messengerCreate(messengerType, sub, {
+			value: messengerValue,
+			digest: createSeasonedDigest(messengerValue),
+		});
+		// verified, so the only thing that can exclude it is the expiry
+		await store.update(
+			messengerGetOptions().table,
+			{ sub, id: messengerId },
+			{ verify: nowInSeconds(), expire: nowInSeconds() - 1 },
+		);
+		equal(await messengerCount(messengerType, sub), 0);
 	});
 
 	it("Can create a messenger on an account", async () => {

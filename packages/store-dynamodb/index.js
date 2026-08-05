@@ -17,7 +17,7 @@ const options = {
 	id: "dynamodb",
 	log: false,
 	client: new DynamoDBClient(),
-	randomId: () => {},
+	randomId: undefined,
 	// number of seconds after expire before removal
 	// 10d chosen based on EFF DNT Policy
 	timeToLiveExpireOffset: 10 * 24 * 60 * 60,
@@ -107,6 +107,28 @@ export const selectList = async (table, filters = {}, fields = []) => {
 	return await queryCommand(table, filters, fields);
 };
 
+// Shared by buildQueryCommand (splits key vs filter conditions) and
+// makeQueryParams (uses them all as one expression).
+const makeExpressions = (filters) => {
+	const expressionAttributeNames = {};
+	const expressionAttributeValues = {};
+	const conditions = new Map();
+	for (const key in filters) {
+		let value = filters[key];
+		if (typeof value === "undefined") {
+			continue;
+		}
+		const isArray = Array.isArray(value);
+		if (isArray) {
+			value = new Set(value);
+		}
+		expressionAttributeNames[`#${key}`] = key;
+		expressionAttributeValues[`:${key}`] = marshall(value, marshallOptions);
+		conditions.set(key, isArray ? `#${key} IN (:${key})` : `#${key} = :${key}`);
+	}
+	return { expressionAttributeNames, expressionAttributeValues, conditions };
+};
+
 const buildQueryCommand = (table, filters = {}) => {
 	let indexName; // must be length of >=3
 	let partitionKey;
@@ -131,22 +153,11 @@ const buildQueryCommand = (table, filters = {}) => {
 		keyAttributeSet.add("id");
 	}
 
-	const expressionAttributeNames = {};
-	const expressionAttributeValues = {};
+	const { expressionAttributeNames, expressionAttributeValues, conditions } =
+		makeExpressions(filters);
 	const keyConditions = [];
 	const filterConditions = [];
-	for (const key in filters) {
-		let value = filters[key];
-		if (typeof value === "undefined") {
-			continue;
-		}
-		const isArray = Array.isArray(value);
-		if (isArray) {
-			value = new Set(value);
-		}
-		expressionAttributeNames[`#${key}`] = key;
-		expressionAttributeValues[`:${key}`] = marshall(value, marshallOptions);
-		const condition = isArray ? `#${key} IN (:${key})` : `#${key} = :${key}`;
+	for (const [key, condition] of conditions) {
 		if (keyAttributeSet.has(key)) {
 			keyConditions.push(condition);
 		} else {
@@ -199,7 +210,14 @@ export const insert = async (table, inputValues = {}) => {
 		values[options.timeToLiveKey] =
 			values.expire + options.timeToLiveExpireOffset;
 	}
-	values.id ??= options.randomId();
+	if (values.id == null) {
+		if (typeof options.randomId !== "function") {
+			throw new Error(
+				"@1auth/store-dynamodb insert() needs an `id`, or a `randomId` to make one",
+			);
+		}
+		values.id = options.randomId();
+	}
 	const commandParams = {
 		TableName: table,
 		Item: marshall(values, marshallOptions),
@@ -212,6 +230,8 @@ export const insertList = async (table, rows = []) => {
 	if (options.log) {
 		options.log(`@1auth/store-${options.id} insertList(`, table, rows, ")");
 	}
+	// BatchWriteItem rejects an empty request list
+	if (!rows.length) return [];
 
 	const ids = [];
 	const putRequests = [];
@@ -358,51 +378,16 @@ export const removeList = async (table, filters = {}) => {
 	await options.client.send(new BatchWriteItemCommand(commandParams));
 };
 
-export const makeQueryParams = (filters = {}, fields = []) => {
-	const expressionAttributeNames = {};
-	const expressionAttributeValues = {};
-	let keyConditionExpression = [];
-	let updateExpression = [];
-	const projectionExpression = [];
-	const attributesToGet = [];
-	for (const key in filters) {
-		let value = filters[key];
-		if (typeof value === "undefined") {
-			continue;
-		}
-		const isArray = Array.isArray(value);
-		if (isArray) {
-			value = new Set(value);
-		}
-		expressionAttributeNames[`#${key}`] = key;
-		expressionAttributeValues[`:${key}`] = marshall(value, marshallOptions);
-		if (isArray) {
-			keyConditionExpression.push(`#${key} IN (:${key})`);
-		} else {
-			keyConditionExpression.push(`#${key} = :${key}`);
-		}
-		updateExpression.push(`#${key} = :${key}`);
-	}
-	keyConditionExpression = keyConditionExpression.join(" and ");
-	updateExpression = `SET ${updateExpression.join(", ")}`;
-
-	for (const key of fields) {
-		expressionAttributeNames[`#${key}`] = key;
-		projectionExpression.push(`:${key}`);
-		attributesToGet.push(`:${key}`);
-	}
-
-	const commandParams = {
+export const makeQueryParams = (filters = {}) => {
+	const { expressionAttributeNames, expressionAttributeValues, conditions } =
+		makeExpressions(filters);
+	const updateExpression = [...conditions.keys()].map(
+		(key) => `#${key} = :${key}`,
+	);
+	return {
 		ExpressionAttributeNames: expressionAttributeNames,
 		ExpressionAttributeValues: expressionAttributeValues,
-		KeyConditionExpression: keyConditionExpression,
-		UpdateExpression: updateExpression,
+		KeyConditionExpression: [...conditions.values()].join(" and "),
+		UpdateExpression: `SET ${updateExpression.join(", ")}`,
 	};
-	if (attributesToGet.length) {
-		commandParams.ProjectionExpression = [
-			...new Set(projectionExpression),
-		].join(", "); // return keys
-		commandParams.AttributesToGet = attributesToGet;
-	}
-	return commandParams;
 };

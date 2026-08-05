@@ -25,8 +25,14 @@ suite
 		);
 	});
 
-suite.addEventListener("complete", () => {
-	console.table(suite.table());
-});
+await suite.run();
 
-suite.run();
+console.table(suite.table());
+
+const failed = suite.tasks.filter((task) => task.result?.error);
+if (failed.length) {
+	throw new AggregateError(
+		failed.map((task) => task.result.error),
+		`${failed.length} benchmark(s) errored`,
+	);
+}

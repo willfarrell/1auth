@@ -266,6 +266,76 @@ const tests = (store, mocks) => {
 			strictEqual(result[1].value, "z");
 		});
 	});
+	describe("log", () => {
+		// Every operation announces itself. Without asserting the text, the package
+		// id and the method name are both free to be anything.
+		const firstArgOf = async (fn) => {
+			const before = mocks.log.mock.calls.length;
+			await fn();
+			return mocks.log.mock.calls[before].arguments[0];
+		};
+		it("Should name the package and the operation", async () => {
+			const row = { id: 1, sub: "sub_000", value: "a" };
+			const prefix = `@1auth/store-${mocks.id} `;
+			strictEqual(
+				await firstArgOf(() => store.insert(table, row)),
+				`${prefix}insert(`,
+			);
+			strictEqual(
+				await firstArgOf(() => store.exists(table, { id: row.id })),
+				`${prefix}exists(`,
+			);
+			strictEqual(
+				await firstArgOf(() => store.count(table, { id: row.id })),
+				`${prefix}count(`,
+			);
+			strictEqual(
+				await firstArgOf(() => store.select(table, { id: row.id })),
+				`${prefix}select(`,
+			);
+			strictEqual(
+				await firstArgOf(() => store.selectList(table, { sub: row.sub })),
+				`${prefix}selectList(`,
+			);
+			strictEqual(
+				await firstArgOf(() =>
+					store.insertList(table, [{ id: 2, sub: "sub_000", value: "b" }]),
+				),
+				`${prefix}insertList(`,
+			);
+			// DynamoDB writes need the full key, not just the id
+			const key = { sub: row.sub, id: row.id };
+			strictEqual(
+				await firstArgOf(() => store.update(table, key, { value: "z" })),
+				`${prefix}update(`,
+			);
+			strictEqual(
+				await firstArgOf(() => store.updateList(table, [key], { value: "y" })),
+				`${prefix}updateList(`,
+			);
+			strictEqual(
+				await firstArgOf(() => store.remove(table, key)),
+				`${prefix}remove(`,
+			);
+			// removeList is an alias of remove in the SQL stores, its own operation in DynamoDB
+			ok(
+				/^@1auth\/store-\w[\w-]* remove(List)?\($/.test(
+					await firstArgOf(() =>
+						store.removeList(table, { sub: row.sub, id: [2] }),
+					),
+				),
+			);
+		});
+	});
+	describe("empty lists", () => {
+		it("Should insert nothing from an omitted list", async () => {
+			deepStrictEqual(await store.insertList(table), []);
+			strictEqual(await store.count(table, { sub: "sub_000" }), 0);
+		});
+		it("Should settle nothing from an omitted filter list", async () => {
+			deepStrictEqual(await store.updateList(table), []);
+		});
+	});
 	describe("removeList", () => {
 		it("Should remove rows in store using {id:[], sub:''}", async () => {
 			const rows = [

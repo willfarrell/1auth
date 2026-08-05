@@ -13,6 +13,7 @@ export const create = async (client, table = name) => {
     "value"              VARCHAR(256)  NOT NULL,
     "digest"             VARCHAR(256)  NOT NULL,
     "metadata"           VARCHAR(256)  DEFAULT NULL, -- optional, used in tests
+    "publicKey"          VARCHAR(1024) DEFAULT NULL, -- device key (JWK), NULL for unbound sessions
 
     "create"             TIMESTAMP WITH TIME ZONE DEFAULT NULL, -- NOW()
     "update"             TIMESTAMP WITH TIME ZONE DEFAULT NULL, -- NOW()

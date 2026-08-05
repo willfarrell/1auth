@@ -6,6 +6,8 @@ import {
 	verify as authnVerify,
 } from "@1auth/authn";
 import {
+	assertId,
+	assertSub,
 	createSeasonedDigest,
 	createSecretHash,
 	makeRandomConfigObject,
@@ -50,6 +52,7 @@ export const token = ({
 
 const defaults = {
 	id,
+	notifyId: "messenger", // template id prefix, set per instance when running more than one
 	store: undefined,
 	notify: undefined,
 	table: "messengers",
@@ -74,9 +77,7 @@ export const exists = async (type, value) => {
 };
 
 export const count = async (type, sub) => {
-	if (!sub || typeof sub !== "string") {
-		throw new Error("401 Unauthorized", { cause: { sub } });
-	}
+	assertSub(sub);
 	const messengers = await options.store.selectList(
 		options.table,
 		{ sub, type },
@@ -115,9 +116,7 @@ export const lookup = async (type, value) => {
 };
 
 export const list = async (type, sub) => {
-	if (!sub || typeof sub !== "string") {
-		throw new Error("401 Unauthorized", { cause: { sub } });
-	}
+	assertSub(sub);
 	const messengers = await options.store.selectList(options.table, {
 		sub,
 		type,
@@ -137,12 +136,8 @@ export const list = async (type, sub) => {
 };
 
 export const select = async (type, sub, id) => {
-	if (!sub || typeof sub !== "string") {
-		throw new Error("401 Unauthorized", { cause: { sub } });
-	}
-	if (!id || typeof id !== "string") {
-		throw new Error("404 Not Found", { cause: { sub, id } });
-	}
+	assertSub(sub);
+	assertId(id, { sub });
 	const res = await options.store.select(options.table, {
 		type,
 		sub,
@@ -160,9 +155,7 @@ export const select = async (type, sub, id) => {
 };
 
 export const create = async (type, sub, values) => {
-	if (!sub || typeof sub !== "string") {
-		throw new Error("401 Unauthorized", { cause: { sub } });
-	}
+	assertSub(sub);
 	const valueExists = await options.store.select(
 		options.table,
 		{
@@ -176,7 +169,7 @@ export const create = async (type, sub, values) => {
 	}
 	if (valueExists?.sub !== sub && valueExists?.verify) {
 		await options.notify.trigger(
-			`messenger-${type}-exists`,
+			`${options.notifyId}-${type}-exists`,
 			valueExists?.sub,
 			{},
 			{ messengers: [{ id: valueExists.id }] },
@@ -212,9 +205,7 @@ export const create = async (type, sub, values) => {
 };
 
 export const createToken = async (type, sub, sourceId) => {
-	if (!sub || typeof sub !== "string") {
-		throw new Error("401 Unauthorized", { cause: { sub } });
-	}
+	assertSub(sub);
 	if (!sourceId || typeof sourceId !== "string") {
 		throw new Error("404 Not Found", { cause: { sub, sourceId } });
 	}
@@ -230,7 +221,7 @@ export const createToken = async (type, sub, sourceId) => {
 		sourceId,
 	});
 	await options.notify.trigger(
-		`messenger-${type}-verify`,
+		`${options.notifyId}-${type}-verify`,
 		sub,
 		{
 			token,
@@ -242,9 +233,7 @@ export const createToken = async (type, sub, sourceId) => {
 };
 
 export const verifyToken = async (type, sub, token, sourceId) => {
-	if (!sub || typeof sub !== "string") {
-		throw new Error("401 Unauthorized", { cause: { sub } });
-	}
+	assertSub(sub);
 	if (!sourceId || typeof sourceId !== "string") {
 		throw new Error("404 Not Found", { cause: { sub, sourceId } });
 	}
@@ -266,19 +255,18 @@ export const verifyToken = async (type, sub, token, sourceId) => {
 		{ verify: nowInSeconds() },
 	);
 	if (messengers.length) {
-		await options.notify.trigger(`messenger-${type}-create`, sub, undefined, {
-			messengers,
-		});
+		await options.notify.trigger(
+			`${options.notifyId}-${type}-create`,
+			sub,
+			undefined,
+			{ messengers },
+		);
 	}
 };
 
 export const remove = async (type, sub, id) => {
-	if (!sub || typeof sub !== "string") {
-		throw new Error("401 Unauthorized", { cause: { sub } });
-	}
-	if (!id || typeof id !== "string") {
-		throw new Error("404 Not Found", { cause: { sub, id } });
-	}
+	assertSub(sub);
+	assertId(id, { sub });
 	const messenger = await options.store.select(
 		options.table,
 		{ id, sub, type },
@@ -309,11 +297,14 @@ export const remove = async (type, sub, id) => {
 
 	await Promise.all([
 		// Let messenger know it was removed
-		options.notify.trigger(`messenger-${type}-remove-self`, sub, undefined, {
-			messengers: [{ type, value }],
-		}),
+		options.notify.trigger(
+			`${options.notifyId}-${type}-remove-self`,
+			sub,
+			undefined,
+			{ messengers: [{ type, value }] },
+		),
 
 		// Let all others know one was removed
-		options.notify.trigger(`messenger-${type}-remove`, sub),
+		options.notify.trigger(`${options.notifyId}-${type}-remove`, sub),
 	]);
 };

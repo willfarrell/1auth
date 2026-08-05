@@ -31,6 +31,7 @@ accountUsername({
 | `maxLength` | `number` | `32` | Maximum username length |
 | `allowedCharRegExp` | `RegExp` | — | Allowed characters pattern |
 | `usernameBlacklist` | `string[]` | `[]` | Blocked usernames |
+| `notifyId` | `string` | `'account-username'` | Prefix for the notify template ids: `{notifyId}-change`, `{notifyId}-recover` |
 
 ## API
 

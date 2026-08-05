@@ -207,6 +207,27 @@ const tests = (config) => {
 		});
 	});
 
+	describe("`notifyId`", () => {
+		test.afterEach(() => {
+			accessToken();
+		});
+		it("Can notify with a custom template id prefix", async () => {
+			accessToken({ notifyId: "authn-api-key" });
+			const { id } = await accessTokenCreate(sub);
+			await accessTokenExpire(sub, id);
+			await accessTokenRemove(sub, id);
+
+			deepEqual(
+				mocks.notifyClient.mock.calls.map((call) => call.arguments[0].id),
+				[
+					"authn-api-key-create",
+					"authn-api-key-expire",
+					"authn-api-key-remove",
+				],
+			);
+		});
+	});
+
 	it("Can create an access token on an account", async () => {
 		const { username, secret } = await accessTokenCreate(sub);
 		const db = await store.select(authnGetOptions().table, { sub });

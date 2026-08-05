@@ -1,4 +1,4 @@
-import { deepEqual, equal, ok } from "node:assert/strict";
+import { deepEqual, equal, ok, rejects } from "node:assert/strict";
 import { randomInt } from "node:crypto";
 import { describe, it, test } from "node:test";
 import tests from "../store/index.test.js";
@@ -16,6 +16,7 @@ store.default({
 
 const mocks = {
 	...mockDatabase,
+	id: "dynamodb",
 	table: mockDatabaseTable,
 };
 
@@ -36,10 +37,10 @@ describe("store-dynamodb", () => {
 			});
 		});
 		it("Should format {ExpressionAttributeValues} properly", async () => {
-			const { ExpressionAttributeValues } = store.makeQueryParams(
-				{ id: [1, 2], sub: "sub_000" },
-				["value"],
-			);
+			const { ExpressionAttributeValues } = store.makeQueryParams({
+				id: [1, 2],
+				sub: "sub_000",
+			});
 			deepEqual(ExpressionAttributeValues, {
 				":id": {
 					NS: ["1", "2"],
@@ -50,26 +51,18 @@ describe("store-dynamodb", () => {
 			});
 		});
 		it("Should format {KeyConditionExpression} properly", async () => {
-			const { KeyConditionExpression } = store.makeQueryParams(
-				{ id: [1, 2], sub: "sub_000" },
-				["value"],
-			);
+			const { KeyConditionExpression } = store.makeQueryParams({
+				id: [1, 2],
+				sub: "sub_000",
+			});
 			equal(KeyConditionExpression, "#id IN (:id) and #sub = :sub");
 		});
 		it("Should format {UpdateExpression} properly", async () => {
-			const { UpdateExpression } = store.makeQueryParams(
-				{ id: [1, 2], sub: "sub_000" },
-				["value"],
-			);
+			const { UpdateExpression } = store.makeQueryParams({
+				id: [1, 2],
+				sub: "sub_000",
+			});
 			equal(UpdateExpression, "SET #id = :id, #sub = :sub");
-		});
-		it("Should format {ProjectionExpression} properly", async () => {
-			const { ProjectionExpression, AttributesToGet } = store.makeQueryParams(
-				{ id: [1, 2], sub: "sub_000" },
-				["value"],
-			);
-			equal(ProjectionExpression, ":value");
-			deepEqual(AttributesToGet, [":value"]);
 		});
 	});
 
@@ -95,31 +88,6 @@ describe("store-dynamodb", () => {
 				":id": { N: "42" },
 			});
 			equal(result.KeyConditionExpression, "#id = :id");
-		});
-
-		it("Should not include ProjectionExpression when no fields", async () => {
-			const result = store.makeQueryParams({ sub: "sub_000" });
-			equal(result.ProjectionExpression, undefined);
-			equal(result.AttributesToGet, undefined);
-		});
-
-		it("Should handle multiple fields", async () => {
-			const result = store.makeQueryParams({ sub: "sub_000" }, [
-				"value",
-				"digest",
-			]);
-			equal(result.ProjectionExpression, ":value, :digest");
-			deepEqual(result.AttributesToGet, [":value", ":digest"]);
-			equal(result.ExpressionAttributeNames["#value"], "value");
-			equal(result.ExpressionAttributeNames["#digest"], "digest");
-		});
-
-		it("Should deduplicate ProjectionExpression fields", async () => {
-			const result = store.makeQueryParams({ sub: "sub_000" }, [
-				"value",
-				"value",
-			]);
-			equal(result.ProjectionExpression, ":value");
 		});
 
 		it("Should handle empty filters", async () => {
@@ -194,6 +162,19 @@ describe("store-dynamodb", () => {
 		});
 
 		describe("insert edge cases", () => {
+			it("Should throw when no id and no randomId are available", async () => {
+				store.default({ randomId: undefined });
+				try {
+					await rejects(
+						() => store.insert(table, { sub: "sub_000", value: "a" }),
+						{ message: /needs an `id`/ },
+					);
+				} finally {
+					store.default({
+						randomId: () => randomInt(281_474_976_710_655),
+					});
+				}
+			});
 			it("Should assign randomId when no id provided", async () => {
 				const row = { sub: "sub_000", value: "a" };
 				const id = await store.insert(table, row);

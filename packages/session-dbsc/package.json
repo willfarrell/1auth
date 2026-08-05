@@ -1,0 +1,59 @@
+{
+	"name": "@1auth/session-dbsc",
+	"version": "0.0.0-beta.3",
+	"description": "Device Bound Session Credentials (DBSC) for @1auth/session",
+	"type": "module",
+	"engines": {
+		"node": ">=24"
+	},
+	"engineStrict": true,
+	"publishConfig": {
+		"access": "public"
+	},
+	"main": "./index.js",
+	"module": "./index.js",
+	"sideEffects": false,
+	"exports": {
+		".": {
+			"import": "./index.js"
+		}
+	},
+	"files": [
+		"index.js"
+	],
+	"scripts": {
+		"test": "npm run test:unit",
+		"test:unit": "node --test"
+	},
+	"license": "MIT",
+	"funding": {
+		"type": "github",
+		"url": "https://github.com/sponsors/willfarrell"
+	},
+	"keywords": [
+		"1auth",
+		"OWASP",
+		"ASVS",
+		"session",
+		"session-management",
+		"dbsc",
+		"device-bound-session-credentials"
+	],
+	"author": {
+		"name": "1auth contributors",
+		"url": "https://github.com/willfarrell/1auth/graphs/contributors"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/willfarrell/1auth.git",
+		"directory": "packages/session-dbsc"
+	},
+	"bugs": {
+		"url": "https://github.com/willfarrell/1auth/issues"
+	},
+	"homepage": "https://github.com/willfarrell/1auth",
+	"dependencies": {
+		"@1auth/crypto": "0.0.0-beta.3",
+		"@1auth/session": "0.0.0-beta.3"
+	}
+}

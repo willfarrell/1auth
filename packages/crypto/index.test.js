@@ -4,6 +4,7 @@ import {
 	notDeepEqual,
 	notEqual,
 	ok,
+	throws,
 } from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import { describe, it } from "node:test";
@@ -20,6 +21,7 @@ import crypto, {
 	decodeArgon2,
 	encodeArgon2,
 	entropyToCharacterLength,
+	getOptions,
 	makeAsymmetricKeys,
 	makeAsymmetricSignature,
 	makeRandomConfigObject,
@@ -223,6 +225,14 @@ describe("crypto", () => {
 			deepEqual(parts.nonce, options.nonce);
 			equal(parts.hashLength, options.hashLength);
 			deepEqual(parts.hash, options.hash);
+		});
+		it("createSecretHash() rejects memoryCost given in KiB instead of log2", async () => {
+			// 2 ** 15 is the *memory*, 15 is the exponent. Passing the former
+			// used to compute 2 ** 32768 = Infinity and throw deep inside node.
+			throws(() => createSecretHash("1auth", { memoryCost: 2 ** 15 }), {
+				name: "RangeError",
+				message: /log2 exponent/,
+			});
 		});
 		it("createSecretHash() returns hash that can be verified", async () => {
 			const message = "1auth";
@@ -759,6 +769,54 @@ describe("crypto", () => {
 			values.encryptionKey = undefined;
 			decryptedValues.encryptionKey = undefined;
 			deepEqual(decryptedValues, values);
+		});
+		it("Should expose the resolved options", async () => {
+			ok(getOptions().symmetricEncryptionKey);
+			equal(getOptions().defaultEncoding, "base64");
+		});
+		it("Should pass values through untouched without an encryption key", async () => {
+			const values = { value: "plain" };
+			deepEqual(
+				symmetricEncryptFields(values, { sub: "sub_0" }, ["value"]),
+				values,
+			);
+			deepEqual(
+				symmetricDecryptFields(values, { sub: "sub_0" }, ["value"]),
+				values,
+			);
+		});
+		it("Should reuse the old options and fields when new ones are omitted", async () => {
+			const sub = "sub_000000";
+			const { encryptionKey, encryptedKey } =
+				symmetricGenerateEncryptionKey(sub);
+			const encrypted = symmetricEncryptFields(
+				{ value: "secret" },
+				{ encryptionKey, sub },
+				["value"],
+			);
+			encrypted.encryptionKey = encryptedKey;
+			// only three arguments: `newOptions` and `newFields` fall back to the old
+			const rotated = symmetricRotation(encrypted, { sub }, ["value"]);
+			const decrypted = symmetricDecryptFields(
+				rotated,
+				{ encryptedKey: rotated.encryptionKey, sub },
+				["value"],
+			);
+			equal(decrypted.value, "secret");
+		});
+		it("Should NOT rotate across a different `sub`", async () => {
+			// `sub` is the AEAD associated data, so re-encrypting under another
+			// subject would silently produce a row that cannot be read back
+			throws(
+				() =>
+					symmetricRotation(
+						{ encryptionKey: "x" },
+						{ sub: "sub_000000" },
+						["value"],
+						{ sub: "sub_111111" },
+					),
+				{ message: "Mismatching `sub`" },
+			);
 		});
 		it("Should be able to rotate all cryptography", async () => {
 			// setup

@@ -17,10 +17,13 @@ const nav = {
 		account: "/docs/packages/account",
 		"account-username": "/docs/packages/account-username",
 		session: "/docs/packages/session",
+		"session-dbsc": "/docs/packages/session-dbsc",
 	},
 	Authentication: {
 		authn: "/docs/packages/authn",
 		"authn-webauthn": "/docs/packages/authn-webauthn",
+		"authn-webauthn-passkey": "/docs/packages/authn-webauthn-passkey",
+		"authn-webauthn-securitykey": "/docs/packages/authn-webauthn-securitykey",
 		"authn-recovery-codes": "/docs/packages/authn-recovery-codes",
 		"authn-access-token": "/docs/packages/authn-access-token",
 	},
@@ -34,6 +37,7 @@ const nav = {
 	},
 	Stores: {
 		store: "/docs/packages/store",
+		"store-sql": "/docs/packages/store-sql",
 		"store-dynamodb": "/docs/packages/store-dynamodb",
 		"store-postgres": "/docs/packages/store-postgres",
 		"store-sqlite": "/docs/packages/store-sqlite",

@@ -1,6 +1,6 @@
 {
 	"name": "@1auth/monorepo",
-	"version": "0.0.0-beta.3",
+	"version": "0.0.0-rc.0",
 	"description": "",
 	"private": true,
 	"type": "module",
@@ -17,7 +17,7 @@
 		"lint": "biome check --write --no-errors-on-unmatched --files-ignore-unknown=true",
 		"test": "npm run test:lint && npm run test:unit && npm run test:mutation && npm run test:types && npm run test:sast && npm run test:perf && npm run test:dast",
 		"test:lint": "biome check --staged --no-errors-on-unmatched",
-		"test:unit": "node --test --test-concurrency 1 --experimental-test-coverage --test-coverage-lines=98 --test-coverage-branches=95 --test-coverage-functions=97 --test-coverage-exclude=**/mock.js --test-coverage-exclude=**/*.test.js --test-coverage-exclude=**/table/*",
+		"test:unit": "node --test --test-concurrency 1 --experimental-test-coverage --test-coverage-lines=100 --test-coverage-branches=100 --test-coverage-functions=100 --test-coverage-exclude=**/mock.js --test-coverage-exclude=**/*.test.js --test-coverage-exclude=**/table/*",
 		"test:mutation": "stryker run",
 		"test:sast": "npm run test:sast:license && npm run test:sast:lockfile && npm run test:sast:semgrep && npm run test:sast:trufflehog && npm run test:sast:gitleaks && npm run test:sast:actionlint && npm run test:sast:zizmor && npm run test:sast:trivy",
 		"test:sast:actionlint": "actionlint",
@@ -93,6 +93,9 @@
 		"esbuild": ">=0.28.1",
 		"js-yaml": ">=4.2.0",
 		"mathjs": ">=15.2.0",
+		"miniflare": {
+			"undici": "^7.29.0"
+		},
 		"qs": "^6.15.2",
 		"ws": ">=8.21.0"
 	},

@@ -50,6 +50,23 @@
 				"linter": {
 					"enabled": false
 				}
+			},
+			"linter": {
+				"rules": {
+					"a11y": {
+						"useSemanticElements": "off"
+					}
+				}
+			}
+		},
+		{
+			"includes": ["**/*.svg"],
+			"linter": {
+				"rules": {
+					"a11y": {
+						"noSvgWithoutTitle": "off"
+					}
+				}
 			}
 		}
 	]

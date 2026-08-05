@@ -11,6 +11,7 @@ import {
 	select as authnSelect,
 } from "@1auth/authn";
 import {
+	assertSub,
 	createDigest,
 	createSecretHash,
 	makeRandomConfigObject,
@@ -60,6 +61,7 @@ export const secret = ({
 
 const defaults = {
 	id,
+	notifyId: "authn-access-token", // template id prefix, set per instance when running more than one
 	username: username(),
 	secret: secret(),
 };
@@ -82,9 +84,7 @@ export const exists = async (username) => {
 };
 
 export const count = async (sub) => {
-	if (!sub || typeof sub !== "string") {
-		throw new Error("401 Unauthorized", { cause: { sub } });
-	}
+	assertSub(sub);
 	return await authnCount(options.secret, sub);
 };
 
@@ -123,7 +123,7 @@ export const create = async (sub, values = {}) => {
 		digest,
 		verify: now,
 	});
-	await options.notify.trigger("authn-access-token-create", sub, {
+	await options.notify.trigger(`${options.notifyId}-create`, sub, {
 		expire,
 	});
 
@@ -132,10 +132,10 @@ export const create = async (sub, values = {}) => {
 
 export const expire = async (sub, id) => {
 	await authnExpire(options.secret, sub, id);
-	await options.notify.trigger("authn-access-token-expire", sub);
+	await options.notify.trigger(`${options.notifyId}-expire`, sub);
 };
 
 export const remove = async (sub, id) => {
 	await authnRemove(options.secret, sub, id);
-	await options.notify.trigger("authn-access-token-remove", sub);
+	await options.notify.trigger(`${options.notifyId}-remove`, sub);
 };

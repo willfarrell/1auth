@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 import { setTimeout } from "node:timers/promises";
 import {
+	assertId,
+	assertSub,
 	makeRandomConfigObject,
 	nowInSeconds,
 	symmetricDecryptFields,
@@ -37,9 +39,7 @@ export default (opt = {}) => {
 export const getOptions = () => options;
 
 export const count = async (credentialOptions, sub) => {
-	if (!sub || typeof sub !== "string") {
-		throw new Error("401 Unauthorized", { cause: { sub } });
-	}
+	assertSub(sub);
 	const type = makeType(credentialOptions);
 	const credentials = await options.store.selectList(
 		options.table,
@@ -62,9 +62,7 @@ export const count = async (credentialOptions, sub) => {
 };
 
 export const list = async (credentialOptions, sub, params, fields) => {
-	if (!sub || typeof sub !== "string") {
-		throw new Error("401 Unauthorized", { cause: { sub } });
-	}
+	assertSub(sub);
 	const type = makeType(credentialOptions);
 	const items = await options.store.selectList(
 		options.table,
@@ -99,16 +97,14 @@ const createCredential = async (
 	sub,
 	{ id, value, ...values },
 ) => {
-	if (!sub || typeof sub !== "string") {
-		throw new Error("401 Unauthorized", { cause: { sub } });
-	}
+	assertSub(sub);
 	const now = nowInSeconds();
 	const type = makeType(credentialOptions);
 	let { otp, expire } = credentialOptions;
 	expire &&= now + expire;
 
 	if (options.idGenerate) {
-		id ??= await options.randomId.create(options.idPrefix);
+		id ??= await options.randomId.create();
 	}
 	value ??= credentialOptions.create();
 	const encodedValue = await credentialOptions.encode(value);
@@ -271,12 +267,8 @@ export const authenticate = async (credentialOptions, username, secret) => {
 };
 
 export const verifySecret = async (_credentialOptions, sub, id) => {
-	if (!sub || typeof sub !== "string") {
-		throw new Error("401 Unauthorized", { cause: { sub, id } });
-	}
-	if (!id || typeof id !== "string") {
-		throw new Error("404 Not Found", { cause: { sub, id } });
-	}
+	assertSub(sub, { id });
+	assertId(id, { sub });
 	const now = nowInSeconds();
 	await options.store.update(
 		options.table,
@@ -362,12 +354,8 @@ export const verify = async (credentialOptions, sub, input) => {
 };
 
 export const expire = async (_credentialOptions, sub, id, values = {}) => {
-	if (!sub || typeof sub !== "string") {
-		throw new Error("401 Unauthorized", { cause: { sub, id } });
-	}
-	if (!id || typeof id !== "string") {
-		throw new Error("404 Not Found", { cause: { sub, id } });
-	}
+	assertSub(sub, { id });
+	assertId(id, { sub });
 	await options.store.update(
 		options.table,
 		{ sub, id },
@@ -376,20 +364,14 @@ export const expire = async (_credentialOptions, sub, id, values = {}) => {
 };
 
 export const remove = async (credentialOptions, sub, id) => {
-	if (!sub || typeof sub !== "string") {
-		throw new Error("401 Unauthorized", { cause: { sub, id } });
-	}
-	if (!id || typeof id !== "string") {
-		throw new Error("404 Not Found", { cause: { sub, id } });
-	}
+	assertSub(sub, { id });
+	assertId(id, { sub });
 	const type = makeType(credentialOptions);
 	return await options.store.remove(options.table, { id, type, sub });
 };
 
 export const removeList = async (credentialOptions, sub, id) => {
-	if (!sub || typeof sub !== "string") {
-		throw new Error("401 Unauthorized", { cause: { sub, id } });
-	}
+	assertSub(sub, { id });
 	if (!id || !Array.isArray(id) || !id.length) {
 		throw new Error("404 Not Found", { cause: { sub, id } });
 	}
@@ -398,12 +380,8 @@ export const removeList = async (credentialOptions, sub, id) => {
 };
 
 export const select = async (credentialOptions, sub, id) => {
-	if (!sub || typeof sub !== "string") {
-		throw new Error("401 Unauthorized", { cause: { sub, id } });
-	}
-	if (!id || typeof id !== "string") {
-		throw new Error("404 Not Found", { cause: { sub, id } });
-	}
+	assertSub(sub, { id });
+	assertId(id, { sub });
 	const type = makeType(credentialOptions);
 	const item = await options.store.select(options.table, { id, type, sub });
 	if (!item) return item;

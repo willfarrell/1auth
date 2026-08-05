@@ -37,6 +37,72 @@ authn({
 | `idGenerate` | `object` | — | ID generation config |
 | `randomId` | `object` | — | Random ID options (prefix: `authn_`) |
 
+## How `authenticate` works
+
+Every `@1auth/authn-*` package is this one flow with a different credential config. Two parts
+of it are easy to miss and both are deliberate.
+
+```
+Caller                        @1auth/authn                        Store
+  │                                │                                │
+  │  authenticate(config,          │                                │
+  │    username, secret)           │                                │
+  ├───────────────────────────────►│                                │
+  │                                │                                │
+  │                       ┌────────┴────────────┐                   │
+  │                       │ start a timer for   │                   │
+  │                       │ authenticationDura- │                   │
+  │                       │ tion. every exit    │                   │
+  │                       │ below waits on it   │                   │
+  │                       └────────┬────────────┘                   │
+  │                                │                                │
+  │                                │  subject(username) via the     │
+  │                                │  usernameExists hooks          │
+  │                                ├───────────────────────────────►│
+  │                                │                                │
+  │                                │  no subject? wait out the      │
+  │                                │  timer, then 401               │
+  │                                │                                │
+  │                                │  selectList({ sub, type })     │
+  │                                ├───────────────────────────────►│
+  │                                │◄───────────────────────────────┤
+  │                                │                                │
+  │                       ┌────────┴────────────┐                   │
+  │                       │ for each credential │                   │
+  │                       │  skip if unverified │                   │
+  │                       │   and not otp       │                   │
+  │                       │  skip if expired    │                   │
+  │                       │  decrypt, decode,   │                   │
+  │                       │   config.verify()   │                   │
+  │                       └────────┬────────────┘                   │
+  │                                │                                │
+  │                                │  match, and otp?               │
+  │                                │  expire it now -- one use      │
+  │                                │  match, not otp?               │
+  │                                │  write lastused                │
+  │                                ├───────────────────────────────►│
+  │                                │                                │
+  │                                │  config.cleanup(), if any      │
+  │                                │  (webauthn writes its counter) │
+  │                                │                                │
+  │                       ┌────────┴────────────┐                   │
+  │                       │ await the timer     │                   │
+  │                       └────────┬────────────┘                   │
+  │  sub, or 401                   │                                │
+  │◄───────────────────────────────┤                                │
+```
+
+**Every path takes the same minimum time.** `authenticationDuration` is started before the
+username is even resolved and awaited on every exit, success or failure. Without it, "no such
+user" returns in a millisecond while "wrong password" takes as long as an Argon2 hash — and
+that difference is a user-enumeration oracle. It must exceed your worst-case hash time or it
+stops covering anything.
+
+**A one-time credential is consumed on the way out.** For `otp` configs the match expires the
+row before `authenticate` returns, so a replay of the same secret finds it already spent. The
+`cause` on the 401 distinguishes `missing`, `expired` and `invalid` — for your logs only.
+Never return it to the caller; that is the same oracle by another route.
+
 ## API
 
 ### `randomId(options)`

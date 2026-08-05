@@ -41,7 +41,7 @@ const defaults = {
 	secretArgon2Algorithm: "argon2id",
 	secretArgon2Version: 19,
 	secretArgon2Parallelism: 1, // OWASP: 1 (matches)
-	secretArgon2MemoryCost: 15, // 2^15 KiB = 32 MiB (exceeds OWASP minimum of 19 MiB)
+	secretArgon2MemoryCost: 15, // log2 exponent: 2^15 KiB = 32 MiB (exceeds OWASP minimum of 19 MiB)
 	secretArgon2TimeCost: 3, // OWASP: 2 (we use 3 for better security)
 	secretArgon2NonceLength: 16,
 	secretArgon2HashLength: 64,
@@ -142,9 +142,7 @@ export const charactersAlpha = charactersAlphaUpper + charactersAlphaLower;
 export const charactersAlphaNumeric = charactersAlpha + charactersNumeric;
 export const charactersDistinguishable = "CDEHKMPRTUWXY012458";
 
-const randomCharactersCache = {
-	charactersAlphaNumeric: customAlphabet(charactersAlphaNumeric),
-};
+const randomCharactersCache = {};
 export const randomCharacters = (
 	length,
 	characters = charactersAlphaNumeric,
@@ -292,7 +290,7 @@ const argon2Options = {
 	algorithm: "argon2id",
 	version: 19,
 	parallelism: 1, // Default 1
-	memoryCost: 15, // memory 2^memoryCost // Default 2 ** 12 = 4MB
+	memoryCost: 15, // log2 exponent, memory 2^memoryCost // Default 2 ** 12 = 4MB
 	timeCost: 3, // Default 3
 	nonceLength: 16,
 	hashLength: 64, // hashLength: 128 // Default 32
@@ -300,6 +298,24 @@ const argon2Options = {
 	secret: undefined, // pepper
 	associatedData: undefined, // sub
 };
+// `memoryCost` is a log2 exponent, NOT KiB: memory = 2 ** memoryCost KiB.
+// Passing KiB (e.g. 2 ** 15) silently asked for 2 ** 32768 KiB = Infinity, which
+// surfaced as an opaque failure deep inside node's argon2 binding. 31 caps it at
+// 2 TiB, far above anything real, so anything larger is a units mistake.
+const assertMemoryCost = (memoryCost) => {
+	if (!Number.isInteger(memoryCost) || memoryCost < 3 || memoryCost > 31) {
+		throw new RangeError(
+			`memoryCost must be a log2 exponent between 3 and 31, received ${memoryCost}`,
+			{ cause: { memoryCost } },
+		);
+	}
+};
+
+// NOTE: the PHC string spec defines `m=` as memory in KiB, but we write the
+// exponent. Every stored hash encodes it this way, so correcting it is a format
+// migration (decode both forms, rehash on next verify), not an edit.
+// ponytail: non-standard `m=`, only ever read back by this library. Fix it when
+// a hash has to be verified by something that is not @1auth/crypto.
 export const encodeArgon2 = ({
 	algorithm,
 	version,
@@ -361,6 +377,7 @@ export const createArgon2 = (
 	parallelism ??= options.secretArgon2Parallelism;
 	nonceLength ??= options.secretArgon2NonceLength;
 	hashLength ??= options.secretArgon2HashLength;
+	assertMemoryCost(memoryCost);
 
 	const nonce = randomBytes(nonceLength);
 	const hash = argon2Sync(algorithm, {
@@ -391,6 +408,9 @@ export const verifyArgon2 = (derivedKey, message) => {
 		hash,
 		hashLength,
 	} = decodeArgon2(derivedKey);
+	// Params come off a stored string; a malformed `m=` would otherwise reach
+	// argon2Sync as Infinity. authn treats a throw here as "credential invalid".
+	assertMemoryCost(memoryCost);
 
 	const verifyHash = argon2Sync(algorithm, {
 		message,
@@ -403,13 +423,8 @@ export const verifyArgon2 = (derivedKey, message) => {
 	return timingSafeEqual(hash, verifyHash);
 };
 
-export const createSecretHash = async (value, options) => {
-	return createArgon2(value, options);
-};
-
-export const verifySecretHash = async (hash, value) => {
-	return verifyArgon2(hash, value);
-};
+export const createSecretHash = createArgon2;
+export const verifySecretHash = verifyArgon2;
 
 // *** Symmetric Encryption *** //
 const authTagLength = 16;
@@ -652,7 +667,7 @@ export const symmetricRotation = (
 		return data;
 	},
 ) => {
-	if (oldOptions.sub !== newOptions.sub)
+	if (newOptions && oldOptions.sub !== newOptions.sub)
 		throw new Error("Mismatching `sub`", {
 			cause: { sub: oldOptions.sub },
 		});
@@ -744,6 +759,21 @@ export const verifyAsymmetricSignature = async (
 };
 
 export const nowInSeconds = () => Math.floor(Date.now() / 1000);
+
+// *** Argument guards *** //
+// `cause` is for developer debugging only, never expose to end users.
+// Lives here because every package already depends on @1auth/crypto.
+export const assertSub = (sub, cause) => {
+	if (!sub || typeof sub !== "string") {
+		throw new Error("401 Unauthorized", { cause: { sub, ...cause } });
+	}
+};
+
+export const assertId = (id, cause) => {
+	if (!id || typeof id !== "string") {
+		throw new Error("404 Not Found", { cause: { id, ...cause } });
+	}
+};
 
 export const safeEqual = (input, expected) => {
 	const bufferInput = Buffer.from(input);

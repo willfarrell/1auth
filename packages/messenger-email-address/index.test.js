@@ -560,6 +560,31 @@ const tests = (config) => {
 	it("Can sanitize: optional dots for gmail", () => {
 		equal(emailAddressSanitize("user.name@gmail.com"), "username@gmail.com");
 	});
+	it("Can sanitize: optional dots for an overridden list longer than the default", () => {
+		emailAddress({
+			optionalDotDomains: ["a.com", "b.com", "c.com", "d.com", "e.com"],
+		});
+		try {
+			equal(emailAddressSanitize("user.name@e.com"), "username@e.com");
+		} finally {
+			emailAddress();
+		}
+	});
+	it("Can NOT sanitize: optional dots for a domain an override dropped", () => {
+		emailAddress({ optionalDotDomains: ["mycorp.com"] });
+		try {
+			equal(
+				emailAddressSanitize("user.name@mycorp.com"),
+				"username@mycorp.com",
+			);
+			equal(emailAddressSanitize("user.name@gmail.com"), "user.name@gmail.com");
+		} finally {
+			emailAddress();
+		}
+	});
+	it("Can sanitize: optional dots for gmail after an override is reverted", () => {
+		equal(emailAddressSanitize("user.name@gmail.com"), "username@gmail.com");
+	});
 	it("Can sanitize: alias domains", () => {
 		equal(emailAddressSanitize("user@proton.me"), "user@protonmail.com");
 	});

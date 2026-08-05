@@ -1,6 +1,6 @@
 // Copyright 2003 - 2026 will Farrell, and 1Auth contributors.
 // SPDX-License-Identifier: MIT
-import { createSeasonedDigest } from "@1auth/crypto";
+import { assertSub, createSeasonedDigest } from "@1auth/crypto";
 import {
 	count as messengerCount,
 	create as messengerCreate,
@@ -45,12 +45,11 @@ const defaults = {
 	usernameBlacklist: ["admin", "root", "sa"],
 };
 const options = {};
-const optionalDotDomainsMap = {};
+// Rebuilt on every configure, an override replaces the list rather than adding to it
+let optionalDotDomainsSet = new Set();
 export default (opt = {}) => {
 	Object.assign(options, messengerOptions(), defaults, opt);
-	for (let i = defaults.optionalDotDomains.length; i--; ) {
-		optionalDotDomainsMap[options.optionalDotDomains[i]] = true;
-	}
+	optionalDotDomainsSet = new Set(options.optionalDotDomains);
 };
 
 export const exists = async (value) => {
@@ -59,9 +58,7 @@ export const exists = async (value) => {
 };
 
 export const count = async (sub) => {
-	if (!sub || typeof sub !== "string") {
-		throw new Error("401 Unauthorized", { cause: { sub } });
-	}
+	assertSub(sub);
 	return await messengerCount(options.id, sub);
 };
 
@@ -115,7 +112,7 @@ export const sanitize = (value) => {
 	username = username.trimStart().split("+")[0].toLowerCase();
 	domain = toASCII(domain).trimEnd().toLowerCase();
 
-	if (optionalDotDomainsMap[domain]) {
+	if (optionalDotDomainsSet.has(domain)) {
 		username = username.replaceAll(".", "");
 	}
 	if (options.aliasDomains[domain]) {

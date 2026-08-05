@@ -229,6 +229,27 @@ const tests = (config) => {
 		});
 	});
 
+	describe("`notifyId`", () => {
+		test.afterEach(() => {
+			recoveryCodes();
+		});
+		it("Can notify with a custom template id prefix", async () => {
+			recoveryCodes({ notifyId: "authn-backup-codes" });
+			await recoveryCodesCreate(sub);
+			await recoveryCodesUpdate(sub);
+			await recoveryCodesRemove(sub);
+
+			deepEqual(
+				mocks.notifyClient.mock.calls.map((call) => call.arguments[0].id),
+				[
+					"authn-backup-codes-create",
+					"authn-backup-codes-update",
+					"authn-backup-codes-remove",
+				],
+			);
+		});
+	});
+
 	it("Can create recovery codes on an account", async () => {
 		const secrets = await recoveryCodesCreate(sub);
 		const authnDB = await store.select(authnGetOptions().table, { sub });

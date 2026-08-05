@@ -11,7 +11,10 @@ export const create = async (client, table = name) => {
      "type"               VARCHAR(32)         NOT NULL,
 
      "encryptionKey"      VARCHAR(256)        NOT NULL,
-     "value"              VARCHAR(256) DEFAULT NULL,
+     -- Stored encrypted: 105 chars fixed overhead (base64 iv 16 + authTag 24 + "." + sha3-384 HMAC 64)
+     -- plus base64 of the plaintext, so 1536 holds 1071 bytes. 256 held only 112, which was already
+     -- too small for a max-length (254 char) email address and for a Web Push subscription (~600).
+     "value"              VARCHAR(1536) DEFAULT NULL,
      "digest"             VARCHAR(73)  DEFAULT NULL, -- of value
 
      "name"               VARCHAR(128) DEFAULT NULL,

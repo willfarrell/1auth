@@ -38,8 +38,18 @@ const waitForStart = async (attempt = 0) => {
 		ready = 1;
 	} catch (error) {
 		if (attempt >= maxRetries) {
-			console.warn("PostgreSQL not available, skipping PostgreSQL tests");
-			return;
+			// Same trap as DynamoDB: a warning here means a green run that never
+			// touched PostgreSQL. Skipping has to be a decision, not a default.
+			if (process.env.SKIP_POSTGRES) {
+				console.warn(
+					"PostgreSQL not available, SKIP_POSTGRES set, skipping PostgreSQL tests",
+				);
+				return;
+			}
+			throw new Error(
+				"PostgreSQL not available on localhost:5432. Start it with `npm run test:postgres`, or set SKIP_POSTGRES=1 to skip these tests deliberately.",
+				{ cause: error },
+			);
 		}
 		console.info("Waiting for postgres to start...", error);
 		await setTimeout(500);
