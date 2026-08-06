@@ -129,7 +129,8 @@ const securitykey = webauthnCreateInstance();
 // *** Setup End *** //
 
 let sub;
-const username = "username";
+// Must not be "username": that is the userName fallback, so it hid the bug
+const username = "testuser";
 const webauthnName = "1Auth";
 const webauthnOrigin = "http://localhost";
 const passkeyId = "WebAuthnPassKey";
@@ -476,6 +477,14 @@ const tests = (config) => {
 		authnDB = authnDB.filter((item) => !item.expire);
 		equal(authnDB.length, 1);
 	});
+	it("Can create WebAuthn on an account without a username", async () => {
+		const subWithoutUsername = await accountCreate();
+
+		const { secret: registrationOptions } =
+			await webauthnCreate(subWithoutUsername);
+
+		equal(registrationOptions.user.name, "username");
+	});
 	it("Will reject a registration whose attestation does not verify", async () => {
 		await webauthnCreate(sub);
 		const [token] = await store.selectList(authnGetOptions().table, { sub });
@@ -721,6 +730,17 @@ const tests = (config) => {
 				userVerification: "required",
 				requireResidentKey: false,
 			});
+		});
+
+		it("Can create WebAuthn with userName option", async () => {
+			webauthn({
+				...originalOptions,
+				userName: (account) => `${account.value}@example.com`,
+			});
+
+			const { secret: registrationOptions } = await webauthnCreate(sub);
+
+			equal(registrationOptions.user.name, `${username}@example.com`);
 		});
 
 		it("Can create WebAuthn with preferredAuthenticatorType option", async () => {

@@ -59,7 +59,8 @@ const mocks = {
 };
 const store = storeSQLite;
 
-const username = "username";
+// Must not be "username": that is the userName fallback in @1auth/authn-webauthn
+const username = "testuser";
 const webauthnName = "1Auth";
 const webauthnOrigin = "http://localhost";
 let sub;
