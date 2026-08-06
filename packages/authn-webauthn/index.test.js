@@ -45,6 +45,7 @@ import webauthn, {
 	remove as webauthnRemove,
 	secret as webauthnSecret,
 	select as webauthnSelect,
+	token as webauthnToken,
 	verify as webauthnVerify,
 } from "./index.js";
 
@@ -502,24 +503,39 @@ const tests = (config) => {
 			]),
 		);
 
+		const tampered = {
+			...registrationResponse,
+			response: {
+				...registrationResponse.response,
+				attestationObject: isoBase64URL.fromBuffer(isoCBOR.encode(attestation)),
+			},
+		};
+
 		try {
-			await webauthnVerify(
-				sub,
-				{
-					...registrationResponse,
-					response: {
-						...registrationResponse.response,
-						attestationObject: isoBase64URL.fromBuffer(
-							isoCBOR.encode(attestation),
-						),
-					},
-				},
-				{ name: "PassKey" },
-				false,
-			);
+			await webauthnVerify(sub, tampered, { name: "PassKey" }, false);
 			throw new Error("expected 401 Unauthorized");
 		} catch (e) {
 			equal(e.message, "401 Unauthorized");
+		}
+
+		// `authn.verify` swallows the credential's own error and reports 401, so
+		// ask the token config directly for the reason behind it
+		const stored = await store.select(authnGetOptions().table, {
+			sub,
+			id: token.id,
+		});
+		const challengeValue = JSON.parse(
+			symmetricDecrypt(stored.value, {
+				sub,
+				encryptedKey: stored.encryptionKey,
+			}),
+		);
+		try {
+			await webauthnToken().verify(tampered, challengeValue);
+			throw new Error("expected Failed verifyRegistrationResponse");
+		} catch (e) {
+			equal(e.message, "Failed verifyRegistrationResponse");
+			deepEqual(e.cause, { response: tampered });
 		}
 	});
 	it("Will reject an assertion whose signature does not verify", async () => {

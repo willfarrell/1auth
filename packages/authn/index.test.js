@@ -593,7 +593,9 @@ describe("authn", () => {
 			configure({ authenticationDuration: 100 });
 			const start = Date.now();
 			await authnAuthenticate(plain(), username, "a");
-			ok(Date.now() - start >= 100);
+			// node's timers may fire a millisecond early against Date.now(), so
+			// allow a little slack; without the floor at all this is ~1ms
+			ok(Date.now() - start >= 90);
 			configure();
 		});
 		it("Will authenticate a credential expiring exactly now", async (t) => {
@@ -734,7 +736,8 @@ describe("authn", () => {
 			configure({ authenticationDuration: 100 });
 			const start = Date.now();
 			await rejects(() => authnVerify(plain(), sub, "a"));
-			ok(Date.now() - start >= 100);
+			// see `authenticate`: the floor is what matters, not the exact ms
+			ok(Date.now() - start >= 90);
 			configure();
 		});
 		it("Will verify a credential expiring exactly now", async (t) => {

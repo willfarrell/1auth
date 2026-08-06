@@ -614,8 +614,21 @@ const tests = (config) => {
 	it("Can NOT validate: invalid format", () => {
 		equal(emailAddressValidate("user[at]example.com"), "400 Bad Request");
 	});
+	it("Can validate: a single character last label", () => {
+		// the final label may be one character, so its trailing group is optional
+		equal(emailAddressValidate("user@example.c"), true);
+	});
+	it("Can NOT validate: trailing junk after a valid address", () => {
+		// the pattern is anchored at the end, so a valid prefix is not enough
+		equal(emailAddressValidate("user@example.com!"), "400 Bad Request");
+		equal(emailAddressValidate("user@example.com two"), "400 Bad Request");
+	});
 	it("Can NOT validate: blacklisted username", () => {
-		equal(emailAddressValidate("admin@example.com"), "409 Conflict");
+		for (const username of ["admin", "root", "sa"]) {
+			equal(emailAddressValidate(`${username}@example.com`), "409 Conflict");
+		}
+		// only the exact reserved local part, not one containing it
+		equal(emailAddressValidate("sysadmin@example.com"), true);
 	});
 
 	// mask

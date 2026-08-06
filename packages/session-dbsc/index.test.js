@@ -17,6 +17,7 @@ import accountUsername, {
 import * as mockAuthnDynamoDBTable from "@1auth/authn/table/dynamodb.js";
 import * as mockAuthnSQLTable from "@1auth/authn/table/sql.js";
 import crypto, {
+	nowInSeconds,
 	randomChecksumPepper,
 	randomChecksumSalt,
 	symmetricRandomEncryptionKey,
@@ -573,6 +574,17 @@ const tests = (config) => {
 			}
 		});
 
+		it("Will throw on an ES256 proof from the wrong curve", async () => {
+			// DBSC names exactly one curve for ES256. The proof below is internally
+			// consistent -- P-384 key, P-384 signature -- so only the curve check
+			// stands between it and a binding.
+			const device = generateKeyPairSync("ec", { namedCurve: "secp384r1" });
+			await rejects(
+				() => dbscRegister(sub, makeProof(device), { aud: registerUrl }),
+				"401 Unauthorized",
+			);
+		});
+
 		it("Can bind a device key and open a session", async () => {
 			const device = makeDevice();
 			const {
@@ -742,6 +754,52 @@ const tests = (config) => {
 				"401 Unauthorized",
 				{ sessionId: "session_unknown" },
 			);
+		});
+
+		it("Will throw once the binding's absolute lifetime has passed", async () => {
+			const device = makeDevice();
+			const { id } = await dbscRegister(sub, makeProof(device), {
+				aud: registerUrl,
+			});
+			// `expire` on the row is the absolute cap, so age it past now
+			await store.update(
+				session.getOptions().table,
+				{ sub, id },
+				{ expire: nowInSeconds() - 1 },
+			);
+			await rejects(
+				() =>
+					dbscRefresh(id, makeProof(device, { aud: refreshUrl, sub: id }), {
+						aud: refreshUrl,
+					}),
+				"401 Unauthorized",
+				{ sessionId: id },
+			);
+		});
+
+		it("Can refresh a binding expiring on the current second", async (t) => {
+			const device = makeDevice();
+			const { id } = await dbscRegister(sub, makeProof(device), {
+				aud: registerUrl,
+			});
+			// the cap is exclusive: a binding dying this very second is still live
+			const now = nowInSeconds();
+			await store.update(
+				session.getOptions().table,
+				{ sub, id },
+				{ expire: now },
+			);
+			t.mock.timers.enable({ apis: ["Date"], now: now * 1000 });
+			try {
+				const { id: refreshedId } = await dbscRefresh(
+					id,
+					makeProof(device, { aud: refreshUrl, sub: id }),
+					{ aud: refreshUrl },
+				);
+				equal(refreshedId, id);
+			} finally {
+				t.mock.timers.reset();
+			}
 		});
 
 		it("Can mint a new bound cookie and leave `sid` alone", async () => {
