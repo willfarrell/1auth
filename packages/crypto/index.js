@@ -405,6 +405,13 @@ export const verifySecretHash = verifyArgon2;
 
 // *** Symmetric Encryption *** //
 const authTagLength = 16;
+// 16 is already node's default for both supported AEAD ciphers, so this is
+// belt-and-braces against a future cipher whose default differs.
+// Stryker disable next-line ObjectLiteral: byte-identical output either way
+const cipherOptions = { authTagLength };
+// The subject is bound into the ciphertext as associated data. Buffer.from
+// decodes utf8 by default, which is what every stored packet was written with.
+const associatedData = (sub) => Buffer.from(sub);
 
 export const symmetricRandomEncryptionKey = () => {
 	return randomBytes(32); // 256 bits
@@ -477,16 +484,9 @@ export const symmetricEncrypt = (
 		options.symmetricEncryptionAlgorithm,
 		encryptionKey,
 		iv,
-		// Stryker disable next-line ObjectLiteral: 16 is already node's default
-		// authTagLength for both supported AEAD ciphers, so passing it explicitly
-		// and omitting the options object produce byte-identical output. Kept
-		// because a future cipher's default is not guaranteed to be 16.
-		{
-			authTagLength,
-		},
+		cipherOptions,
 	);
-	// Stryker disable next-line StringLiteral: see decoding above
-	cipher.setAAD(Buffer.from(sub, "utf8"));
+	cipher.setAAD(associatedData(sub));
 	const encryptedData =
 		cipher.update(data, decoding, encoding) + cipher.final(encoding);
 	const authTag = cipher.getAuthTag();
@@ -592,13 +592,9 @@ export const symmetricDecrypt = (
 		options.symmetricEncryptionAlgorithm,
 		encryptionKey,
 		iv,
-		// Stryker disable next-line ObjectLiteral: see symmetricEncrypt
-		{
-			authTagLength,
-		},
+		cipherOptions,
 	);
-	// Stryker disable next-line StringLiteral: see decoding above
-	decipher.setAAD(Buffer.from(sub, "utf8"));
+	decipher.setAAD(associatedData(sub));
 
 	decipher.setAuthTag(authTag);
 	const data =
