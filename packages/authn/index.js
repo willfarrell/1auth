@@ -179,7 +179,7 @@ export const subject = async (username) => {
 			return exists(username);
 		}),
 	).then((identities) => {
-		return identities.filter((lookup) => lookup)?.[0];
+		return identities.filter((lookup) => lookup)[0];
 	});
 };
 

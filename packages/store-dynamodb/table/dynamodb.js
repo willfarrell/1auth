@@ -156,6 +156,68 @@ export const create = async (client, table = name) => {
 	);
 };
 
+// The table above is deliberately minimal, which leaves the store's key/filter
+// split untestable: it decides that `type` belongs in the key condition on the
+// `sub` and `digest` indexes, and that only holds against a table whose indexes
+// are keyed that way. Every real table in this repo (authentications, sessions,
+// messengers) is, so this one mirrors them. It cannot replace the plain table:
+// a GSI range key excludes every row that lacks the attribute, and most of the
+// shared suite inserts rows with no `type` at all.
+export const typedName = "test_type";
+const typedProjection = ["value", "create", "expire", "digest", "type"];
+export const createTyped = async (client, table = typedName) => {
+	await drop(client, table);
+	await client.send(
+		new CreateTableCommand({
+			TableName: table,
+			AttributeDefinitions: [
+				{ AttributeName: "id", AttributeType: "N" },
+				{ AttributeName: "sub", AttributeType: "S" },
+				{ AttributeName: "digest", AttributeType: "S" },
+				{ AttributeName: "type", AttributeType: "S" },
+			],
+			KeySchema: [
+				{ AttributeName: "sub", KeyType: "HASH" },
+				{ AttributeName: "id", KeyType: "RANGE" },
+			],
+			GlobalSecondaryIndexes: [
+				{
+					IndexName: "key",
+					KeySchema: [{ AttributeName: "id", KeyType: "HASH" }],
+					Projection: {
+						ProjectionType: "INCLUDE",
+						NonKeyAttributes: typedProjection.filter((k) => k !== "id"),
+					},
+				},
+				{
+					IndexName: "sub",
+					KeySchema: [
+						{ AttributeName: "sub", KeyType: "HASH" },
+						{ AttributeName: "type", KeyType: "RANGE" },
+					],
+					Projection: {
+						ProjectionType: "INCLUDE",
+						NonKeyAttributes: ["value", "create", "expire", "digest"],
+					},
+				},
+				{
+					IndexName: "digest",
+					KeySchema: [
+						{ AttributeName: "digest", KeyType: "HASH" },
+						{ AttributeName: "type", KeyType: "RANGE" },
+					],
+					Projection: {
+						ProjectionType: "INCLUDE",
+						NonKeyAttributes: ["value", "create", "expire"],
+					},
+				},
+			],
+			BillingMode: "PAY_PER_REQUEST",
+		}),
+	);
+	await ready(client, table);
+};
+
 // Delete the rows, never the table. Dropping and recreating a table plus its
 // GSIs on every afterEach is what made this suite unusable.
 export const truncate = async (client, table = name) => {

@@ -15,16 +15,16 @@ import {
 // Only allow characters that are safe to encode
 // not allowed because it can be used to declare an extension
 let usernameBlacklistRegExp;
-const options = {
-	id: "username",
+const defaults = {
 	notifyId: "account-username", // template id prefix, set per instance when running more than one
 	allowedCharRegExp: /^[a-z0-9_-]*$/,
 	usernameBlacklist: [],
 	minLength: 1,
 	maxLength: 32,
 };
+const options = {};
 export default (opt = {}) => {
-	Object.assign(options, accountOptions(), opt);
+	Object.assign(options, defaults, accountOptions(), opt);
 	// Always reassigned, so an empty blacklist clears the previous one
 	usernameBlacklistRegExp = options.usernameBlacklist.length
 		? new RegExp(
@@ -32,6 +32,7 @@ export default (opt = {}) => {
 			)
 		: undefined;
 };
+export const getOptions = () => options;
 
 export const exists = async (username) => {
 	const usernameSanitized = sanitize(username);
@@ -106,8 +107,7 @@ export const sanitize = (value) => {
 };
 
 export const validate = (value) => {
-	let valid = true;
-	if (valid === true) valid = validateLength(value);
+	let valid = validateLength(value);
 	if (valid === true) valid = validateAllowedChar(value);
 	if (valid === true) valid = validateBlacklist(value);
 	return valid;

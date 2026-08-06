@@ -1,5 +1,6 @@
-import { deepEqual, equal, ok } from "node:assert/strict";
+import { deepEqual, equal, notEqual, ok } from "node:assert/strict";
 import { describe, it, test } from "node:test";
+import { setTimeout } from "node:timers/promises";
 import account, {
 	create as accountCreate,
 	remove as accountRemove,
@@ -10,10 +11,15 @@ import accountUsername, {
 	create as accountUsernameCreate,
 	exists as accountUsernameExists,
 } from "@1auth/account-username";
-import authn, { getOptions as authnGetOptions } from "@1auth/authn";
+import authn, {
+	getOptions as authnGetOptions,
+	makeType as authnMakeType,
+} from "@1auth/authn";
 import * as mockAuthnDynamoDBTable from "@1auth/authn/table/dynamodb.js";
 import * as mockAuthnSQLTable from "@1auth/authn/table/sql.js";
 import crypto, {
+	createDigest,
+	nowInSeconds,
 	randomChecksumPepper,
 	randomChecksumSalt,
 	symmetricRandomEncryptionKey,
@@ -37,7 +43,9 @@ import accessToken, {
 	list as accessTokenList,
 	lookup as accessTokenLookup,
 	remove as accessTokenRemove,
+	secret as accessTokenSecret,
 	select as accessTokenSelect,
+	username as accessTokenUsername,
 } from "./index.js";
 
 crypto({
@@ -115,10 +123,23 @@ accessToken();
 // *** Setup End *** //
 
 let sub;
+let subOther;
+let otherToken;
 const username = "username";
+const usernameOther = "username-other";
 
 const tests = (config) => {
 	const store = config.store;
+	// Every test that reconfigures has to land back on this baseline.
+	// `Object.assign(options, authnGetOptions(), defaults, opt)` re-applies the
+	// defaults on each call, so `configure()` with no argument is a full reset.
+	const configure = (opt = {}) =>
+		accessToken({
+			log: (...args) => {
+				mocks.log(...args);
+			},
+			...opt,
+		});
 
 	test.before(async () => {
 		mocks = config.mocks;
@@ -138,16 +159,18 @@ const tests = (config) => {
 			// mocks.log(...args);
 			// },
 		});
-		accessToken({
-			log: (...args) => {
-				mocks.log(...args);
-			},
-		});
+		configure();
 	});
 
 	test.beforeEach(async (t) => {
 		sub = await accountCreate();
 		await accountUsernameCreate(sub, username);
+		// A second account holding its own access token: every lookup below is
+		// keyed on a digest, and a filter wide enough to ignore it would return
+		// this row instead of nothing.
+		subOther = await accountCreate();
+		await accountUsernameCreate(subOther, usernameOther);
+		otherToken = await accessTokenCreate(subOther);
 
 		t.mock.method(mocks, "log");
 		t.mock.method(mocks, "notifyClient");
@@ -156,8 +179,10 @@ const tests = (config) => {
 	test.afterEach(async (t) => {
 		t.mock.reset();
 		await accountRemove(sub);
+		await accountRemove(subOther);
 		await mocks.storeAuthn.truncate(mocks.storeClient);
 		await mocks.storeAccount.truncate(mocks.storeClient);
+		configure();
 	});
 
 	test.after(async () => {
@@ -166,53 +191,134 @@ const tests = (config) => {
 		mocks.storeClient.after?.();
 	});
 
-	describe("`exists`", () => {
-		it("Will throw with ({username:undefined})", async () => {
-			try {
-				await accessTokenExists(undefined);
-			} catch (e) {
-				equal(e.message, "404 Not Found");
+	describe("config", () => {
+		it("Names its credentials after the package id", () => {
+			const usernameConfig = accessTokenUsername();
+			equal(usernameConfig.id, "accessToken");
+			equal(usernameConfig.type, "username");
+
+			const secretConfig = accessTokenSecret();
+			equal(secretConfig.id, "accessToken");
+			equal(secretConfig.type, "secret");
+			equal(secretConfig.otp, false);
+			equal(secretConfig.expire, 30 * 24 * 60 * 60);
+
+			// the credential's id and type together name the stored row
+			equal(authnMakeType(secretConfig), "accessToken-secret");
+		});
+		it("Generates 112 bits of prefixed username and secret", () => {
+			// 112 bits over the 62 alphanumerics needs 19 characters
+			for (const config of [accessTokenUsername(), accessTokenSecret()]) {
+				const value = config.create();
+				ok(value.startsWith("pat-"));
+				equal(value.length, "pat-".length + 19);
+				notEqual(value, config.create());
 			}
+		});
+		it("Hashes a secret on the way in and verifies it on the way back", async () => {
+			const { encode, decode, verify } = accessTokenSecret();
+			const hash = await encode("secret-value");
+			ok(hash);
+			notEqual(hash, "secret-value");
+			// stored as-is, so decode has to hand the hash straight back
+			equal(await decode(hash), hash);
+			equal(await verify("secret-value", hash), true);
+			equal(await verify("wrong-value", hash), false);
+		});
+	});
+
+	describe("`exists`", () => {
+		it("Will throw with an invalid username", async () => {
+			for (const badUsername of [undefined, "", 0, 1234, null, {}]) {
+				await rejects(() => accessTokenExists(badUsername), "404 Not Found", {
+					username: badUsername,
+				});
+			}
+		});
+		it("Will not answer with another account's token", async () => {
+			// the digest filter is the only thing keeping `subOther` out
+			equal(await accessTokenExists("pat-notfound"), undefined);
+			equal(await accessTokenExists(otherToken.username), subOther);
 		});
 	});
 
 	describe("`lookup`", () => {
-		it("Will throw with ({sub:undefined})", async () => {
-			try {
-				await accessTokenLookup(undefined);
-			} catch (e) {
-				equal(e.message, "404 Not Found");
+		it("Will throw with an invalid username", async () => {
+			for (const badUsername of [undefined, "", 0, 1234, null, {}]) {
+				await rejects(() => accessTokenLookup(badUsername), "404 Not Found", {
+					username: badUsername,
+				});
 			}
+		});
+		it("Will look up by digest, not by whatever comes first", async () => {
+			const { username } = await accessTokenCreate(sub);
+			const row = await accessTokenLookup(username);
+			equal(row.sub, sub);
+			const otherRow = await accessTokenLookup(otherToken.username);
+			equal(otherRow.sub, subOther);
+			notEqual(row.id, otherRow.id);
+		});
+		it("Will return a token expiring on the current second", async () => {
+			// `expire < now` and `expire <= now` differ only when the two are
+			// equal. `lookup` reads the clock immediately after the store call, so
+			// only a tick landing in between could break the tie: step over the
+			// boundary first when one is close.
+			const calls = [];
+			configure({
+				store: {
+					...store,
+					select: async (table, filters, fields) => {
+						calls.push({ filters, fields });
+						const ms = Date.now() % 1000;
+						if (ms > 700) await setTimeout(1000 - ms);
+						return { id: "authn_boundary", expire: nowInSeconds() };
+					},
+				},
+			});
+			const row = await accessTokenLookup("pat-boundary");
+			equal(row.id, "authn_boundary");
+			deepEqual(calls[0].filters, { digest: createDigest("pat-boundary") });
 		});
 	});
 
 	describe("`count`", () => {
-		it("Will throw with ({sub:undefined})", async () => {
-			try {
-				await accessTokenCount(undefined);
-				ok(false);
-			} catch (e) {
-				equal(e.message, "401 Unauthorized");
+		it("Will throw with an invalid sub", async () => {
+			for (const badSub of [undefined, "", 0, 1234, null, {}]) {
+				await rejects(() => accessTokenCount(badSub), "401 Unauthorized", {
+					sub: badSub,
+				});
 			}
+		});
+		it("Will not count another account's tokens", async () => {
+			equal(await accessTokenCount(sub), 0);
+			equal(await accessTokenCount(subOther), 1);
 		});
 	});
 
 	describe("`remove`", () => {
-		it("Will throw with ({sub:undefined})", async () => {
-			try {
-				await accessTokenRemove(undefined);
-			} catch (e) {
-				equal(e.message, "401 Unauthorized");
+		it("Will throw with an invalid sub", async () => {
+			for (const badSub of [undefined, "", 0, 1234, null, {}]) {
+				await rejects(() => accessTokenRemove(badSub), "401 Unauthorized", {
+					sub: badSub,
+					id: undefined,
+				});
 			}
+		});
+		it("Will throw with an invalid id", async () => {
+			for (const badId of [undefined, "", 0, 1234, null, {}]) {
+				await rejects(() => accessTokenRemove(sub, badId), "404 Not Found", {
+					id: badId,
+					sub,
+				});
+			}
+			// nothing was notified for a call that never reached the store
+			equal(mocks.notifyClient.mock.calls.length, 0);
 		});
 	});
 
 	describe("`notifyId`", () => {
-		test.afterEach(() => {
-			accessToken();
-		});
 		it("Can notify with a custom template id prefix", async () => {
-			accessToken({ notifyId: "authn-api-key" });
+			configure({ notifyId: "authn-api-key" });
 			const { id } = await accessTokenCreate(sub);
 			await accessTokenExpire(sub, id);
 			await accessTokenRemove(sub, id);
@@ -229,21 +335,32 @@ const tests = (config) => {
 	});
 
 	it("Can create an access token on an account", async () => {
+		const before = nowInSeconds();
 		const { username, secret } = await accessTokenCreate(sub);
+		const after = nowInSeconds();
 		const db = await store.select(authnGetOptions().table, { sub });
 
 		equal(db.type, "accessToken-secret");
 		equal(db.otp, false);
 		ok(db.value);
+		notEqual(db.value, secret); // stored hashed, never in the clear
 		ok(db.digest);
-		ok(db.verify);
-		ok(db.expire);
+		equal(db.digest, createDigest(username));
+		// `null < now` is `0 < now`, so a bare comparison would not prove these
+		// were written at all
+		equal(typeof db.verify, "number");
+		ok(db.verify >= before);
+		ok(db.verify <= after);
+		equal(typeof db.expire, "number");
+		ok(db.expire >= before + 30 * 24 * 60 * 60);
+		ok(db.expire <= after + 30 * 24 * 60 * 60);
 
 		const count = await accessTokenCount(sub);
 		equal(count, 1);
 
 		// notify
 		const { expire } = mocks.notifyClient.mock.calls[0].arguments[0].data;
+		equal(expire, db.expire);
 		deepEqual(mocks.notifyClient.mock.calls[0].arguments[0], {
 			id: "authn-access-token-create",
 			sub,
@@ -253,6 +370,11 @@ const tests = (config) => {
 
 		const userSub = await accessTokenAuthenticate(username, secret);
 		equal(userSub, sub);
+	});
+	it("Can carry extra values onto the created token", async () => {
+		const { id } = await accessTokenCreate(sub, { name: "ci-deploy" });
+		const row = await accessTokenSelect(sub, id);
+		equal(row.name, "ci-deploy");
 	});
 	it("Can remove an access token on an account", async () => {
 		const { username, secret } = await accessTokenCreate(sub);
@@ -270,19 +392,22 @@ const tests = (config) => {
 			options: {},
 		});
 
-		try {
-			await accessTokenAuthenticate(username, secret);
-		} catch (e) {
-			equal(e.message, "401 Unauthorized");
-		}
+		await rejects(
+			() => accessTokenAuthenticate(username, secret),
+			"401 Unauthorized",
+			{ username },
+		);
 	});
 	it("Can NOT remove an access token from someone elses account", async () => {
 		const { username } = await accessTokenCreate(sub);
 		const row = await accessTokenLookup(username);
-		await accessTokenRemove("sub_111111", row.id);
+		await accessTokenRemove(subOther, row.id);
 		const authDB = await store.select(authnGetOptions().table, { sub });
 
 		ok(authDB);
+		equal(authDB.id, row.id);
+		// and the caller's own token is untouched too
+		equal(await accessTokenCount(subOther), 1);
 	});
 
 	it("Can check is an access token exists (exists)", async () => {
@@ -304,6 +429,20 @@ const tests = (config) => {
 		await accessTokenExpire(sub, id);
 		const row = await accessTokenLookup(username);
 		ok(!row);
+
+		// notify
+		deepEqual(mocks.notifyClient.mock.calls[1].arguments[0], {
+			id: "authn-access-token-expire",
+			sub,
+			data: {},
+			options: {},
+		});
+		// expiring is not removing: the row is still there, just past its date
+		const db = await store.select(authnGetOptions().table, { sub });
+		equal(db.id, id);
+		equal(typeof db.expire, "number");
+		ok(db.expire < nowInSeconds());
+		equal(await accessTokenCount(sub), 0);
 	});
 	it("Can lookup an access token with { secret } (not exists)", async () => {
 		const row = await accessTokenLookup("pat-notfound");
@@ -327,8 +466,27 @@ const tests = (config) => {
 	it("Can list an access token with { sub } (not exists)", async () => {
 		const row = await accessTokenList(sub);
 		equal(row.length, 0);
+		// `subOther` still holds one, so an empty list is a filter, not an empty
+		// table
+		equal((await accessTokenList(subOther)).length, 1);
 	});
 };
+
+// `try { await fn() } catch (e) { equal(e.message, ...) }` passes silently when
+// nothing is thrown, which leaves every throw path untested.
+const rejects = async (fn, message, cause) => {
+	try {
+		await fn();
+	} catch (e) {
+		equal(e.message, message);
+		if (cause) {
+			deepEqual(e.cause, cause);
+		}
+		return;
+	}
+	throw new Error(`Expected ${message}`);
+};
+
 describe("authn-access-token", { concurrency: 1 }, () => {
 	for (const storeKey of Object.keys(mockStores)) {
 		describe(`using store-${storeKey}`, () => {

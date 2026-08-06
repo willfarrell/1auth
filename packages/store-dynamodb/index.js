@@ -13,7 +13,7 @@ import { marshall, unmarshall } from "@aws-sdk/util-dynamodb";
 
 const marshallOptions = { removeUndefinedValues: true };
 
-const options = {
+const defaults = {
 	id: "dynamodb",
 	log: false,
 	client: new DynamoDBClient(),
@@ -23,10 +23,16 @@ const options = {
 	timeToLiveExpireOffset: 10 * 24 * 60 * 60,
 	timeToLiveKey: "remove",
 };
-
-export default (opt = {}) => {
-	Object.assign(options, opt);
+const options = {};
+// Re-applied on every call, so `default()` always lands on a known state rather
+// than merging onto whatever the last caller left behind. Called once here too,
+// so the store still works unconfigured.
+const configure = (opt = {}) => {
+	Object.assign(options, defaults, opt);
 };
+configure();
+
+export default configure;
 
 export const exists = async (table, filters) => {
 	if (options.log) {
@@ -57,11 +63,8 @@ export const select = async (table, filters = {}, fields = []) => {
 			")",
 		);
 	}
-	// GetItemCommand doesn't support IndexName
-	if (filters.sub && filters.id) {
-		return await getItem(table, filters, fields);
-	}
-	return await queryCommand(table, filters, fields).then((res) => res[0]);
+	// `getItem` picks between GetItemCommand and an index query itself
+	return await getItem(table, filters, fields);
 };
 
 const getItem = async (table, filters = {}, fields = []) => {
@@ -74,12 +77,11 @@ const getItem = async (table, filters = {}, fields = []) => {
 		indexName = "key";
 	}
 	if (indexName) {
-		return await queryCommand(table, filters, fields).then((res) => res?.[0]);
+		return await queryCommand(table, filters, fields).then((res) => res[0]);
 	}
-	// Only pass table key attributes to GetItemCommand
-	const key = {};
-	if (filters.sub !== undefined) key.sub = filters.sub;
-	if (filters.id !== undefined) key.id = filters.id;
+	// Only pass table key attributes to GetItemCommand; `marshallOptions` drops
+	// either one when the filter did not carry it
+	const key = { sub: filters.sub, id: filters.id };
 	const commandParams = {
 		TableName: table,
 		Key: marshall(key, marshallOptions),
@@ -129,29 +131,28 @@ const makeExpressions = (filters) => {
 	return { expressionAttributeNames, expressionAttributeValues, conditions };
 };
 
+// Which filters DynamoDB will accept as key conditions is fixed by the index
+// being queried; everything else has to go into a FilterExpression. Naming an
+// attribute the filters do not carry is a no-op, so each list can be complete.
+const indexKeyAttributes = {
+	digest: ["digest", "type"],
+	sub: ["sub", "type"],
+	key: ["id"],
+};
+
 const buildQueryCommand = (table, filters = {}) => {
 	let indexName; // must be length of >=3
-	let partitionKey;
 	if (filters.digest) {
 		indexName = "digest";
-		partitionKey = "digest";
 	} else if (filters.sub && !filters.id) {
 		indexName = "sub";
-		partitionKey = "sub";
 	} else if (filters.id && !filters.sub) {
 		indexName = "key";
-		partitionKey = "id";
-	} else {
-		partitionKey = "sub";
 	}
-
-	// Determine which attributes are key attributes for this index
-	const keyAttributeSet = new Set([partitionKey]);
-	if (indexName === "sub" || indexName === "digest") {
-		if (filters.type !== undefined) keyAttributeSet.add("type");
-	} else if (!indexName) {
-		keyAttributeSet.add("id");
-	}
+	// no index: the table itself, partitioned on sub+id
+	const keyAttributeSet = new Set(
+		indexKeyAttributes[indexName] ?? ["sub", "id"],
+	);
 
 	const { expressionAttributeNames, expressionAttributeValues, conditions } =
 		makeExpressions(filters);
@@ -288,9 +289,7 @@ export const update = async (table, filters = {}, inputValues = {}) => {
 		KeyConditionExpression,
 	} = makeQueryParams(values);
 	// Only pass table key attributes to UpdateItemCommand
-	const key = {};
-	if (filters.sub !== undefined) key.sub = filters.sub;
-	if (filters.id !== undefined) key.id = filters.id;
+	const key = { sub: filters.sub, id: filters.id };
 	const commandParams = {
 		TableName: table,
 		Key: marshall(key, marshallOptions),
@@ -320,9 +319,7 @@ export const remove = async (table, filters = {}) => {
 	if (options.log) {
 		options.log(`@1auth/store-${options.id} remove(`, table, filters, ")");
 	}
-	const key = {};
-	if (filters.sub !== undefined) key.sub = filters.sub;
-	if (filters.id !== undefined) key.id = filters.id;
+	const key = { sub: filters.sub, id: filters.id };
 	const hasNonKeyFilters = Object.keys(filters).some(
 		(k) => k !== "sub" && k !== "id",
 	);

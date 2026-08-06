@@ -167,10 +167,12 @@ export const create = async (type, sub, values) => {
 		await createToken(type, sub, valueExists.id);
 		return valueExists.id;
 	}
-	if (valueExists?.sub !== sub && valueExists?.verify) {
+	// the `valueExists.sub === sub` case returned above, so reaching here with a
+	// verified row means the value belongs to a different account
+	if (valueExists?.verify) {
 		await options.notify.trigger(
 			`${options.notifyId}-${type}-exists`,
-			valueExists?.sub,
+			valueExists.sub,
 			{},
 			{ messengers: [{ id: valueExists.id }] },
 		);
@@ -283,7 +285,7 @@ export const remove = async (type, sub, id) => {
 	await options.store.remove(options.table, { id, sub });
 
 	// remove request is self clean up
-	if (!messenger?.verify) {
+	if (!messenger.verify) {
 		return;
 	}
 

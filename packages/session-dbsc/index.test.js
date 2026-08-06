@@ -1,4 +1,4 @@
-import { equal, match, ok, throws } from "node:assert/strict";
+import { deepEqual, equal, match, ok, throws } from "node:assert/strict";
 import {
 	sign as asymmetricSign,
 	generateKeyPairSync,
@@ -166,14 +166,23 @@ const makeProof = (
 
 // Bare `throws()` passes on ANY error, including a ReferenceError thrown while
 // building the error itself. Pin the message so only the real guard counts.
-const throwsConfig = (fn) =>
-	throws(fn, { message: "500 Internal Server Error" });
+const throwsConfig = (fn, cause) =>
+	throws(fn, (e) => {
+		equal(e.message, "500 Internal Server Error");
+		if (cause) {
+			deepEqual(e.cause, cause);
+		}
+		return true;
+	});
 
-const rejects = async (fn, message = "401 Unauthorized") => {
+const rejects = async (fn, message = "401 Unauthorized", cause) => {
 	try {
 		await fn();
 	} catch (e) {
 		equal(e.message, message);
+		if (cause) {
+			deepEqual(e.cause, cause);
+		}
 		return;
 	}
 	throw new Error(`Expected ${message}`);
@@ -226,10 +235,82 @@ const tests = (config) => {
 		mocks.storeClient.after?.();
 	});
 
+	describe("config", () => {
+		it("Ships the spec's defaults", () => {
+			dbsc({});
+			const options = dbscGetOptions();
+			equal(options.id, "session-dbsc");
+			equal(options.log, false);
+			equal(options.challengeExpire, 5 * 60);
+			equal(options.registerPath, "/dbsc/register");
+			equal(options.refreshPath, "/dbsc/refresh");
+			equal(options.sidCookieName, "__Host-Http-sid");
+			equal(
+				options.sidCookieAttributes,
+				"Path=/; Secure; HttpOnly; SameSite=Strict",
+			);
+			equal(options.dbscCookieName, "__Host-Http-dbsc");
+			equal(
+				options.dbscCookieAttributes,
+				"Path=/; Secure; HttpOnly; SameSite=Strict",
+			);
+			equal(options.dbscCookieExpire, 15 * 60);
+			deepEqual(options.scope, { include_site: true });
+		});
+		it("Names the pair that is actually misconfigured", () => {
+			throwsConfig(() => dbsc({ sidCookieAttributes: "Path=/; HttpOnly" }), {
+				cookieName: "__Host-Http-sid",
+				cookieAttributes: "Path=/; HttpOnly",
+			});
+			dbsc({});
+			throwsConfig(() => dbsc({ dbscCookieAttributes: "Path=/; HttpOnly" }), {
+				cookieName: "__Host-Http-dbsc",
+				cookieAttributes: "Path=/; HttpOnly",
+			});
+			dbsc({});
+		});
+		it("Names both lifetimes when the bound cookie outlives the session", () => {
+			const expire = session.getOptions().expire;
+			throwsConfig(() => dbsc({ dbscCookieExpire: expire }), {
+				dbscCookieExpire: expire,
+				expire,
+			});
+			dbsc({});
+		});
+		it("Forwards everything it does not own to @1auth/session", () => {
+			// an app configures one module, not two
+			dbsc({ expire: 60 * 60 });
+			try {
+				equal(session.getOptions().expire, 60 * 60);
+				// and keeps the store wiring from earlier calls rather than
+				// replacing it
+				ok(session.getOptions().store);
+			} finally {
+				dbsc({ expire: 12 * 60 * 60 });
+			}
+		});
+		it("Sends `log` to both, since it means something to both", () => {
+			const log = () => {};
+			dbsc({ log });
+			try {
+				equal(dbscGetOptions().log, log);
+				equal(session.getOptions().log, log);
+			} finally {
+				dbsc({ log: (...args) => mocks.log(...args) });
+			}
+		});
+	});
+
 	describe("`registrationHeader`", () => {
 		it("Can offer both spec algorithms with a challenge", () => {
 			const header = dbscRegistrationHeader();
 			match(header, /^\(ES256 RS256\);path="[^"]+";challenge="[^"]+"$/);
+		});
+		it("Can name the configured register path", () => {
+			match(
+				dbscRegistrationHeader(),
+				new RegExp(`;path="${dbscGetOptions().registerPath}";`),
+			);
 		});
 		it("Can carry an authorization value", () => {
 			match(
@@ -454,23 +535,42 @@ const tests = (config) => {
 		it("Will throw on a refresh proof with no key to compare against", async () => {
 			const device = makeDevice();
 			const sessionId = "session_probe";
-			await rejects(() =>
-				dbscVerifyProof(
-					makeProof(device, { aud: refreshUrl, sub: sessionId }),
-					{
-						aud: refreshUrl,
-						sessionId,
-					},
-				),
+			await rejects(
+				() =>
+					dbscVerifyProof(
+						makeProof(device, { aud: refreshUrl, sub: sessionId }),
+						{
+							aud: refreshUrl,
+							sessionId,
+						},
+					),
+				"401 Unauthorized",
+				{ aud: refreshUrl, sessionId },
+			);
+		});
+		it("Will name what it was checking when it refuses", async () => {
+			// `cause` is developer-facing only, but it is the only thing that says
+			// which endpoint and session a refusal was about
+			await rejects(
+				() => dbscVerifyProof("nope", { aud: registerUrl }),
+				"401 Unauthorized",
+				{ aud: registerUrl, sessionId: "" },
 			);
 		});
 	});
 
 	describe("`register`", () => {
-		it("Will throw with ({sub:undefined})", async () => {
-			await rejects(() =>
-				dbscRegister(undefined, makeProof(makeDevice()), { aud: registerUrl }),
-			);
+		it("Will throw with an invalid sub", async () => {
+			for (const badSub of [undefined, "", 0, 1234, null, {}]) {
+				await rejects(
+					() =>
+						dbscRegister(badSub, makeProof(makeDevice()), {
+							aud: registerUrl,
+						}),
+					"401 Unauthorized",
+					{ sub: badSub },
+				);
+			}
 		});
 
 		it("Can bind a device key and open a session", async () => {
@@ -619,19 +719,28 @@ const tests = (config) => {
 	});
 
 	describe("`refresh`", () => {
-		it("Will throw with ({sessionId:undefined})", async () => {
-			await rejects(() => dbscRefresh(undefined, "", { aud: refreshUrl }));
+		it("Will throw with an invalid session identifier", async () => {
+			for (const sessionId of [undefined, "", 0, 1234, null, {}]) {
+				await rejects(
+					() => dbscRefresh(sessionId, "", { aud: refreshUrl }),
+					"401 Unauthorized",
+					{ sessionId },
+				);
+			}
 		});
 
 		it("Will throw for an unknown session identifier", async () => {
-			await rejects(() =>
-				dbscRefresh(
-					"session_unknown",
-					makeProof(makeDevice(), { aud: refreshUrl }),
-					{
-						aud: refreshUrl,
-					},
-				),
+			await rejects(
+				() =>
+					dbscRefresh(
+						"session_unknown",
+						makeProof(makeDevice(), { aud: refreshUrl }),
+						{
+							aud: refreshUrl,
+						},
+					),
+				"401 Unauthorized",
+				{ sessionId: "session_unknown" },
 			);
 		});
 
@@ -841,16 +950,28 @@ const tests = (config) => {
 			await dbscRegister(sub, makeProof(makeDevice()), { aud: registerUrl });
 			equal((await dbscList(sub)).length, 2);
 		});
-		it("Will throw with ({sub:undefined})", async () => {
-			await rejects(() => dbscList(undefined));
-			await rejects(() => dbscSelect(undefined, "session_1"));
-			await rejects(() => dbscExpire(undefined, "session_1"));
-			await rejects(() => dbscRemove(undefined, "session_1"));
+		it("Will throw with an invalid sub", async () => {
+			for (const badSub of [undefined, "", 0, 1234, null, {}]) {
+				await rejects(() => dbscList(badSub), "401 Unauthorized", {
+					sub: badSub,
+				});
+				for (const fn of [dbscSelect, dbscExpire, dbscRemove]) {
+					await rejects(() => fn(badSub, "session_1"), "401 Unauthorized", {
+						sub: badSub,
+						id: "session_1",
+					});
+				}
+			}
 		});
-		it("Will throw with ({id:undefined})", async () => {
-			await rejects(() => dbscSelect(sub, undefined), "404 Not Found");
-			await rejects(() => dbscExpire(sub, undefined), "404 Not Found");
-			await rejects(() => dbscRemove(sub, undefined), "404 Not Found");
+		it("Will throw with an invalid id", async () => {
+			for (const badId of [undefined, "", 0, 1234, null, {}]) {
+				for (const fn of [dbscSelect, dbscExpire, dbscRemove]) {
+					await rejects(() => fn(sub, badId), "404 Not Found", {
+						id: badId,
+						sub,
+					});
+				}
+			}
 		});
 	});
 };

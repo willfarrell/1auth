@@ -93,17 +93,6 @@ export default (opt = {}) => {
 	options.digestChecksumHashAlgorithm ??= options.defaultHashAlgorithm;
 	options.digestChecksumEncoding ??= options.defaultEncoding;
 
-	// Secrets
-	Object.assign(argon2Options, {
-		algorithm: options.secretArgon2Algorithm,
-		version: options.secretArgon2Version, // argon2id
-		parallelism: options.secretArgon2Parallelism, // argon2id
-		memoryCost: options.secretArgon2MemoryCost, // argon2id
-		timeCost: options.secretArgon2TimeCost, // argon2id
-		nonceLength: options.secretArgon2NonceLength, // argon2id
-		hashLength: options.secretArgon2HashLength, // argon2id
-	});
-
 	// Encoded lengths for parsing ciphertext packets (IV = 12 bytes, authTag = 16 bytes)
 	const encodedLength = (byteLength) =>
 		Buffer.alloc(byteLength).toString(options.symmetricEncryptionEncoding)
@@ -286,23 +275,11 @@ export const createSeasonedDigest = (
 };
 
 // *** Hashing *** //
-const argon2Options = {
-	algorithm: "argon2id",
-	version: 19,
-	parallelism: 1, // Default 1
-	memoryCost: 15, // log2 exponent, memory 2^memoryCost // Default 2 ** 12 = 4MB
-	timeCost: 3, // Default 3
-	nonceLength: 16,
-	hashLength: 64, // hashLength: 128 // Default 32
-
-	secret: undefined, // pepper
-	associatedData: undefined, // sub
-};
 // `memoryCost` is a log2 exponent, NOT KiB: memory = 2 ** memoryCost KiB.
 // Passing KiB (e.g. 2 ** 15) silently asked for 2 ** 32768 KiB = Infinity, which
 // surfaced as an opaque failure deep inside node's argon2 binding. 31 caps it at
 // 2 TiB, far above anything real, so anything larger is a units mistake.
-const assertMemoryCost = (memoryCost) => {
+export const assertMemoryCost = (memoryCost) => {
 	if (!Number.isInteger(memoryCost) || memoryCost < 3 || memoryCost > 31) {
 		throw new RangeError(
 			`memoryCost must be a log2 exponent between 3 and 31, received ${memoryCost}`,
@@ -457,6 +434,9 @@ export const symmetricGenerateEncryptionKey = (
 export const symmetricEncryptFields = (
 	values,
 	{ encryptedKey, encryptionKey, signatureSecret, sub },
+	// naming a field the values do not carry is a no-op: `values[key] &&= ...`
+	// never assigns, so no default other than empty is observable
+	// Stryker disable next-line ArrayDeclaration
 	fields = [],
 ) => {
 	if (encryptedKey) {
@@ -488,6 +468,8 @@ export const symmetricEncrypt = (
 		});
 	}
 	if (!encryptionKey || !data) return data;
+	// Stryker disable next-line StringLiteral: node's normalizeEncoding maps "" to
+	// utf8, so the two spellings are the same encoding to every Buffer API
 	decoding ??= "utf8";
 	encoding ??= options.symmetricEncryptionEncoding;
 	iv ??= randomIV();
@@ -495,10 +477,15 @@ export const symmetricEncrypt = (
 		options.symmetricEncryptionAlgorithm,
 		encryptionKey,
 		iv,
+		// Stryker disable next-line ObjectLiteral: 16 is already node's default
+		// authTagLength for both supported AEAD ciphers, so passing it explicitly
+		// and omitting the options object produce byte-identical output. Kept
+		// because a future cipher's default is not guaranteed to be 16.
 		{
 			authTagLength,
 		},
 	);
+	// Stryker disable next-line StringLiteral: see decoding above
 	cipher.setAAD(Buffer.from(sub, "utf8"));
 	const encryptedData =
 		cipher.update(data, decoding, encoding) + cipher.final(encoding);
@@ -515,6 +502,8 @@ export const symmetricEncrypt = (
 export const symmetricDecryptFields = (
 	encryptedValues,
 	{ encryptedKey, encryptionKey, signatureSecret, sub },
+	// see symmetricEncryptFields
+	// Stryker disable next-line ArrayDeclaration
 	fields = [],
 ) => {
 	if (encryptedKey) {
@@ -565,6 +554,7 @@ export const symmetricDecrypt = (
 	if (!encryptionKey || !signedEncryptedDataPacket)
 		return signedEncryptedDataPacket;
 	decoding ??= options.symmetricEncryptionEncoding;
+	// Stryker disable next-line StringLiteral: see symmetricEncrypt's decoding
 	encoding ??= "utf8";
 
 	// remove signature when successful
@@ -602,10 +592,12 @@ export const symmetricDecrypt = (
 		options.symmetricEncryptionAlgorithm,
 		encryptionKey,
 		iv,
+		// Stryker disable next-line ObjectLiteral: see symmetricEncrypt
 		{
 			authTagLength,
 		},
 	);
+	// Stryker disable next-line StringLiteral: see decoding above
 	decipher.setAAD(Buffer.from(sub, "utf8"));
 
 	decipher.setAuthTag(authTag);
@@ -631,10 +623,14 @@ export const symmetricSignatureSign = (
 ) => {
 	signatureSecret ??= options.symmetricSignatureSecret;
 	hashAlgorithm ??= options.symmetricSignatureHashAlgorithm;
-	const signature = createHmac(hashAlgorithm, signatureSecret)
+	const digest = createHmac(hashAlgorithm, signatureSecret)
 		.update(data)
-		.digest(options.symmetricSignatureEncoding)
-		.replace(/=+$/, "");
+		.digest(options.symmetricSignatureEncoding);
+	// base64 uses `=` only as trailing padding, so an unanchored match can never
+	// find one mid-string; the anchor documents the intent and still holds if the
+	// encoding ever changes.
+	// Stryker disable next-line Regex: equivalent for every padded encoding
+	const signature = digest.replace(/=+$/, "");
 
 	const signedData = `${data}.${signature}`;
 	return signedData;
@@ -647,6 +643,9 @@ export const symmetricSignatureVerify = (
 	if (typeof signedData !== "string") return false;
 	const lastIndexOf = signedData.lastIndexOf(".");
 	// Reject unsigned data
+	// Stryker disable next-line ConditionalExpression: without this guard the
+	// comparison below still fails for unsigned data, but only by accident of
+	// substring(0, -1); the explicit rejection is the contract.
 	if (lastIndexOf < 0) return false;
 	const data = signedData.substring(0, lastIndexOf);
 	const signedDataExpected = symmetricSignatureSign(data, {
