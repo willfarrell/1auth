@@ -35,6 +35,7 @@ import * as mockDynamoDB from "../store-dynamodb/mock.js";
 import * as mockSQLite from "../store-sqlite/mock.js";
 import webauthn, {
 	authenticate as webauthnAuthenticate,
+	challenge as webauthnChallenge,
 	count as webauthnCount,
 	create as webauthnCreate,
 	createChallenge as webauthnCreateChallenge,
@@ -561,18 +562,75 @@ const tests = (config) => {
 			Buffer.from("not the data that was signed"),
 			privateKey,
 		);
+		const tampered = {
+			...authenticationResponse,
+			response: {
+				...authenticationResponse.response,
+				signature: bogus.toString("base64url"),
+			},
+		};
 		try {
-			await webauthnAuthenticate(username, {
-				...authenticationResponse,
-				response: {
-					...authenticationResponse.response,
-					signature: bogus.toString("base64url"),
-				},
-			});
+			await webauthnAuthenticate(username, tampered);
 			throw new Error("expected 401 Unauthorized");
 		} catch (e) {
 			equal(e.message, "401 Unauthorized");
 		}
+
+		// `authn.authenticate` swallows the credential's own error and reports
+		// 401, so ask the challenge config directly for the reason behind it
+		const storedChallenge = await store.select(authnGetOptions().table, {
+			sub,
+			id: challengeRow.id,
+		});
+		const challengeValue = webauthnChallenge().decode(
+			symmetricDecrypt(storedChallenge.value, {
+				sub,
+				encryptedKey: storedChallenge.encryptionKey,
+			}),
+		);
+		try {
+			await webauthnChallenge().verify(tampered, challengeValue);
+			throw new Error("expected Failed verifyAuthenticationResponse");
+		} catch (e) {
+			equal(e.message, "Failed verifyAuthenticationResponse");
+			deepEqual(e.cause, { response: tampered });
+		}
+	});
+	it("Will report an empty credential list, with or without a logger", async () => {
+		// a fresh account has no registered secret, so there is nothing to allow
+		deepEqual(await webauthnCreateChallenge(sub), {});
+		ok(
+			mocks.log.mock.calls.some(
+				({ arguments: [first] }) =>
+					first === "@1auth/authn-webauthn allowCredentials is empty",
+			),
+		);
+
+		// `log: false` is not callable, so the guard around it is what keeps an
+		// account with no credentials from taking the request down
+		webauthn({ name: webauthnName, origin: webauthnOrigin, log: false });
+		deepEqual(await webauthnCreateChallenge(sub), {});
+		webauthn({
+			name: webauthnName,
+			origin: webauthnOrigin,
+			log: (...args) => mocks.log(...args),
+		});
+	});
+	it("Can expire a challenge ten minutes out", async () => {
+		await webauthnCreate(sub);
+		const [token] = await store.selectList(authnGetOptions().table, { sub });
+		await overrideCreateChallenge(sub, token);
+		await webauthnVerify(sub, registrationResponse, { name: "PassKey" }, false);
+
+		const before = nowInSeconds();
+		await webauthnCreateChallenge(sub);
+		const [challengeRow] = await store.selectList(authnGetOptions().table, {
+			sub,
+			type: "WebAuthn-challenge",
+		});
+		// ten minutes, in seconds, not some fraction of one
+		ok(challengeRow.expire >= before + 10 * 60);
+		ok(challengeRow.expire <= nowInSeconds() + 10 * 60);
 	});
 	it("Can create a 2nd WebAuthn on an account", async () => {
 		await webauthnCreate(sub);
@@ -697,8 +755,44 @@ const tests = (config) => {
 		it("Will throw with an unknown type", async () => {
 			try {
 				await webauthnCreate(sub, { preferredAuthenticatorType: "phone" });
+				throw new Error("expected 400 Bad Request");
 			} catch (e) {
 				equal(e.message, "400 Bad Request");
+			}
+		});
+
+		it("Will name the mismatch it refused on", async () => {
+			// `authn.verify` reports 401 for any credential error, so go at the
+			// token config directly for which type was asked for and what arrived
+			await webauthnCreate(sub, { preferredAuthenticatorType: "securityKey" });
+			const [token] = await store.selectList(authnGetOptions().table, {
+				sub,
+				type: "WebAuthn-token",
+			});
+			await overrideCreateChallenge(sub, token);
+			const stored = await store.select(authnGetOptions().table, {
+				sub,
+				id: token.id,
+			});
+			const value = JSON.parse(
+				symmetricDecrypt(stored.value, {
+					sub,
+					encryptedKey: stored.encryptionKey,
+				}),
+			);
+			try {
+				// a syncable passkey answering a securityKey request
+				await webauthnToken().verify(registrationResponse, {
+					...value,
+					authenticatorType: "securityKey",
+				});
+				throw new Error("expected Failed authenticatorType");
+			} catch (e) {
+				equal(e.message, "Failed authenticatorType");
+				deepEqual(e.cause, {
+					authenticatorType: "securityKey",
+					credentialDeviceType: "multiDevice",
+				});
 			}
 		});
 

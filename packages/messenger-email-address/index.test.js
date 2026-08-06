@@ -552,6 +552,12 @@ const tests = (config) => {
 	it("Can sanitize: trim leading whitespace", () => {
 		equal(emailAddressSanitize("  user@example.com"), "user@example.com");
 	});
+	it("Can sanitize: trim trailing whitespace", () => {
+		// the local part is trimmed at the front, the domain at the back, so a
+		// pasted address padded on both sides still resolves
+		equal(emailAddressSanitize("user@example.com  "), "user@example.com");
+		equal(emailAddressSanitize("  user@example.com  "), "user@example.com");
+	});
 	it("Can sanitize: strip plus addressing", () => {
 		equal(emailAddressSanitize("user+tag@example.com"), "user@example.com");
 	});

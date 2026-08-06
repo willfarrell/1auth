@@ -549,6 +549,34 @@ const tests = (config) => {
 				{ aud: refreshUrl, sessionId },
 			);
 		});
+		it("Will refuse a proof whose `aud` is not a string", async () => {
+			// without the type check `safeEqual` would be handed a non-string and
+			// blow up with a TypeError instead of refusing cleanly
+			for (const aud of [1234, null, undefined, {}, ["a"]]) {
+				await rejects(
+					() =>
+						dbscVerifyProof(
+							`${base64url({ typ: "dbsc+jwt", alg: "ES256" })}.${base64url({ aud })}.signature`,
+							{ aud: registerUrl },
+						),
+					"401 Unauthorized",
+					{ aud: registerUrl, sessionId: "" },
+				);
+			}
+		});
+		it("Will refuse a proof whose payload is not an object", async () => {
+			// `JSON.parse("null")` succeeds, so the payload survives the decode and
+			// only the optional chain keeps the property read from throwing
+			await rejects(
+				() =>
+					dbscVerifyProof(
+						`${base64url({ typ: "dbsc+jwt", alg: "ES256" })}.${base64url(null)}.signature`,
+						{ aud: registerUrl },
+					),
+				"401 Unauthorized",
+				{ aud: registerUrl, sessionId: "" },
+			);
+		});
 		it("Will name what it was checking when it refuses", async () => {
 			// `cause` is developer-facing only, but it is the only thing that says
 			// which endpoint and session a refusal was about
