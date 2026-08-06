@@ -5,11 +5,16 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 7
     groups:
       everything:
         patterns:
           - "*"
   - package-ecosystem: npm
+    target-branch: develop
     directory: "/"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 7

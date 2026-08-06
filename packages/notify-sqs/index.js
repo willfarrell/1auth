@@ -6,15 +6,16 @@ import {
 	SQSClient,
 } from "@aws-sdk/client-sqs";
 
-const options = {
+const defaults = {
 	client: new SQSClient(),
 	queueName: "notify-queue",
 	queueUrl: undefined,
 	log: false,
 };
+const options = {};
 
 export default (opt = {}) => {
-	Object.assign(options, opt);
+	Object.assign(options, defaults, opt);
 	// requires need for AWS access
 	//   options.queueUrl ??= options.client
 	//     .send(new GetQueueUrlCommand({ QueueName: options.queueName }))

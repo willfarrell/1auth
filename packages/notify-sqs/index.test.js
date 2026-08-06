@@ -43,11 +43,10 @@ describe("notify-sqs", () => {
 	});
 
 	it("should resolve queueUrl from queueName if not provided", async () => {
+		const resolved = "https://sqs.us-east-1.amazonaws.com/123/resolved-queue";
 		const mockSend = mock.fn(async (cmd) => {
 			if (cmd.input?.QueueName) {
-				return {
-					QueueUrl: "https://sqs.us-east-1.amazonaws.com/123/resolved-queue",
-				};
+				return { QueueUrl: resolved };
 			}
 			return {};
 		});
@@ -63,6 +62,27 @@ describe("notify-sqs", () => {
 
 		// First call should be GetQueueUrlCommand, second should be SendMessageCommand
 		equal(mockSend.mock.callCount(), 2);
+		// asked for the configured queue by name...
+		equal(mockSend.mock.calls[0].arguments[0].input.QueueName, "my-queue");
+		// ...and sent to the url that came back
+		equal(mockSend.mock.calls[1].arguments[0].input.QueueUrl, resolved);
+	});
+
+	it("should resolve the default queue name when none is configured", async () => {
+		const mockSend = mock.fn(async (cmd) =>
+			cmd.input?.QueueName ? { QueueUrl: "https://sqs/default" } : {},
+		);
+		// no queueName, no log: both fall back to their defaults, and a `log`
+		// default that was not `false` would be called as a function below
+		notifySqs({ client: { send: mockSend }, queueUrl: undefined });
+
+		await trigger("template-1", "user-123");
+
+		equal(mockSend.mock.calls[0].arguments[0].input.QueueName, "notify-queue");
+		equal(
+			mockSend.mock.calls[1].arguments[0].input.QueueUrl,
+			"https://sqs/default",
+		);
 	});
 
 	it("should log when log option is set", async () => {

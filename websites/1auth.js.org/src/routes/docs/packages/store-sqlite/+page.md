@@ -25,9 +25,17 @@ store.default({
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `client` | `object` | **required** | SQLite client with `query` method |
+| `client` | `object` | **required** | SQLite client with a `query` method — see the client contract below |
 | `timeToLiveExpireOffset` | `number` | `864000` | TTL offset in seconds |
 | `timeToLiveKey` | `string` | `"remove"` | Column name for TTL |
+
+## Client contract
+
+```javascript
+client.query(sql, parameters) // => rows[]
+```
+
+`query` always resolves to an **array of rows**, including for `INSERT`, `UPDATE` and `DELETE`. Statements that return nothing resolve to `[]`. Writes use `RETURNING id`, so `insert` reads `rows[0].id` and `remove` checks `rows[0]`.
 
 ## API
 

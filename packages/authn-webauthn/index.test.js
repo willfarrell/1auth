@@ -1,47 +1,54 @@
-import { deepEqual, equal, ok } from "node:assert/strict";
+import { deepEqual, equal, notEqual, ok } from "node:assert/strict";
+import { sign as asymmetricSign, generateKeyPairSync } from "node:crypto";
 import { describe, it, test } from "node:test";
 import account, {
 	create as accountCreate,
 	remove as accountRemove,
-} from "../account/index.js";
-import * as mockAccountDynamoDBTable from "../account/table/dynamodb.js";
-import * as mockAccountSQLTable from "../account/table/sql.js";
+} from "@1auth/account";
+import * as mockAccountDynamoDBTable from "@1auth/account/table/dynamodb.js";
+import * as mockAccountSQLTable from "@1auth/account/table/sql.js";
 import accountUsername, {
 	create as accountUsernameCreate,
 	exists as accountUsernameExists,
-} from "../account-username/index.js";
-import authn, { getOptions as authnGetOptions } from "../authn/index.js";
-import * as mockAuthnDynamoDBTable from "../authn/table/dynamodb.js";
-import * as mockAuthnSQLTable from "../authn/table/sql.js";
-import webauthn, {
-	authenticate as webauthnAuthenticate,
-	count as webauthnCount,
-	create as webauthnCreate,
-	createChallenge as webauthnCreateChallenge,
-	expire as webauthnExpire,
-	getOptions as webauthnGetOptions,
-	list as webauthnList,
-	remove as webauthnRemove,
-	select as webauthnSelect,
-	verify as webauthnVerify,
-} from "../authn-webauthn/index.js";
+} from "@1auth/account-username";
+import authn, { getOptions as authnGetOptions } from "@1auth/authn";
+import * as mockAuthnDynamoDBTable from "@1auth/authn/table/dynamodb.js";
+import * as mockAuthnSQLTable from "@1auth/authn/table/sql.js";
 import crypto, {
+	nowInSeconds,
 	randomChecksumPepper,
 	randomChecksumSalt,
 	symmetricDecrypt,
 	symmetricEncrypt,
 	symmetricRandomEncryptionKey,
 	symmetricRandomSignatureSecret,
-} from "../crypto/index.js";
+} from "@1auth/crypto";
 // *** Setup Start *** //
-import * as notify from "../notify/index.js";
+import * as notify from "@1auth/notify";
+import * as storeDynamoDB from "@1auth/store-dynamodb";
+import * as storePostgres from "@1auth/store-postgres";
+import * as storeSQLite from "@1auth/store-sqlite";
+import { isoBase64URL, isoCBOR } from "@simplewebauthn/server/helpers";
 import * as mockNotify from "../notify/mock.js";
-import * as storeDynamoDB from "../store-dynamodb/index.js";
 import * as mockDynamoDB from "../store-dynamodb/mock.js";
-import * as storePostgres from "../store-postgres/index.js";
-import * as storeSQLite from "../store-sqlite/index.js";
 // import * as mockPostgres from "../store-postgres/mock.js";
 import * as mockSQLite from "../store-sqlite/mock.js";
+import webauthn, {
+	authenticate as webauthnAuthenticate,
+	challenge as webauthnChallenge,
+	count as webauthnCount,
+	create as webauthnCreate,
+	createChallenge as webauthnCreateChallenge,
+	createInstance as webauthnCreateInstance,
+	expire as webauthnExpire,
+	getOptions as webauthnGetOptions,
+	list as webauthnList,
+	remove as webauthnRemove,
+	secret as webauthnSecret,
+	select as webauthnSelect,
+	token as webauthnToken,
+	verify as webauthnVerify,
+} from "./index.js";
 
 crypto({
 	symmetricEncryptionKey: symmetricRandomEncryptionKey(),
@@ -115,12 +122,20 @@ account();
 accountUsername();
 authn();
 webauthn();
+
+// Two isolated instances, each with its own `options`
+const passkey = webauthnCreateInstance();
+const securitykey = webauthnCreateInstance();
 // *** Setup End *** //
 
 let sub;
 const username = "username";
 const webauthnName = "1Auth";
 const webauthnOrigin = "http://localhost";
+const passkeyId = "WebAuthnPassKey";
+const securityKeyId = "WebAuthnSecurityKey";
+const passkeyNotifyId = "authn-webauthn-passkey";
+const securityKeyNotifyId = "authn-webauthn-securitykey";
 
 const tests = (config) => {
 	const store = config.store;
@@ -193,6 +208,36 @@ const tests = (config) => {
 			);
 			const count = await webauthnCount(sub);
 			equal(count, 1);
+		});
+		it("Will replace previous challenges rather than accumulate", async () => {
+			await webauthnCreate(sub);
+			const [token] = await store.selectList(authnGetOptions().table, { sub });
+			await overrideCreateChallenge(sub, token);
+			await webauthnVerify(
+				sub,
+				registrationResponse,
+				{ name: "PassKey" },
+				false,
+			);
+			await webauthnCreateChallenge(sub);
+			const afterFirst = await store.selectList(authnGetOptions().table, {
+				sub,
+				type: "WebAuthn-challenge",
+			});
+			await webauthnCreateChallenge(sub);
+			const afterSecond = await store.selectList(authnGetOptions().table, {
+				sub,
+				type: "WebAuthn-challenge",
+			});
+			// a second call removes the first challenge instead of leaving both
+			// redeemable
+			equal(afterSecond.length, afterFirst.length);
+			notEqual(afterSecond[0].id, afterFirst[0].id);
+		});
+		it("Can encode an absent secret without throwing", async () => {
+			// `encode` is handed whatever the credential config produced; a falsy
+			// value has to pass straight through rather than be dereferenced
+			equal(webauthnSecret().encode(undefined), undefined);
 		});
 		it("Can count with { sub } (unverified)", async () => {
 			await webauthnCreate(sub);
@@ -289,7 +334,7 @@ const tests = (config) => {
 				await webauthnAuthenticate(username, {});
 			} catch (e) {
 				equal(e.message, "401 Unauthorized");
-				equal(e.cause, "missing");
+				equal(e.cause.type, "missing");
 			}
 		});
 		// it("Will throw when unverfied credentials", async () => {
@@ -431,6 +476,162 @@ const tests = (config) => {
 		authnDB = authnDB.filter((item) => !item.expire);
 		equal(authnDB.length, 1);
 	});
+	it("Will reject a registration whose attestation does not verify", async () => {
+		await webauthnCreate(sub);
+		const [token] = await store.selectList(authnGetOptions().table, { sub });
+		await overrideCreateChallenge(sub, token);
+
+		// `fmt: "none"` can only throw or succeed, so it never reaches the
+		// "returned false" branch. A `packed` self-attestation with a signature from
+		// an unrelated key parses cleanly and simply fails to verify.
+		const attestation = isoCBOR.decodeFirst(
+			isoBase64URL.toBuffer(registrationResponse.response.attestationObject),
+		);
+		const { privateKey } = generateKeyPairSync("ec", {
+			namedCurve: "prime256v1",
+		});
+		attestation.set("fmt", "packed");
+		attestation.set(
+			"attStmt",
+			new Map([
+				["alg", -7],
+				[
+					"sig",
+					new Uint8Array(
+						asymmetricSign("sha256", Buffer.from("wrong"), privateKey),
+					),
+				],
+			]),
+		);
+
+		const tampered = {
+			...registrationResponse,
+			response: {
+				...registrationResponse.response,
+				attestationObject: isoBase64URL.fromBuffer(isoCBOR.encode(attestation)),
+			},
+		};
+
+		try {
+			await webauthnVerify(sub, tampered, { name: "PassKey" }, false);
+			throw new Error("expected 401 Unauthorized");
+		} catch (e) {
+			equal(e.message, "401 Unauthorized");
+		}
+
+		// `authn.verify` swallows the credential's own error and reports 401, so
+		// ask the token config directly for the reason behind it
+		const stored = await store.select(authnGetOptions().table, {
+			sub,
+			id: token.id,
+		});
+		const challengeValue = JSON.parse(
+			symmetricDecrypt(stored.value, {
+				sub,
+				encryptedKey: stored.encryptionKey,
+			}),
+		);
+		try {
+			await webauthnToken().verify(tampered, challengeValue);
+			throw new Error("expected Failed verifyRegistrationResponse");
+		} catch (e) {
+			equal(e.message, "Failed verifyRegistrationResponse");
+			deepEqual(e.cause, { response: tampered });
+		}
+	});
+	it("Will reject an assertion whose signature does not verify", async () => {
+		await webauthnCreate(sub);
+		const [token] = await store.selectList(authnGetOptions().table, { sub });
+		await overrideCreateChallenge(sub, token);
+		await webauthnVerify(sub, registrationResponse, { name: "PassKey" }, false);
+		await webauthnCreateChallenge(sub);
+		const [challengeRow] = await store.selectList(authnGetOptions().table, {
+			sub,
+			type: "WebAuthn-challenge",
+		});
+		await overrideGetChallenge(sub, challengeRow);
+
+		// A structurally valid DER ES256 signature from an unrelated key: it parses,
+		// so verification returns false rather than throwing, which is the path that
+		// has to become a 401 rather than an unhandled error.
+		const { privateKey } = generateKeyPairSync("ec", {
+			namedCurve: "prime256v1",
+		});
+		const bogus = asymmetricSign(
+			"sha256",
+			Buffer.from("not the data that was signed"),
+			privateKey,
+		);
+		const tampered = {
+			...authenticationResponse,
+			response: {
+				...authenticationResponse.response,
+				signature: bogus.toString("base64url"),
+			},
+		};
+		try {
+			await webauthnAuthenticate(username, tampered);
+			throw new Error("expected 401 Unauthorized");
+		} catch (e) {
+			equal(e.message, "401 Unauthorized");
+		}
+
+		// `authn.authenticate` swallows the credential's own error and reports
+		// 401, so ask the challenge config directly for the reason behind it
+		const storedChallenge = await store.select(authnGetOptions().table, {
+			sub,
+			id: challengeRow.id,
+		});
+		const challengeValue = webauthnChallenge().decode(
+			symmetricDecrypt(storedChallenge.value, {
+				sub,
+				encryptedKey: storedChallenge.encryptionKey,
+			}),
+		);
+		try {
+			await webauthnChallenge().verify(tampered, challengeValue);
+			throw new Error("expected Failed verifyAuthenticationResponse");
+		} catch (e) {
+			equal(e.message, "Failed verifyAuthenticationResponse");
+			deepEqual(e.cause, { response: tampered });
+		}
+	});
+	it("Will report an empty credential list, with or without a logger", async () => {
+		// a fresh account has no registered secret, so there is nothing to allow
+		deepEqual(await webauthnCreateChallenge(sub), {});
+		ok(
+			mocks.log.mock.calls.some(
+				({ arguments: [first] }) =>
+					first === "@1auth/authn-webauthn allowCredentials is empty",
+			),
+		);
+
+		// `log: false` is not callable, so the guard around it is what keeps an
+		// account with no credentials from taking the request down
+		webauthn({ name: webauthnName, origin: webauthnOrigin, log: false });
+		deepEqual(await webauthnCreateChallenge(sub), {});
+		webauthn({
+			name: webauthnName,
+			origin: webauthnOrigin,
+			log: (...args) => mocks.log(...args),
+		});
+	});
+	it("Can expire a challenge ten minutes out", async () => {
+		await webauthnCreate(sub);
+		const [token] = await store.selectList(authnGetOptions().table, { sub });
+		await overrideCreateChallenge(sub, token);
+		await webauthnVerify(sub, registrationResponse, { name: "PassKey" }, false);
+
+		const before = nowInSeconds();
+		await webauthnCreateChallenge(sub);
+		const [challengeRow] = await store.selectList(authnGetOptions().table, {
+			sub,
+			type: "WebAuthn-challenge",
+		});
+		// ten minutes, in seconds, not some fraction of one
+		ok(challengeRow.expire >= before + 10 * 60);
+		ok(challengeRow.expire <= nowInSeconds() + 10 * 60);
+	});
 	it("Can create a 2nd WebAuthn on an account", async () => {
 		await webauthnCreate(sub);
 		const db0 = await store.selectList(authnGetOptions().table, { sub });
@@ -540,6 +741,249 @@ const tests = (config) => {
 		});
 	});
 
+	describe("with preferredAuthenticatorType per registration", () => {
+		const registerAs = async (preferredAuthenticatorType, response) => {
+			await webauthnCreate(sub, { preferredAuthenticatorType });
+			const [token] = await store.selectList(authnGetOptions().table, {
+				sub,
+				type: "WebAuthn-token",
+			});
+			await overrideCreateChallenge(sub, token);
+			return await webauthnVerify(sub, response, { name: "Device" }, false);
+		};
+
+		it("Will throw with an unknown type", async () => {
+			try {
+				await webauthnCreate(sub, { preferredAuthenticatorType: "phone" });
+				throw new Error("expected 400 Bad Request");
+			} catch (e) {
+				equal(e.message, "400 Bad Request");
+			}
+		});
+
+		it("Will name the mismatch it refused on", async () => {
+			// `authn.verify` reports 401 for any credential error, so go at the
+			// token config directly for which type was asked for and what arrived
+			await webauthnCreate(sub, { preferredAuthenticatorType: "securityKey" });
+			const [token] = await store.selectList(authnGetOptions().table, {
+				sub,
+				type: "WebAuthn-token",
+			});
+			await overrideCreateChallenge(sub, token);
+			const stored = await store.select(authnGetOptions().table, {
+				sub,
+				id: token.id,
+			});
+			const value = JSON.parse(
+				symmetricDecrypt(stored.value, {
+					sub,
+					encryptedKey: stored.encryptionKey,
+				}),
+			);
+			try {
+				// a syncable passkey answering a securityKey request
+				await webauthnToken().verify(registrationResponse, {
+					...value,
+					authenticatorType: "securityKey",
+				});
+				throw new Error("expected Failed authenticatorType");
+			} catch (e) {
+				equal(e.message, "Failed authenticatorType");
+				deepEqual(e.cause, {
+					authenticatorType: "securityKey",
+					credentialDeviceType: "multiDevice",
+				});
+			}
+		});
+
+		it("Can choose the type without reconfiguring the instance", async () => {
+			const { secret: registrationOptions } = await webauthnCreate(sub, {
+				preferredAuthenticatorType: "remoteDevice",
+			});
+
+			deepEqual(registrationOptions.hints, ["hybrid"]);
+			equal(webauthnGetOptions().preferredAuthenticatorType, undefined);
+		});
+
+		it("Can register a localDevice PassKey", async () => {
+			ok(await registerAs("localDevice", registrationResponse));
+			equal(await webauthnCount(sub), 1);
+		});
+
+		it("Can register a securityKey", async () => {
+			ok(await registerAs("securityKey", registrationResponseSecurityKey));
+			equal(await webauthnCount(sub), 1);
+		});
+
+		it("Can NOT register a PassKey when a securityKey was asked for", async () => {
+			try {
+				await registerAs("securityKey", registrationResponse);
+				throw new Error("should not reach");
+			} catch (e) {
+				equal(e.message, "401 Unauthorized");
+			}
+			equal(await webauthnCount(sub), 0);
+		});
+
+		it("Can NOT register a securityKey when a PassKey was asked for", async () => {
+			try {
+				await registerAs("localDevice", registrationResponseSecurityKey);
+				throw new Error("should not reach");
+			} catch (e) {
+				equal(e.message, "401 Unauthorized");
+			}
+			equal(await webauthnCount(sub), 0);
+		});
+
+		it("Can NOT register a local PassKey when a remote one was asked for", async () => {
+			try {
+				await registerAs("remoteDevice", registrationResponse);
+				throw new Error("should not reach");
+			} catch (e) {
+				equal(e.message, "401 Unauthorized");
+			}
+			equal(await webauthnCount(sub), 0);
+		});
+	});
+
+	describe("with PassKey and SecurityKey instances", () => {
+		test.before(() => {
+			// PassKey: discoverable credential, usable as the only factor
+			passkey.configure({
+				name: webauthnName,
+				origin: webauthnOrigin,
+				notifyId: passkeyNotifyId,
+				residentKey: "required",
+				userVerification: "required",
+				preferredAuthenticatorType: "localDevice",
+				secret: passkey.secret({ id: passkeyId }),
+				token: passkey.token({ id: passkeyId, expire: 5 * 60 }),
+				challenge: passkey.challenge({ id: passkeyId, expire: 2 * 60 }),
+			});
+			// SecurityKey: roaming authenticator used as a second factor
+			securitykey.configure({
+				name: webauthnName,
+				origin: webauthnOrigin,
+				notifyId: securityKeyNotifyId,
+				residentKey: "discouraged",
+				userVerification: "required",
+				preferredAuthenticatorType: "securityKey",
+				secret: securitykey.secret({ id: securityKeyId }),
+				token: securitykey.token({ id: securityKeyId, expire: 5 * 60 }),
+				challenge: securitykey.challenge({
+					id: securityKeyId,
+					expire: 2 * 60,
+				}),
+			});
+		});
+
+		it("Can hold three independent configs", () => {
+			notEqual(passkey.getOptions(), securitykey.getOptions());
+			notEqual(passkey.getOptions(), webauthnGetOptions());
+			equal(passkey.getOptions().residentKey, "required");
+			equal(securitykey.getOptions().residentKey, "discouraged");
+			equal(webauthnGetOptions().residentKey, "discouraged");
+			equal(webauthnGetOptions().userVerification, "preferred");
+		});
+
+		it("Can create a PassKey only registration", async () => {
+			const { secret: registrationOptions } = await passkey.create(sub);
+
+			deepEqual(registrationOptions.hints, ["client-device"]);
+			deepEqual(registrationOptions.authenticatorSelection, {
+				residentKey: "required",
+				requireResidentKey: true,
+				userVerification: "required",
+				authenticatorAttachment: "platform",
+			});
+
+			const [token] = await store.selectList(authnGetOptions().table, { sub });
+			equal(token.type, `${passkeyId}-token`);
+			ok(token.expire - nowInSeconds() <= 5 * 60);
+		});
+
+		it("Can create a SecurityKey only registration", async () => {
+			const { secret: registrationOptions } = await securitykey.create(sub);
+
+			deepEqual(registrationOptions.hints, ["security-key"]);
+			deepEqual(registrationOptions.authenticatorSelection, {
+				residentKey: "discouraged",
+				requireResidentKey: false,
+				userVerification: "required",
+				authenticatorAttachment: "cross-platform",
+			});
+
+			const [token] = await store.selectList(authnGetOptions().table, { sub });
+			equal(token.type, `${securityKeyId}-token`);
+			ok(token.expire - nowInSeconds() <= 5 * 60);
+		});
+
+		it("Can NOT resolve a PassKey from the SecurityKey instance", async () => {
+			await register(passkey, passkeyId, "PassKey");
+
+			equal(await passkey.count(sub), 1);
+			equal(await securitykey.count(sub), 0);
+			equal(await webauthnCount(sub), 0);
+
+			deepEqual(await securitykey.createChallenge(sub), {});
+			const { secret: authenticationOptions } =
+				await passkey.createChallenge(sub);
+			deepEqual(authenticationOptions.allowCredentials, [
+				{ id: registrationResponse.id, type: "public-key" },
+			]);
+			equal(authenticationOptions.userVerification, "required");
+		});
+
+		it("Can NOT resolve a SecurityKey from the PassKey instance", async () => {
+			await register(securitykey, securityKeyId, "Yubikey");
+
+			equal(await securitykey.count(sub), 1);
+			equal(await passkey.count(sub), 0);
+			equal(await webauthnCount(sub), 0);
+
+			deepEqual(await passkey.createChallenge(sub), {});
+			ok((await securitykey.createChallenge(sub)).secret);
+		});
+
+		it("Can notify with the PassKey instance template ids", async () => {
+			const id = await register(passkey, passkeyId, "PassKey", true);
+			await passkey.expire(sub, id);
+
+			deepEqual(
+				mocks.notifyClient.mock.calls.map((call) => call.arguments[0].id),
+				[`${passkeyNotifyId}-create`, `${passkeyNotifyId}-expire`],
+			);
+		});
+
+		it("Can notify with the SecurityKey instance template ids", async () => {
+			const id = await register(securitykey, securityKeyId, "Yubikey", true);
+			await securitykey.remove(sub, id);
+
+			deepEqual(
+				mocks.notifyClient.mock.calls.map((call) => call.arguments[0].id),
+				[`${securityKeyNotifyId}-create`, `${securityKeyNotifyId}-remove`],
+			);
+		});
+
+		const register = async (instance, id, name, notify = false) => {
+			await instance.create(sub);
+			const [token] = await store.selectList(authnGetOptions().table, {
+				sub,
+				type: `${id}-token`,
+			});
+			await overrideCreateChallenge(sub, token);
+			const secret = await instance.verify(
+				sub,
+				id === securityKeyId
+					? registrationResponseSecurityKey
+					: registrationResponse,
+				{ name },
+				notify,
+			);
+			return secret.id;
+		};
+	});
+
 	const overrideCreateChallenge = async (sub, token) => {
 		await store.update(
 			authnGetOptions().table,
@@ -547,6 +991,12 @@ const tests = (config) => {
 			{
 				value: symmetricEncrypt(
 					JSON.stringify({
+						...JSON.parse(
+							symmetricDecrypt(token.value, {
+								sub,
+								encryptedKey: token.encryptionKey,
+							}),
+						),
 						expectedChallenge: registrationOptionsOverride.challenge,
 						expectedOrigin: webauthnOrigin,
 						expectedRPID: registrationOptionsOverride.rp.id,
@@ -651,6 +1101,22 @@ const registrationResponse = {
 	type: "public-key",
 	clientExtensionResults: {},
 	authenticatorAttachment: "platform",
+};
+
+// Same credential with the BE/BS flags cleared, so it reads as hardware bound
+// rather than a synced passkey. `fmt: none` carries no attestation signature,
+// so flipping those two bits leaves the response verifiable.
+const registrationResponseSecurityKey = {
+	...registrationResponse,
+	response: {
+		...registrationResponse.response,
+		attestationObject:
+			"o2NmbXRkbm9uZWdhdHRTdG10oGhhdXRoRGF0YViYSZYN5YgOjGh0NBcPZHZgW4_krrmihjLHmVzzuoMdl2NFAAAAAAAAAAAAAAAAAAAAAAAAAAAAFPYpAzBvnzQSBqOxM-_18dTxos5apQECAyYgASFYIHvLwmeIblhH_Tpm7WYjlhnrA3OnL_GL5crvjQI7mjozIlgguEqNjVVHwqmD-QVmXu5ffyvtwhL4-gvD67AtxpjWhlc",
+		authenticatorData:
+			"SZYN5YgOjGh0NBcPZHZgW4_krrmihjLHmVzzuoMdl2NFAAAAAAAAAAAAAAAAAAAAAAAAAAAAFPYpAzBvnzQSBqOxM-_18dTxos5apQECAyYgASFYIHvLwmeIblhH_Tpm7WYjlhnrA3OnL_GL5crvjQI7mjozIlgguEqNjVVHwqmD-QVmXu5ffyvtwhL4-gvD67AtxpjWhlc",
+		transports: ["usb"],
+	},
+	authenticatorAttachment: "cross-platform",
 };
 
 const authenticationOptionsOverride = {

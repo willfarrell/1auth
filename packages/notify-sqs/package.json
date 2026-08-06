@@ -1,6 +1,6 @@
 {
 	"name": "@1auth/notify-sqs",
-	"version": "0.0.0-beta.3",
+	"version": "0.0.0-rc.0",
 	"description": "AWS SQS notification implementation for scalable message queuing",
 	"type": "module",
 	"engines": {
@@ -51,7 +51,6 @@
 		"url": "https://github.com/willfarrell/1auth/issues"
 	},
 	"homepage": "https://github.com/willfarrell/1auth",
-	"gitHead": "7a6c0fbb8ab71d6a2171e678697de9f237568431",
 	"peerDependencies": {
 		"@aws-sdk/client-sqs": "^3.0.0"
 	}

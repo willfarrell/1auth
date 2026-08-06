@@ -10,6 +10,7 @@ import {
 	removeList as authnRemoveList,
 } from "@1auth/authn";
 import {
+	assertSub,
 	createSecretHash,
 	makeRandomConfigObject,
 	nowInSeconds,
@@ -41,6 +42,7 @@ export const secret = ({
 
 const defaults = {
 	id,
+	notifyId: "authn-recovery-codes", // template id prefix, set per instance when running more than one
 	secret: secret(),
 	count: 5,
 };
@@ -54,9 +56,7 @@ export const authenticate = async (username, secret) => {
 };
 
 export const count = async (sub) => {
-	if (!sub || typeof sub !== "string") {
-		throw new Error("401 Unauthorized", { cause: { sub } });
-	}
+	assertSub(sub);
 	return await authnCount(options.secret, sub);
 };
 
@@ -66,14 +66,12 @@ export const list = async (sub) => {
 
 export const create = async (sub) => {
 	const secrets = await createSecrets(sub, options.count);
-	await options.notify.trigger("authn-recovery-codes-create", sub);
+	await options.notify.trigger(`${options.notifyId}-create`, sub);
 	return secrets;
 };
 
 export const update = async (sub) => {
-	if (!sub || typeof sub !== "string") {
-		throw new Error("401 Unauthorized", { cause: { sub } });
-	}
+	assertSub(sub);
 	const existingSecrets = await options.store.selectList(options.table, {
 		sub,
 		type: `${options.secret.id}-${options.secret.type}`,
@@ -83,7 +81,7 @@ export const update = async (sub) => {
 	const id = existingSecrets.map((item) => item.id);
 	await authnRemoveList(options.secret, sub, id);
 
-	await options.notify.trigger("authn-recovery-codes-update", sub);
+	await options.notify.trigger(`${options.notifyId}-update`, sub);
 	return secrets;
 };
 
@@ -91,9 +89,7 @@ export const remove = async (sub, id) => {
 	if (id) {
 		await authnRemove(options.secret, sub, id);
 	} else {
-		if (!sub || typeof sub !== "string") {
-			throw new Error("401 Unauthorized", { cause: { sub } });
-		}
+		assertSub(sub);
 		const ids = await options.store
 			.selectList(options.table, {
 				sub,
@@ -103,7 +99,7 @@ export const remove = async (sub, id) => {
 		await authnRemoveList(options.secret, sub, ids);
 	}
 
-	await options.notify.trigger("authn-recovery-codes-remove", sub);
+	await options.notify.trigger(`${options.notifyId}-remove`, sub);
 };
 
 const createSecrets = async (sub, count = options.count) => {

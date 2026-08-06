@@ -50,8 +50,5 @@ export const storeClient = {
 			},
 		};
 	},
-	batch(stmts) {
-		return Promise.resolve(stmts.map((stmt) => stmt.run()));
-	},
 	after: () => db.close(),
 };

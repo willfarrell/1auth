@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 import { setTimeout } from "node:timers/promises";
 import {
+	assertId,
+	assertSub,
 	makeRandomConfigObject,
 	nowInSeconds,
 	symmetricDecryptFields,
@@ -26,7 +28,7 @@ const defaults = {
 	table: "authentications",
 	idGenerate: true,
 	randomId: randomId(),
-	authenticationDuration: 100, // minimum duration authentication should take (ms)
+	authenticationDuration: 250, // minimum duration authentication should take (ms), must exceed worst-case secret hash time
 	usernameExists: [], // hooks to allow what to be used as a username
 	encryptedFields: ["value"],
 };
@@ -37,9 +39,7 @@ export default (opt = {}) => {
 export const getOptions = () => options;
 
 export const count = async (credentialOptions, sub) => {
-	if (!sub || typeof sub !== "string") {
-		throw new Error("401 Unauthorized", { cause: { sub } });
-	}
+	assertSub(sub);
 	const type = makeType(credentialOptions);
 	const credentials = await options.store.selectList(
 		options.table,
@@ -62,9 +62,7 @@ export const count = async (credentialOptions, sub) => {
 };
 
 export const list = async (credentialOptions, sub, params, fields) => {
-	if (!sub || typeof sub !== "string") {
-		throw new Error("401 Unauthorized", { cause: { sub } });
-	}
+	assertSub(sub);
 	const type = makeType(credentialOptions);
 	const items = await options.store.selectList(
 		options.table,
@@ -99,16 +97,14 @@ const createCredential = async (
 	sub,
 	{ id, value, ...values },
 ) => {
-	if (!sub || typeof sub !== "string") {
-		throw new Error("401 Unauthorized", { cause: { sub } });
-	}
+	assertSub(sub);
 	const now = nowInSeconds();
 	const type = makeType(credentialOptions);
 	let { otp, expire } = credentialOptions;
 	expire &&= now + expire;
 
 	if (options.idGenerate) {
-		id ??= await options.randomId.create(options.idPrefix);
+		id ??= await options.randomId.create();
 	}
 	value ??= credentialOptions.create();
 	const encodedValue = await credentialOptions.encode(value);
@@ -183,7 +179,7 @@ export const subject = async (username) => {
 			return exists(username);
 		}),
 	).then((identities) => {
-		return identities.filter((lookup) => lookup)?.[0];
+		return identities.filter((lookup) => lookup)[0];
 	});
 };
 
@@ -216,7 +212,6 @@ export const authenticate = async (credentialOptions, username, secret) => {
 			continue;
 		}
 		// skip expired
-
 		if (credential.expire && credential.expire < now) {
 			skipExpiredCount += 1;
 			continue;
@@ -258,25 +253,22 @@ export const authenticate = async (credentialOptions, username, secret) => {
 
 	await timeout;
 	if (!valid) {
-		let cause = "invalid";
+		// cause is for developer debugging only, never expose to end users
+		let type = "invalid";
 		const credentialsCount = credentials.length - skipIgnoredCount;
 		if (credentialsCount === 0) {
-			cause = "missing";
+			type = "missing";
 		} else if (skipExpiredCount === credentialsCount) {
-			cause = "expired";
+			type = "expired";
 		}
-		throw new Error("401 Unauthorized", { cause });
+		throw new Error("401 Unauthorized", { cause: { type } });
 	}
 	return sub;
 };
 
 export const verifySecret = async (_credentialOptions, sub, id) => {
-	if (!sub || typeof sub !== "string") {
-		throw new Error("401 Unauthorized", { cause: { sub, id } });
-	}
-	if (!id || typeof id !== "string") {
-		throw new Error("404 Not Found", { cause: { sub, id } });
-	}
+	assertSub(sub, { id });
+	assertId(id, { sub });
 	const now = nowInSeconds();
 	await options.store.update(
 		options.table,
@@ -334,7 +326,12 @@ export const verify = async (credentialOptions, sub, input) => {
 		if (valid) {
 			const { id, otp } = credential;
 			if (otp) {
-				await remove(credentialOptions, sub, id);
+				const consumed = await remove(credentialOptions, sub, id);
+				if (!consumed) {
+					// Already consumed by a concurrent request
+					valid = undefined;
+					continue;
+				}
 			}
 			break;
 		}
@@ -343,25 +340,22 @@ export const verify = async (credentialOptions, sub, input) => {
 	await timeout;
 
 	if (!valid) {
-		let cause = "invalid";
+		// cause is for developer debugging only, never expose to end users
+		let type = "invalid";
 		const credentialsCount = credentials.length;
 		if (credentialsCount === 0) {
-			cause = "missing";
+			type = "missing";
 		} else if (skipExpiredCount === credentialsCount) {
-			cause = "expired";
+			type = "expired";
 		}
-		throw new Error("401 Unauthorized", { cause });
+		throw new Error("401 Unauthorized", { cause: { type } });
 	}
 	return { ...credential, ...valid };
 };
 
 export const expire = async (_credentialOptions, sub, id, values = {}) => {
-	if (!sub || typeof sub !== "string") {
-		throw new Error("401 Unauthorized", { cause: { sub, id } });
-	}
-	if (!id || typeof id !== "string") {
-		throw new Error("404 Not Found", { cause: { sub, id } });
-	}
+	assertSub(sub, { id });
+	assertId(id, { sub });
 	await options.store.update(
 		options.table,
 		{ sub, id },
@@ -370,20 +364,14 @@ export const expire = async (_credentialOptions, sub, id, values = {}) => {
 };
 
 export const remove = async (credentialOptions, sub, id) => {
-	if (!sub || typeof sub !== "string") {
-		throw new Error("401 Unauthorized", { cause: { sub, id } });
-	}
-	if (!id || typeof id !== "string") {
-		throw new Error("404 Not Found", { cause: { sub, id } });
-	}
+	assertSub(sub, { id });
+	assertId(id, { sub });
 	const type = makeType(credentialOptions);
-	await options.store.remove(options.table, { id, type, sub });
+	return await options.store.remove(options.table, { id, type, sub });
 };
 
 export const removeList = async (credentialOptions, sub, id) => {
-	if (!sub || typeof sub !== "string") {
-		throw new Error("401 Unauthorized", { cause: { sub, id } });
-	}
+	assertSub(sub, { id });
 	if (!id || !Array.isArray(id) || !id.length) {
 		throw new Error("404 Not Found", { cause: { sub, id } });
 	}
@@ -392,12 +380,8 @@ export const removeList = async (credentialOptions, sub, id) => {
 };
 
 export const select = async (credentialOptions, sub, id) => {
-	if (!sub || typeof sub !== "string") {
-		throw new Error("401 Unauthorized", { cause: { sub, id } });
-	}
-	if (!id || typeof id !== "string") {
-		throw new Error("404 Not Found", { cause: { sub, id } });
-	}
+	assertSub(sub, { id });
+	assertId(id, { sub });
 	const type = makeType(credentialOptions);
 	const item = await options.store.select(options.table, { id, type, sub });
 	if (!item) return item;

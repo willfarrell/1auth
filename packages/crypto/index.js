@@ -41,7 +41,7 @@ const defaults = {
 	secretArgon2Algorithm: "argon2id",
 	secretArgon2Version: 19,
 	secretArgon2Parallelism: 1, // OWASP: 1 (matches)
-	secretArgon2MemoryCost: 15, // 2^15 KiB = 32 MiB (exceeds OWASP minimum of 19 MiB)
+	secretArgon2MemoryCost: 15, // log2 exponent: 2^15 KiB = 32 MiB (exceeds OWASP minimum of 19 MiB)
 	secretArgon2TimeCost: 3, // OWASP: 2 (we use 3 for better security)
 	secretArgon2NonceLength: 16,
 	secretArgon2HashLength: 64,
@@ -93,24 +93,13 @@ export default (opt = {}) => {
 	options.digestChecksumHashAlgorithm ??= options.defaultHashAlgorithm;
 	options.digestChecksumEncoding ??= options.defaultEncoding;
 
-	// Secrets
-	Object.assign(argon2Options, {
-		algorithm: options.secretArgon2Algorithm,
-		version: options.secretArgon2Version, // argon2id
-		parallelism: options.secretArgon2Parallelism, // argon2id
-		memoryCost: options.secretArgon2MemoryCost, // argon2id
-		timeCost: options.secretArgon2TimeCost, // argon2id
-		nonceLength: options.secretArgon2NonceLength, // argon2id
-		hashLength: options.secretArgon2HashLength, // argon2id
-	});
-
-	// Lengths
-	symmetricEncryptionEncodingLengths.iv = randomIV().toString(
-		options.symmetricEncryptionEncoding,
-	).length;
+	// Encoded lengths for parsing ciphertext packets (IV = 12 bytes, authTag = 16 bytes)
+	const encodedLength = (byteLength) =>
+		Buffer.alloc(byteLength).toString(options.symmetricEncryptionEncoding)
+			.length;
+	symmetricEncryptionEncodingLengths.iv = encodedLength(12);
 	symmetricEncryptionEncodingLengths.ivAndAuthTag =
-		symmetricEncryptionEncodingLengths.iv +
-		randomBytes(16).toString(options.symmetricEncryptionEncoding).length;
+		symmetricEncryptionEncodingLengths.iv + encodedLength(authTagLength);
 };
 
 export const makeOptionsBuffer = (
@@ -142,9 +131,7 @@ export const charactersAlpha = charactersAlphaUpper + charactersAlphaLower;
 export const charactersAlphaNumeric = charactersAlpha + charactersNumeric;
 export const charactersDistinguishable = "CDEHKMPRTUWXY012458";
 
-const randomCharactersCache = {
-	charactersAlphaNumeric: customAlphabet(charactersAlphaNumeric),
-};
+const randomCharactersCache = {};
 export const randomCharacters = (
 	length,
 	characters = charactersAlphaNumeric,
@@ -201,6 +188,10 @@ export const createSaltedValue = (value, { checksumSalt } = {}) => {
 	const newValue = value + checksumSalt;
 	return newValue;
 };
+// Deterministic encryption using a fixed IV (checksumPepper) to enable
+// privacy-compliant digest lookups. Rotating the pepper invalidates all
+// existing digests, supporting GDPR right-to-erasure workflows.
+// The ciphertexts are never stored directly - only their hashes are persisted.
 export const createPepperedValue = (
 	value,
 	{ checksumPepper, encryptionKey } = {},
@@ -284,18 +275,24 @@ export const createSeasonedDigest = (
 };
 
 // *** Hashing *** //
-const argon2Options = {
-	algorithm: "argon2id",
-	version: 19,
-	parallelism: 1, // Default 1
-	memoryCost: 15, // memory 2^memoryCost // Default 2 ** 12 = 4MB
-	timeCost: 3, // Default 3
-	nonceLength: 16,
-	hashLength: 64, // hashLength: 128 // Default 32
-
-	secret: undefined, // pepper
-	associatedData: undefined, // sub
+// `memoryCost` is a log2 exponent, NOT KiB: memory = 2 ** memoryCost KiB.
+// Passing KiB (e.g. 2 ** 15) silently asked for 2 ** 32768 KiB = Infinity, which
+// surfaced as an opaque failure deep inside node's argon2 binding. 31 caps it at
+// 2 TiB, far above anything real, so anything larger is a units mistake.
+export const assertMemoryCost = (memoryCost) => {
+	if (!Number.isInteger(memoryCost) || memoryCost < 3 || memoryCost > 31) {
+		throw new RangeError(
+			`memoryCost must be a log2 exponent between 3 and 31, received ${memoryCost}`,
+			{ cause: { memoryCost } },
+		);
+	}
 };
+
+// NOTE: the PHC string spec defines `m=` as memory in KiB, but we write the
+// exponent. Every stored hash encodes it this way, so correcting it is a format
+// migration (decode both forms, rehash on next verify), not an edit.
+// ponytail: non-standard `m=`, only ever read back by this library. Fix it when
+// a hash has to be verified by something that is not @1auth/crypto.
 export const encodeArgon2 = ({
 	algorithm,
 	version,
@@ -357,6 +354,7 @@ export const createArgon2 = (
 	parallelism ??= options.secretArgon2Parallelism;
 	nonceLength ??= options.secretArgon2NonceLength;
 	hashLength ??= options.secretArgon2HashLength;
+	assertMemoryCost(memoryCost);
 
 	const nonce = randomBytes(nonceLength);
 	const hash = argon2Sync(algorithm, {
@@ -387,6 +385,9 @@ export const verifyArgon2 = (derivedKey, message) => {
 		hash,
 		hashLength,
 	} = decodeArgon2(derivedKey);
+	// Params come off a stored string; a malformed `m=` would otherwise reach
+	// argon2Sync as Infinity. authn treats a throw here as "credential invalid".
+	assertMemoryCost(memoryCost);
 
 	const verifyHash = argon2Sync(algorithm, {
 		message,
@@ -399,16 +400,18 @@ export const verifyArgon2 = (derivedKey, message) => {
 	return timingSafeEqual(hash, verifyHash);
 };
 
-export const createSecretHash = async (value, options) => {
-	return createArgon2(value, options);
-};
-
-export const verifySecretHash = async (hash, value) => {
-	return verifyArgon2(hash, value);
-};
+export const createSecretHash = createArgon2;
+export const verifySecretHash = verifyArgon2;
 
 // *** Symmetric Encryption *** //
 const authTagLength = 16;
+// 16 is already node's default for both supported AEAD ciphers, so this is
+// belt-and-braces against a future cipher whose default differs.
+// Stryker disable next-line ObjectLiteral: byte-identical output either way
+const cipherOptions = { authTagLength };
+// The subject is bound into the ciphertext as associated data. Buffer.from
+// decodes utf8 by default, which is what every stored packet was written with.
+const associatedData = (sub) => Buffer.from(sub);
 
 export const symmetricRandomEncryptionKey = () => {
 	return randomBytes(32); // 256 bits
@@ -438,6 +441,9 @@ export const symmetricGenerateEncryptionKey = (
 export const symmetricEncryptFields = (
 	values,
 	{ encryptedKey, encryptionKey, signatureSecret, sub },
+	// naming a field the values do not carry is a no-op: `values[key] &&= ...`
+	// never assigns, so no default other than empty is observable
+	// Stryker disable next-line ArrayDeclaration
 	fields = [],
 ) => {
 	if (encryptedKey) {
@@ -469,6 +475,8 @@ export const symmetricEncrypt = (
 		});
 	}
 	if (!encryptionKey || !data) return data;
+	// Stryker disable next-line StringLiteral: node's normalizeEncoding maps "" to
+	// utf8, so the two spellings are the same encoding to every Buffer API
 	decoding ??= "utf8";
 	encoding ??= options.symmetricEncryptionEncoding;
 	iv ??= randomIV();
@@ -476,11 +484,9 @@ export const symmetricEncrypt = (
 		options.symmetricEncryptionAlgorithm,
 		encryptionKey,
 		iv,
-		{
-			authTagLength,
-		},
+		cipherOptions,
 	);
-	cipher.setAAD(sub);
+	cipher.setAAD(associatedData(sub));
 	const encryptedData =
 		cipher.update(data, decoding, encoding) + cipher.final(encoding);
 	const authTag = cipher.getAuthTag();
@@ -488,13 +494,16 @@ export const symmetricEncrypt = (
 	const encryptedDataPacket =
 		iv.toString(encoding) + authTag.toString(encoding) + encryptedData;
 
-	// add signature to end
+	// Encrypt-then-MAC: HMAC signature wraps the AEAD ciphertext so that
+	// signature secrets can be rotated independently without re-encryption.
 	return symmetricSignatureSign(encryptedDataPacket, { signatureSecret });
 };
 
 export const symmetricDecryptFields = (
 	encryptedValues,
 	{ encryptedKey, encryptionKey, signatureSecret, sub },
+	// see symmetricEncryptFields
+	// Stryker disable next-line ArrayDeclaration
 	fields = [],
 ) => {
 	if (encryptedKey) {
@@ -545,6 +554,7 @@ export const symmetricDecrypt = (
 	if (!encryptionKey || !signedEncryptedDataPacket)
 		return signedEncryptedDataPacket;
 	decoding ??= options.symmetricEncryptionEncoding;
+	// Stryker disable next-line StringLiteral: see symmetricEncrypt's decoding
 	encoding ??= "utf8";
 
 	// remove signature when successful
@@ -582,11 +592,9 @@ export const symmetricDecrypt = (
 		options.symmetricEncryptionAlgorithm,
 		encryptionKey,
 		iv,
-		{
-			authTagLength,
-		},
+		cipherOptions,
 	);
-	decipher.setAAD(sub);
+	decipher.setAAD(associatedData(sub));
 
 	decipher.setAuthTag(authTag);
 	const data =
@@ -611,10 +619,14 @@ export const symmetricSignatureSign = (
 ) => {
 	signatureSecret ??= options.symmetricSignatureSecret;
 	hashAlgorithm ??= options.symmetricSignatureHashAlgorithm;
-	const signature = createHmac(hashAlgorithm, signatureSecret)
+	const digest = createHmac(hashAlgorithm, signatureSecret)
 		.update(data)
-		.digest(options.symmetricSignatureEncoding)
-		.replace(/=+$/, "");
+		.digest(options.symmetricSignatureEncoding);
+	// base64 uses `=` only as trailing padding, so an unanchored match can never
+	// find one mid-string; the anchor documents the intent and still holds if the
+	// encoding ever changes.
+	// Stryker disable next-line Regex: equivalent for every padded encoding
+	const signature = digest.replace(/=+$/, "");
 
 	const signedData = `${data}.${signature}`;
 	return signedData;
@@ -625,11 +637,12 @@ export const symmetricSignatureVerify = (
 	{ hashAlgorithm, signatureSecret } = {},
 ) => {
 	if (typeof signedData !== "string") return false;
-	let lastIndexOf = signedData.lastIndexOf(".");
-	// Test for unsigned
-	if (lastIndexOf < 0) {
-		lastIndexOf = signedData.length;
-	}
+	const lastIndexOf = signedData.lastIndexOf(".");
+	// Reject unsigned data
+	// Stryker disable next-line ConditionalExpression: without this guard the
+	// comparison below still fails for unsigned data, but only by accident of
+	// substring(0, -1); the explicit rejection is the contract.
+	if (lastIndexOf < 0) return false;
 	const data = signedData.substring(0, lastIndexOf);
 	const signedDataExpected = symmetricSignatureSign(data, {
 		hashAlgorithm,
@@ -649,7 +662,7 @@ export const symmetricRotation = (
 		return data;
 	},
 ) => {
-	if (oldOptions.sub !== newOptions.sub)
+	if (newOptions && oldOptions.sub !== newOptions.sub)
 		throw new Error("Mismatching `sub`", {
 			cause: { sub: oldOptions.sub },
 		});
@@ -741,6 +754,21 @@ export const verifyAsymmetricSignature = async (
 };
 
 export const nowInSeconds = () => Math.floor(Date.now() / 1000);
+
+// *** Argument guards *** //
+// `cause` is for developer debugging only, never expose to end users.
+// Lives here because every package already depends on @1auth/crypto.
+export const assertSub = (sub, cause) => {
+	if (!sub || typeof sub !== "string") {
+		throw new Error("401 Unauthorized", { cause: { sub, ...cause } });
+	}
+};
+
+export const assertId = (id, cause) => {
+	if (!id || typeof id !== "string") {
+		throw new Error("404 Not Found", { cause: { id, ...cause } });
+	}
+};
 
 export const safeEqual = (input, expected) => {
 	const bufferInput = Buffer.from(input);

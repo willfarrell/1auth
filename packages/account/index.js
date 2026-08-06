@@ -1,6 +1,7 @@
 // Copyright 2003 - 2026 will Farrell, and 1Auth contributors.
 // SPDX-License-Identifier: MIT
 import {
+	assertSub,
 	makeRandomConfigObject,
 	nowInSeconds,
 	symmetricDecryptFields,
@@ -33,6 +34,9 @@ const defaults = {
 	randomId: randomId(),
 	randomSubject: randomSubject(),
 	encryptedFields: [],
+	// Grace window before the row is hard-deleted by the store cleanup sweep.
+	// Lets queued `account-remove` handlers cascade safely and enables recovery.
+	removeExpireOffset: 10 * 24 * 60 * 60,
 };
 const options = {};
 export default (opt = {}) => {
@@ -88,7 +92,6 @@ export const create = async (values = {}) => {
 	}
 	await options.store.insert(options.table, params);
 
-	// If caller has a guest session, use session.rotate(guestSub, guestSessionId, sub, deviceMeta) to transition it.
 	return sub;
 };
 
@@ -123,9 +126,7 @@ export const update = async (sub, values = {}) => {
 };
 
 export const expire = async (sub) => {
-	if (!sub || typeof sub !== "string") {
-		throw new Error("401 Unauthorized", { cause: { sub } });
-	}
+	assertSub(sub);
 	await options.store.update(
 		options.table,
 		{ sub },
@@ -137,6 +138,11 @@ export const remove = async (sub) => {
 	if (!sub || typeof sub !== "string") {
 		throw new Error("404 Not Found", { cause: { sub } });
 	}
-	// Should trigger removal of credentials and messengers
-	await options.store.remove(options.table, { sub });
+	const expire = nowInSeconds();
+	await options.store.update(
+		options.table,
+		{ sub },
+		{ expire, remove: expire + options.removeExpireOffset },
+	);
+	await options.notify?.trigger("account-remove", sub);
 };

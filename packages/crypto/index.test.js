@@ -4,29 +4,41 @@ import {
 	notDeepEqual,
 	notEqual,
 	ok,
+	throws,
 } from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import { describe, it } from "node:test";
 import crypto, {
+	assertId,
+	assertMemoryCost,
+	assertSub,
+	charactersAlpha,
+	charactersAlphaLower,
 	charactersAlphaNumeric,
+	charactersAlphaUpper,
+	charactersDistinguishable,
 	charactersNumeric,
-	// safeEqual,
 	// createArgon2,
 	createDigest,
 	createPepperedDigest,
 	createSaltedDigest,
+	createSaltedValue,
 	createSeasonedDigest,
 	createSecretHash,
 	decodeArgon2,
 	encodeArgon2,
 	entropyToCharacterLength,
+	getOptions,
 	makeAsymmetricKeys,
 	makeAsymmetricSignature,
+	makeOptionsBuffer,
 	makeRandomConfigObject,
+	nowInSeconds,
 	randomAlphaNumeric,
 	randomChecksumPepper,
 	randomChecksumSalt,
 	randomNumeric,
+	safeEqual,
 	symmetricDecrypt,
 	symmetricDecryptFields,
 	symmetricDecryptKey,
@@ -150,6 +162,15 @@ describe("crypto", () => {
 			});
 			equal(digest, "sha3-256:0uITV182D6igoH3CrcihY+fFrN1s/1aQlYjJoCOjhDs=");
 		});
+		it("createSaltedValue passes the value through when salting is off", async () => {
+			// `??=` only fills in the configured salt for null/undefined, so any
+			// other falsy value is an explicit "salting disabled"
+			for (const checksumSalt of ["", false, 0]) {
+				equal(createSaltedValue("1auth", { checksumSalt }), "1auth");
+			}
+			// and with a salt the value is extended by it
+			equal(createSaltedValue("1auth", { checksumSalt: "S" }), "1authS");
+		});
 		it("createPepperedDigest", async () => {
 			let digest = createPepperedDigest("1auth", {
 				hashAlgorithm: "sha3-256",
@@ -199,6 +220,15 @@ describe("crypto", () => {
 	});
 
 	describe("hash", () => {
+		it("decodeArgon2() tolerates a hash with no version segment", async () => {
+			const { nonce, hash } = decodeArgon2(
+				createSecretHash("s3cret", { sub: "sub_000" }),
+			);
+			const encoding = getOptions().defaultEncoding;
+			const noVersion = `$argon2id$$m=4,t=2,p=1$${nonce.toString(encoding)}$${hash.toString(encoding)}`;
+			// left as-is rather than parsed into NaN
+			equal(decodeArgon2(noVersion).version, "");
+		});
 		it("encodeArgon2() returns string that can be decoded", async () => {
 			const options = {
 				algorithm: "argon2id",
@@ -223,6 +253,14 @@ describe("crypto", () => {
 			deepEqual(parts.nonce, options.nonce);
 			equal(parts.hashLength, options.hashLength);
 			deepEqual(parts.hash, options.hash);
+		});
+		it("createSecretHash() rejects memoryCost given in KiB instead of log2", async () => {
+			// 2 ** 15 is the *memory*, 15 is the exponent. Passing the former
+			// used to compute 2 ** 32768 = Infinity and throw deep inside node.
+			throws(() => createSecretHash("1auth", { memoryCost: 2 ** 15 }), {
+				name: "RangeError",
+				message: /log2 exponent/,
+			});
 		});
 		it("createSecretHash() returns hash that can be verified", async () => {
 			const message = "1auth";
@@ -397,15 +435,20 @@ describe("crypto", () => {
 				encryptionKey,
 				sub,
 			});
-			try {
-				symmetricDecrypt(encryptedValue, {
-					encryptedKey,
-					signatureSecret: Buffer.from("invalid"),
-					sub,
-				});
-			} catch (e) {
-				equal(e.message, "Signature incorrect");
-			}
+			throws(
+				() =>
+					symmetricDecrypt(encryptedValue, {
+						encryptedKey,
+						signatureSecret: Buffer.from("invalid"),
+						sub,
+					}),
+				{
+					message: "Signature incorrect",
+					// the wrapped key is unwrapped first, so that is the packet
+					// whose signature fails, and it is carried for debugging
+					cause: { signedEncryptedDataPacket: encryptedKey },
+				},
+			);
 		});
 		it("encrypt can be decrypted object fields", async () => {
 			const sub = "sub_000000";
@@ -456,6 +499,76 @@ describe("crypto", () => {
 			const { signatureSecret } = symmetricGenerateSignatureSecret();
 			const valid = symmetricSignatureVerify(data, { signatureSecret });
 			ok(!valid);
+		});
+	});
+
+	describe("symmetric signature padding", () => {
+		it("Should strip every base64 padding character from a signature", () => {
+			// sha3-384 base64 happens to land on a 3-byte boundary and needs no
+			// padding, so use a digest length that produces two `=`
+			const signed = symmetricSignatureSign("1auth", {
+				hashAlgorithm: "sha3-224",
+			});
+			const signature = signed.slice("1auth.".length);
+			equal(signature.includes("="), false);
+			equal(signature.length, 38); // 40 base64 chars less two of padding
+			equal(
+				symmetricSignatureVerify(signed, { hashAlgorithm: "sha3-224" }),
+				"1auth",
+			);
+		});
+		it("Should verify a signature over empty data", () => {
+			// `sign("")` puts the separator at index 0, which is still a signature
+			const signed = symmetricSignatureSign("");
+			equal(signed.startsWith("."), true);
+			// verification returns the data it recovered, here the empty string
+			equal(symmetricSignatureVerify(signed), "");
+		});
+		it("Should not verify unsigned data", () => {
+			equal(symmetricSignatureVerify("1auth"), false);
+			equal(symmetricSignatureVerify(""), false);
+			equal(symmetricSignatureVerify(undefined), false);
+			equal(symmetricSignatureVerify(1234), false);
+		});
+		it("Should make a signature secret of its own", () => {
+			const { signatureSecret } = symmetricGenerateSignatureSecret();
+			equal(Buffer.byteLength(signatureSecret), 32);
+			// and it is usable as one
+			const signed = symmetricSignatureSign("1auth", { signatureSecret });
+			equal(symmetricSignatureVerify(signed, { signatureSecret }), "1auth");
+			equal(symmetricSignatureVerify(signed), false);
+		});
+	});
+
+	describe("symmetric field helpers", () => {
+		it("Should hand back the very same object when there is no key", () => {
+			// not a clone: without a key there is nothing to do, so the caller's
+			// object is passed straight through
+			const values = { value: "1auth" };
+			equal(symmetricEncryptFields(values, {}, ["value"]), values);
+			equal(symmetricDecryptFields(values, {}, ["value"]), values);
+		});
+		it("Should leave every field alone when none are named", () => {
+			const sub = "sub_000000";
+			const { encryptionKey } = symmetricGenerateEncryptionKey(sub);
+			const values = { value: "1auth", other: "kept" };
+			deepEqual(symmetricEncryptFields(values, { encryptionKey, sub }), values);
+			deepEqual(symmetricDecryptFields(values, { encryptionKey, sub }), values);
+		});
+		it("Should honour a non-default decoding and encoding", () => {
+			const sub = "sub_000000";
+			const { encryptionKey } = symmetricGenerateEncryptionKey(sub);
+			const hex = Buffer.from("1auth").toString("hex");
+			const encrypted = symmetricEncrypt(hex, {
+				encryptionKey,
+				sub,
+				decoding: "hex",
+			});
+			// read back as hex, it is the same bytes we put in
+			equal(
+				symmetricDecrypt(encrypted, { encryptionKey, sub, encoding: "hex" }),
+				hex,
+			);
 		});
 	});
 
@@ -760,6 +873,54 @@ describe("crypto", () => {
 			decryptedValues.encryptionKey = undefined;
 			deepEqual(decryptedValues, values);
 		});
+		it("Should expose the resolved options", async () => {
+			ok(getOptions().symmetricEncryptionKey);
+			equal(getOptions().defaultEncoding, "base64");
+		});
+		it("Should pass values through untouched without an encryption key", async () => {
+			const values = { value: "plain" };
+			deepEqual(
+				symmetricEncryptFields(values, { sub: "sub_0" }, ["value"]),
+				values,
+			);
+			deepEqual(
+				symmetricDecryptFields(values, { sub: "sub_0" }, ["value"]),
+				values,
+			);
+		});
+		it("Should reuse the old options and fields when new ones are omitted", async () => {
+			const sub = "sub_000000";
+			const { encryptionKey, encryptedKey } =
+				symmetricGenerateEncryptionKey(sub);
+			const encrypted = symmetricEncryptFields(
+				{ value: "secret" },
+				{ encryptionKey, sub },
+				["value"],
+			);
+			encrypted.encryptionKey = encryptedKey;
+			// only three arguments: `newOptions` and `newFields` fall back to the old
+			const rotated = symmetricRotation(encrypted, { sub }, ["value"]);
+			const decrypted = symmetricDecryptFields(
+				rotated,
+				{ encryptedKey: rotated.encryptionKey, sub },
+				["value"],
+			);
+			equal(decrypted.value, "secret");
+		});
+		it("Should NOT rotate across a different `sub`", async () => {
+			// `sub` is the AEAD associated data, so re-encrypting under another
+			// subject would silently produce a row that cannot be read back
+			throws(
+				() =>
+					symmetricRotation(
+						{ encryptionKey: "x" },
+						{ sub: "sub_000000" },
+						["value"],
+						{ sub: "sub_111111" },
+					),
+				{ message: "Mismatching `sub`", cause: { sub: "sub_000000" } },
+			);
+		});
 		it("Should be able to rotate all cryptography", async () => {
 			// setup
 			const sub = "sub_000000";
@@ -848,53 +1009,240 @@ describe("crypto", () => {
 	});
 
 	describe("options", () => {
-		it("Should fail when missing symmetricEncryptionKey", () => {
+		// These leave the singleton half-configured, so put it back afterwards
+		const restore = () =>
+			crypto({
+				symmetricEncryptionKey: "K6u9kqw3u+w/VxR48wYT21hUY56gDIWgxzL5uPTK9zw=",
+				symmetricSignatureSecret:
+					"B6u9kqw3u+w/VxR48wYT21hUY56gDIWgxzL5uPTK9zw=",
+				digestChecksumSalt: "ViB9S/dvoJUB7lcNU9oA97/hT+kUvD2FLat7lXudF34=",
+				digestChecksumPepper: "yTJifrFGweECzlse",
+			});
+		const secrets = {
+			symmetricEncryptionKey: symmetricRandomEncryptionKey(),
+			symmetricSignatureSecret: symmetricRandomSignatureSecret(),
+			digestChecksumSalt: randomChecksumSalt(),
+			digestChecksumPepper: randomChecksumPepper(),
+		};
+		for (const missing of Object.keys(secrets)) {
+			it(`Should fail when missing ${missing}`, () => {
+				const opt = { ...secrets };
+				delete opt[missing];
+				try {
+					throws(
+						() => crypto(opt),
+						(e) => e.message.includes(missing),
+					);
+				} finally {
+					restore();
+				}
+			});
+		}
+		it("Should resolve hash algorithms and encodings from the defaults", () => {
+			restore();
+			const options = getOptions();
+			// each of these falls back to the shared default when not given
+			equal(options.defaultHashAlgorithm, "sha3-384");
+			equal(options.defaultEncoding, "base64");
+			equal(options.symmetricSignatureHashAlgorithm, "sha3-384");
+			equal(options.asymmetricSignatureHashAlgorithm, "sha3-384");
+			equal(options.digestChecksumHashAlgorithm, "sha3-384");
+			equal(options.symmetricEncryptionEncoding, "base64");
+			equal(options.symmetricSignatureEncoding, "base64");
+			equal(options.asymmetricSignatureEncoding, "base64");
+			equal(options.digestChecksumEncoding, "base64");
+		});
+		it("Should keep hash algorithms and encodings that are given", () => {
 			try {
 				crypto({
-					//symmetricEncryptionKey: symmetricRandomEncryptionKey(),
-					symmetricSignatureSecret: symmetricRandomSignatureSecret(),
-					digestChecksumSalt: randomChecksumSalt(),
-					digestChecksumPepper: randomChecksumPepper(),
+					symmetricEncryptionKey: secrets.symmetricEncryptionKey,
+					symmetricSignatureSecret: secrets.symmetricSignatureSecret,
+					digestChecksumSalt: secrets.digestChecksumSalt,
+					digestChecksumPepper: secrets.digestChecksumPepper,
+					symmetricSignatureHashAlgorithm: "sha256",
+					asymmetricSignatureHashAlgorithm: "sha512",
+					digestChecksumHashAlgorithm: "sha384",
 				});
-			} catch (e) {
-				ok(e.message.includes("symmetricEncryptionKey"));
+				const options = getOptions();
+				equal(options.symmetricSignatureHashAlgorithm, "sha256");
+				equal(options.asymmetricSignatureHashAlgorithm, "sha512");
+				equal(options.digestChecksumHashAlgorithm, "sha384");
+			} finally {
+				restore();
 			}
 		});
-		it("Should fail when missing symmetricSignatureSecret", () => {
+		it("Should carry the argon2 settings into the hasher", () => {
 			try {
 				crypto({
-					symmetricEncryptionKey: symmetricRandomEncryptionKey(),
-					// symmetricSignatureSecret: symmetricRandomSignatureSecret(),
-					digestChecksumSalt: randomChecksumSalt(),
-					digestChecksumPepper: randomChecksumPepper(),
+					...secrets,
+					secretArgon2TimeCost: 2,
+					secretArgon2MemoryCost: 4,
+					secretArgon2Parallelism: 1,
+					secretArgon2HashLength: 32,
+					secretArgon2NonceLength: 8,
 				});
-			} catch (e) {
-				ok(e.message.includes("symmetricSignatureSecret"));
+				const hash = createSecretHash("s3cret", { sub: "sub_000" });
+				const decoded = decodeArgon2(hash);
+				equal(decoded.algorithm, "argon2id");
+				equal(decoded.version, 19);
+				equal(decoded.timeCost, 2);
+				equal(decoded.memoryCost, 4);
+				equal(decoded.parallelism, 1);
+				equal(decoded.hashLength, 32);
+				equal(decoded.nonceLength, 8);
+			} finally {
+				restore();
 			}
 		});
-		it("Should fail when missing digestChecksumSalt", () => {
+		it("Should accept a Buffer secret as readily as an encoded string", () => {
+			const asBuffer = randomBytes(32);
 			try {
-				crypto({
-					symmetricEncryptionKey: symmetricRandomEncryptionKey(),
-					symmetricSignatureSecret: symmetricRandomSignatureSecret(),
-					// digestChecksumSalt: randomChecksumSalt(),
-					digestChecksumPepper: randomChecksumPepper(),
-				});
-			} catch (e) {
-				ok(e.message.includes("digestChecksumSalt"));
+				crypto({ ...secrets, symmetricEncryptionKey: asBuffer });
+				// handed back untouched, not re-decoded from a string
+				equal(getOptions().symmetricEncryptionKey, asBuffer);
+			} finally {
+				restore();
+			}
+			equal(
+				makeOptionsBuffer("ViB9S/dvoJUB7lcNU9oA97/hT+kUvD2FLat7lXudF34=")
+					.length,
+				32,
+			);
+			equal(makeOptionsBuffer(asBuffer), asBuffer);
+			// the encoding is what turns a string into bytes
+			equal(makeOptionsBuffer("QUJD", "base64").toString("utf8"), "ABC");
+			equal(makeOptionsBuffer("QUJD", "utf8").toString("utf8"), "QUJD");
+		});
+	});
+
+	describe("character pools", () => {
+		it("Should expose the pools it generates from", () => {
+			equal(charactersNumeric, "0123456789");
+			equal(charactersAlphaUpper, "ABCDEFGHIJKLMNOPQRSTUVWXYZ");
+			equal(charactersAlphaLower, "abcdefghijklmnopqrstuvwxyz");
+			equal(charactersAlpha, charactersAlphaUpper + charactersAlphaLower);
+			equal(charactersAlphaNumeric, charactersAlpha + charactersNumeric);
+			// the human-readable pool drops characters that are easily confused
+			equal(charactersDistinguishable, "CDEHKMPRTUWXY012458");
+			for (const confusable of ["I", "L", "O", "S", "3", "6", "7", "9"]) {
+				equal(charactersDistinguishable.includes(confusable), false);
 			}
 		});
-		it("Should fail when missing digestChecksumPepper", () => {
-			try {
-				crypto({
-					symmetricEncryptionKey: symmetricRandomEncryptionKey(),
-					symmetricSignatureSecret: symmetricRandomSignatureSecret(),
-					digestChecksumSalt: randomChecksumSalt(),
-					// digestChecksumPepper: randomChecksumPepper(),
-				});
-			} catch (e) {
-				ok(e.message.includes("digestChecksumPepper"));
+	});
+
+	describe("`makeRandomConfigObject`", () => {
+		it("Should describe an id generator", () => {
+			const config = makeRandomConfigObject({ id: "authn" });
+			equal(config.id, "authn");
+			equal(config.type, "id");
+			// no prefix by default: the generated value is pool characters only
+			const value = config.create();
+			equal(/^[A-Za-z0-9]+$/.test(value), true);
+			equal(value.length, entropyToCharacterLength(64, 62));
+		});
+		it("Should let params override the shape", () => {
+			const config = makeRandomConfigObject({
+				id: "authn",
+				type: "secret",
+				expire: 600,
+			});
+			equal(config.type, "secret");
+			equal(config.expire, 600);
+		});
+		it("Should size the value to the entropy and pool asked for", () => {
+			const config = makeRandomConfigObject({
+				prefix: "tok_",
+				entropy: 128,
+				characters: charactersNumeric,
+			});
+			const value = config.create();
+			equal(value.startsWith("tok_"), true);
+			equal(value.length, "tok_".length + entropyToCharacterLength(128, 10));
+			equal(/^tok_[0-9]+$/.test(value), true);
+		});
+	});
+
+	describe("`assertMemoryCost`", () => {
+		it("Should accept the whole log2 range, ends included", () => {
+			for (const memoryCost of [3, 4, 15, 30, 31]) {
+				equal(assertMemoryCost(memoryCost), undefined);
 			}
+		});
+		it("Should reject a memoryCost outside the log2 range", () => {
+			for (const memoryCost of [2, 0, -1, 32, 2 ** 15]) {
+				throws(() => assertMemoryCost(memoryCost), {
+					name: "RangeError",
+					cause: { memoryCost },
+				});
+			}
+		});
+		it("Should reject a memoryCost that is not a whole number", () => {
+			// in range but fractional, so the integer check has to stand on its own
+			for (const memoryCost of [15.5, 4.2, Number.NaN, "15", undefined, null]) {
+				throws(() => assertMemoryCost(memoryCost), {
+					name: "RangeError",
+					cause: { memoryCost },
+				});
+			}
+		});
+		it("Should name the offending value in its message", () => {
+			throws(() => assertMemoryCost(32), {
+				message:
+					"memoryCost must be a log2 exponent between 3 and 31, received 32",
+			});
+		});
+	});
+
+	describe("guards", () => {
+		it("Should reject a sub that is not a non-empty string", () => {
+			for (const sub of [undefined, "", 0, 1234, null, {}, true]) {
+				throws(() => assertSub(sub), {
+					message: "401 Unauthorized",
+					cause: { sub },
+				});
+			}
+			for (const sub of ["sub_000", "0"]) {
+				equal(assertSub(sub), undefined);
+			}
+		});
+		it("Should carry extra debugging context on a sub", () => {
+			throws(() => assertSub(undefined, { id: "authn_1" }), {
+				message: "401 Unauthorized",
+				cause: { sub: undefined, id: "authn_1" },
+			});
+		});
+		it("Should reject an id that is not a non-empty string", () => {
+			for (const id of [undefined, "", 0, 1234, null, {}, true]) {
+				throws(() => assertId(id), {
+					message: "404 Not Found",
+					cause: { id },
+				});
+			}
+			for (const id of ["authn_1", "0"]) {
+				equal(assertId(id), undefined);
+			}
+		});
+		it("Should carry extra debugging context on an id", () => {
+			throws(() => assertId(undefined, { sub: "sub_000" }), {
+				message: "404 Not Found",
+				cause: { id: undefined, sub: "sub_000" },
+			});
+		});
+		it("Should compare equal-length values without leaking a mismatch", () => {
+			equal(safeEqual("abc", "abc"), true);
+			equal(safeEqual("abc", "abd"), false);
+			// a length mismatch short-circuits rather than throwing
+			equal(safeEqual("abc", "abcd"), false);
+			equal(safeEqual("", ""), true);
+		});
+		it("Should report the current time in whole seconds", () => {
+			const before = Math.floor(Date.now() / 1000);
+			const now = nowInSeconds();
+			equal(Number.isInteger(now), true);
+			ok(now >= before);
+			ok(now <= Math.floor(Date.now() / 1000));
+			// seconds, not milliseconds
+			ok(now < Date.now());
 		});
 	});
 });

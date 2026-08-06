@@ -34,7 +34,7 @@ const value = "1auth";
 const hash = await createSecretHash(value);
 const hashFastest = await createSecretHash(value, {
 	timeCost: 1,
-	memoryCost: 3,
+	memoryCost: 3, // log2: 2^3 = 8 KiB, the argon2 minimum
 	parallelism: 1,
 });
 const hashTimeCost2 = await createSecretHash(value, { timeCost: 6 });
@@ -69,14 +69,14 @@ suite
 	.add("createSecretHash (default)", async () => {
 		await createSecretHash(value, {
 			timeCost: 3,
-			memoryCost: 2 ** 15,
+			memoryCost: 15,
 			parallelism: 1,
 		});
 	})
 	.add("createSecretHash (fastest)", async () => {
 		await createSecretHash(value, {
 			timeCost: 1,
-			memoryCost: 3,
+			memoryCost: 3, // log2: 2^3 = 8 KiB, the argon2 minimum
 			parallelism: 1,
 		});
 	})
@@ -129,8 +129,15 @@ suite
 		symmetricSignatureVerify("invalid");
 	});
 
-suite.addEventListener("complete", () => {
-	console.table(suite.table());
-});
+await suite.run();
+console.table(suite.table());
 
-suite.run();
+// tinybench records a thrown benchmark as a result column instead of rejecting,
+// so without this an erroring benchmark exits 0 and CI stays green.
+const failed = suite.tasks.filter((task) => task.result?.error);
+if (failed.length) {
+	throw new AggregateError(
+		failed.map((task) => task.result.error),
+		`${failed.length} benchmark(s) errored`,
+	);
+}

@@ -1,0 +1,58 @@
+{
+	"name": "@1auth/store-sql",
+	"version": "0.0.0-rc.0",
+	"description": "Generic SQL storage implementation for any client exposing a query method",
+	"type": "module",
+	"engines": {
+		"node": ">=24"
+	},
+	"engineStrict": true,
+	"publishConfig": {
+		"access": "public"
+	},
+	"main": "./index.js",
+	"module": "./index.js",
+	"sideEffects": false,
+	"exports": {
+		".": {
+			"import": "./index.js"
+		},
+		"./table/*": {
+			"import": "./table/*"
+		}
+	},
+	"files": [
+		"index.js",
+		"table"
+	],
+	"scripts": {
+		"test": "npm run test:unit",
+		"test:unit": "node --test"
+	},
+	"license": "MIT",
+	"funding": {
+		"type": "github",
+		"url": "https://github.com/sponsors/willfarrell"
+	},
+	"keywords": [
+		"1auth",
+		"OWASP",
+		"ASVS",
+		"SQL",
+		"database"
+	],
+	"author": {
+		"name": "1auth contributors",
+		"url": "https://github.com/willfarrell/1auth/graphs/contributors"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/willfarrell/1auth.git",
+		"directory": "packages/store-sql"
+	},
+	"bugs": {
+		"url": "https://github.com/willfarrell/1auth/issues"
+	},
+	"homepage": "https://github.com/willfarrell/1auth",
+	"dependencies": {}
+}

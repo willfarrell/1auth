@@ -22,7 +22,7 @@
   <a href="https://biomejs.dev"><img alt="Checked with Biome" src="https://img.shields.io/badge/Checked_with-Biome-60a5fa?style=flat&logo=biome"></a>
   <a href="https://conventionalcommits.org"><img alt="Conventional Commits" src="https://img.shields.io/badge/Conventional%20Commits-1.0.0-%23FE5196?logo=conventionalcommits&logoColor=white"></a>
   <a href="https://github.com/willfarrell/1auth/blob/main/package.json#L32">
-  <img alt="code coverage" src="https://img.shields.io/badge/code%20coverage-96%25-brightgreen"></a>
+  <img alt="code coverage" src="https://img.shields.io/badge/code%20coverage-100%25-brightgreen"></a>
 </p>
 <p><!--You can read the documentation at: <a href="https://github.com/willfarrell/1auth">https://github.com/willfarrell/1auth</a>--> 1Auth is like an ORM for `accounts`, `authentications`, `messengers`, `sessions` with extensibility to ensure they have a consistent API and ensure that encoding/decoding/encryption/decryption are applied in a consistent way. All while enforcing industry defaults for cryptographic algorithms with an easy method to keep them up to date.</p>
 </div>
@@ -45,8 +45,12 @@ FIPS 140-3 Level 4 can be achieved using `aes-256-gcm`.
 ### Install
 
 ```bash
-npm i @1auth/store-dynamodb @1auth/notify-sqs @1auth/crypto @1auth/account-username @1auth/account @1auth/messenger @1auth/messenger-email-address @1auth/authn @1auth/authn-webauthn @1auth/authn-recovery-codes @1auth/authn-access-token @1auth/session
+npm i @1auth/store-dynamodb @1auth/notify-sqs @1auth/crypto @1auth/account-username @1auth/account @1auth/messenger @1auth/messenger-email-address @1auth/authn @1auth/authn-webauthn @1auth/authn-webauthn-passkey @1auth/authn-webauthn-securitykey @1auth/authn-recovery-codes @1auth/authn-access-token @1auth/session @1auth/session-dbsc
 ```
+
+> `@1auth/authn-webauthn-passkey` and `@1auth/authn-webauthn-securitykey` are optional presets over `@1auth/authn-webauthn`, each a separately configured instance, so PassKeys and security keys can be offered as separate factors.
+
+> `@1auth/session-dbsc` is optional. [DBSC](https://www.w3.org/TR/dbsc/) only ships in Chromium, so it hardens sessions where it is available and is a no-op everywhere else — `@1auth/session` stays the fallback.
 
 ### Example
 
@@ -69,7 +73,7 @@ import recoveryCodes from '@1auth/authn-recovery-codes'
 import recoveryCode from './authn/authn-recovery-code/index.js'
 import accessToken from '@1auth/authn-access-token'
 
-import session from '@1auth/session'
+import sessionDBSC from '@1auth/session-dbsc'
 
 // 12h chosen based on OWASP ASVS
 const sessionExpire = 12 * 60 * 60
@@ -121,7 +125,7 @@ webauthn({
 recoveryCodes()
 accessToken()
 
-session({
+sessionDBSC({
   store,
   notify,
   expire: sessionExpire

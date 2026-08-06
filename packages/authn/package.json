@@ -1,6 +1,6 @@
 {
 	"name": "@1auth/authn",
-	"version": "0.0.0-beta.3",
+	"version": "0.0.0-rc.0",
 	"description": "Core authentication module with multi-factor authentication support",
 	"type": "module",
 	"engines": {
@@ -54,8 +54,7 @@
 		"url": "https://github.com/willfarrell/1auth/issues"
 	},
 	"homepage": "https://github.com/willfarrell/1auth",
-	"gitHead": "7a6c0fbb8ab71d6a2171e678697de9f237568431",
 	"dependencies": {
-		"@1auth/crypto": "0.0.0-beta.3"
+		"@1auth/crypto": "0.0.0-rc.0"
 	}
 }

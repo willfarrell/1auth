@@ -6,26 +6,33 @@ import {
 	update as accountUpdate,
 } from "@1auth/account";
 
-import { createSeasonedDigest, symmetricDecryptFields } from "@1auth/crypto";
+import {
+	assertSub,
+	createSeasonedDigest,
+	symmetricDecryptFields,
+} from "@1auth/crypto";
 
 // Only allow characters that are safe to encode
 // not allowed because it can be used to declare an extension
 let usernameBlacklistRegExp;
-const options = {
-	id: "username",
+const defaults = {
+	notifyId: "account-username", // template id prefix, set per instance when running more than one
 	allowedCharRegExp: /^[a-z0-9_-]*$/,
 	usernameBlacklist: [],
 	minLength: 1,
 	maxLength: 32,
 };
+const options = {};
 export default (opt = {}) => {
-	Object.assign(options, accountOptions(), opt);
-	if (options.usernameBlacklist.length) {
-		usernameBlacklistRegExp = new RegExp(
-			`(${options.usernameBlacklist.map((value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`,
-		);
-	}
+	Object.assign(options, defaults, accountOptions(), opt);
+	// Always reassigned, so an empty blacklist clears the previous one
+	usernameBlacklistRegExp = options.usernameBlacklist.length
+		? new RegExp(
+				`(${options.usernameBlacklist.map((value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`,
+			)
+		: undefined;
 };
+export const getOptions = () => options;
 
 export const exists = async (username) => {
 	const usernameSanitized = sanitize(username);
@@ -54,9 +61,7 @@ export const lookup = async (username) => {
 };
 
 export const create = async (sub, username) => {
-	if (!sub || typeof sub !== "string") {
-		throw new Error("401 Unauthorized", { cause: { sub } });
-	}
+	assertSub(sub);
 	const usernameSanitized = sanitize(username);
 	const usernameValidate = validate(usernameSanitized);
 	if (usernameValidate !== true) {
@@ -80,12 +85,14 @@ export const create = async (sub, username) => {
 
 export const update = async (sub, username) => {
 	await create(sub, username);
-	await options.notify.trigger("account-username-change", sub);
+	await options.notify.trigger(`${options.notifyId}-change`, sub);
 };
 
 export const recover = async (sub) => {
 	const { value: username } = await accountLookup(sub);
-	await options.notify.trigger("account-username-recover", sub, { username });
+	await options.notify.trigger(`${options.notifyId}-recover`, sub, {
+		username,
+	});
 };
 
 export const sanitize = (value) => {
@@ -100,8 +107,7 @@ export const sanitize = (value) => {
 };
 
 export const validate = (value) => {
-	let valid = true;
-	if (valid === true) valid = validateLength(value);
+	let valid = validateLength(value);
 	if (valid === true) valid = validateAllowedChar(value);
 	if (valid === true) valid = validateBlacklist(value);
 	return valid;

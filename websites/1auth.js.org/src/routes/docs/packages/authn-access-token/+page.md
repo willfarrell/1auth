@@ -26,6 +26,31 @@ Access tokens use these defaults:
 - **Username prefix:** `pat-`
 - **Entropy:** 112 bits
 - **Expiry:** 30 days
+- **`notifyId`:** `'authn-access-token'` — prefix for the notify template ids: `{notifyId}-create`, `{notifyId}-expire`, `{notifyId}-remove`
+
+## Two halves, one token
+
+`create` returns a `username` and a `secret`, and they are not interchangeable. The username is
+a public lookup handle stored as a plain digest; the secret is hashed with Argon2 and is the
+only half that proves anything.
+
+```
+  create(sub)
+      │
+      ├──► username   pat-xxxxx   digest stored, indexed, NOT a secret
+      │                           lets `lookup` find the row in one read
+      │
+      └──► secret     pat-xxxxx   Argon2 hash stored, never recoverable
+                                  returned exactly once, at creation
+
+  authenticate(username, secret)
+      │
+      ├──► find the credential by the username's digest
+      └──► verify the secret against the stored hash, in constant time
+```
+
+Hand the caller both, usually concatenated into one string your API splits back apart. Losing
+the secret means issuing a new token — there is nothing to recover, which is the point.
 
 ## API
 
