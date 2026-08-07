@@ -1,6 +1,6 @@
 {
 	"name": "@1auth/store-sqlite",
-	"version": "0.0.0-rc.0",
+	"version": "0.0.0-rc.1",
 	"description": "SQLite storage implementation for lightweight embedded database persistence",
 	"type": "module",
 	"engines": {

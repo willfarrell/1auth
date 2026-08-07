@@ -56,12 +56,15 @@ import crypto, {
 	verifySecretHash,
 } from "../crypto/index.js";
 
-crypto({
+// Fixed test vectors, so the digests asserted below stay stable. Declared once
+// and reused: tests that reconfigure the singleton restore it from here.
+const testOptions = {
 	symmetricEncryptionKey: "K6u9kqw3u+w/VxR48wYT21hUY56gDIWgxzL5uPTK9zw=", // symmetricRandomEncryptionKey()
 	symmetricSignatureSecret: "B6u9kqw3u+w/VxR48wYT21hUY56gDIWgxzL5uPTK9zw=", // symmetricRandomSignatureSecret()
 	digestChecksumSalt: "ViB9S/dvoJUB7lcNU9oA97/hT+kUvD2FLat7lXudF34=", // randomChecksumSalt()
 	digestChecksumPepper: "yTJifrFGweECzlse", // randomChecksumPepper()
-});
+};
+crypto(testOptions);
 
 /*
 ASVS v5.0 (bits)
@@ -1010,14 +1013,7 @@ describe("crypto", () => {
 
 	describe("options", () => {
 		// These leave the singleton half-configured, so put it back afterwards
-		const restore = () =>
-			crypto({
-				symmetricEncryptionKey: "K6u9kqw3u+w/VxR48wYT21hUY56gDIWgxzL5uPTK9zw=",
-				symmetricSignatureSecret:
-					"B6u9kqw3u+w/VxR48wYT21hUY56gDIWgxzL5uPTK9zw=",
-				digestChecksumSalt: "ViB9S/dvoJUB7lcNU9oA97/hT+kUvD2FLat7lXudF34=",
-				digestChecksumPepper: "yTJifrFGweECzlse",
-			});
+		const restore = () => crypto(testOptions);
 		const secrets = {
 			symmetricEncryptionKey: symmetricRandomEncryptionKey(),
 			symmetricSignatureSecret: symmetricRandomSignatureSecret(),

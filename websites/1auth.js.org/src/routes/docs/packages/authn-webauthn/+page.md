@@ -32,6 +32,7 @@ webauthn({
 | `residentKey` | `string` | `'discouraged'` | Resident key requirement |
 | `userVerification` | `string` | `'preferred'` | User verification level |
 | `preferredAuthenticatorType` | `string` | — | `'securityKey'`, `'localDevice'`, or `'remoteDevice'` |
+| `userName` | `function` | `(account) => account.value ?? 'username'` | Display name shown in the authenticator prompt, resolved from the account row |
 | `notifyId` | `string` | `'authn-webauthn'` | Prefix for the notify template ids: `{notifyId}-create`, `{notifyId}-expire`, `{notifyId}-remove` |
 
 Registration and authentication are always verified with `requireUserVerification: true`.

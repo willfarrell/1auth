@@ -200,6 +200,10 @@ export const createInstance = () => {
 		residentKey: "discouraged", // https://fy.blackhats.net.au/blog/2023-02-02-how-hype-will-turn-your-security-key-into-junk/
 		userVerification: "preferred",
 		preferredAuthenticatorType: undefined, // 'securityKey' | 'localDevice' | 'remoteDevice' - https://simplewebauthn.dev/docs/packages/server#fine-tuning-the-registration-experience-with-preferredauthenticatortype
+		// Display name shown in the authenticator prompt. Defaults to where
+		// `@1auth/account-username` puts the username, override when it lives
+		// elsewhere on the account.
+		userName: (account) => account.value ?? "username",
 		secret: secret(),
 		token: token(),
 		challenge: challenge(),
@@ -274,7 +278,7 @@ export const createInstance = () => {
 			rpName: options.name,
 			rpID: new URL(options.origin).hostname,
 			userID: isoUint8Array.fromUTF8String(sub),
-			userName: account.username ?? "username",
+			userName: options.userName(account),
 			attestationType: "none",
 			excludeCredentials,
 			preferredAuthenticatorType,
