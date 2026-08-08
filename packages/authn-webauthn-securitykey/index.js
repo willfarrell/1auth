@@ -10,6 +10,7 @@ const preset = {
 	residentKey: "discouraged",
 	userVerification: "required",
 	preferredAuthenticatorType: "securityKey",
+	credentialDeviceType: "singleDevice",
 };
 
 // Its own `options`, separate from `@1auth/authn-webauthn` and

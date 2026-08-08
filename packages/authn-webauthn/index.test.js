@@ -816,6 +816,47 @@ const tests = (config) => {
 			}
 		});
 
+		it("Can register with no type asked for", async () => {
+			// Dropping the hint is how a caller gets the browser's own store chooser
+			ok(await registerAs(null, registrationResponse));
+			equal(await webauthnCount(sub), 1);
+		});
+
+		it("Will still refuse a hardware bound key when no type was asked for", async () => {
+			// With no hint there is no attachment to check, so the instance's
+			// `credentialDeviceType` is all that stands between a security key and a
+			// passkey
+			await webauthnCreate(sub, { preferredAuthenticatorType: null });
+			const [token] = await store.selectList(authnGetOptions().table, {
+				sub,
+				type: "WebAuthn-token",
+			});
+			await overrideCreateChallenge(sub, token);
+			const stored = await store.select(authnGetOptions().table, {
+				sub,
+				id: token.id,
+			});
+			const value = JSON.parse(
+				symmetricDecrypt(stored.value, {
+					sub,
+					encryptedKey: stored.encryptionKey,
+				}),
+			);
+			try {
+				await webauthnToken().verify(registrationResponseSecurityKey, {
+					...value,
+					credentialDeviceType: "multiDevice",
+				});
+				throw new Error("expected Failed authenticatorType");
+			} catch (e) {
+				equal(e.message, "Failed authenticatorType");
+				deepEqual(e.cause, {
+					authenticatorType: null,
+					credentialDeviceType: "singleDevice",
+				});
+			}
+		});
+
 		it("Can choose the type without reconfiguring the instance", async () => {
 			const { secret: registrationOptions } = await webauthnCreate(sub, {
 				preferredAuthenticatorType: "remoteDevice",

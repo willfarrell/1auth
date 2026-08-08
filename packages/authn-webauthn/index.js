@@ -36,15 +36,22 @@ const authenticatorAttachments = {
 
 // `preferredAuthenticatorType` only sets browser hints, the user is free to
 // register something else entirely. BE (`multiDevice`) is the signal that
-// separates a syncable passkey from a hardware bound key.
+const credentialDeviceTypes = {
+	securityKey: "singleDevice",
+	localDevice: "multiDevice",
+	remoteDevice: "multiDevice",
+};
+
 const authenticatorTypeVerify = (
-	authenticatorType,
+	{ authenticatorType, credentialDeviceType },
 	registrationInfo,
 	response,
 ) => {
-	if (!authenticatorType) return;
-	const passkey = registrationInfo.credentialDeviceType === "multiDevice";
-	if (passkey === (authenticatorType === "securityKey")) {
+	// Falls back to what the hint implies, so an instance that only sets
+	// `preferredAuthenticatorType` keeps the guard it always had.
+	const required =
+		credentialDeviceType ?? credentialDeviceTypes[authenticatorType];
+	if (required && registrationInfo.credentialDeviceType !== required) {
 		throw new Error("Failed authenticatorType", {
 			cause: {
 				authenticatorType,
@@ -53,9 +60,11 @@ const authenticatorTypeVerify = (
 		});
 	}
 	// ponytail: attachment is optional in the spec, so local vs remote is only
-	// checked when the browser reports it. The security relevant split is above.
+	// checked when one was asked for and the browser reports it. The security
+	// relevant split is above.
 	const { authenticatorAttachment } = response;
 	if (
+		authenticatorType &&
 		authenticatorAttachment &&
 		authenticatorAttachment !== authenticatorAttachments[authenticatorType]
 	) {
@@ -88,11 +97,7 @@ export const createInstance = () => {
 				throw new Error("Failed verifyRegistrationResponse", {
 					cause: { response },
 				});
-			authenticatorTypeVerify(
-				value.authenticatorType,
-				registrationInfo,
-				response,
-			);
+			authenticatorTypeVerify(value, registrationInfo, response);
 			return { registrationInfo: jsonEncodeSecret(registrationInfo) };
 		},
 		...params
@@ -200,6 +205,7 @@ export const createInstance = () => {
 		residentKey: "discouraged", // https://fy.blackhats.net.au/blog/2023-02-02-how-hype-will-turn-your-security-key-into-junk/
 		userVerification: "preferred",
 		preferredAuthenticatorType: undefined, // 'securityKey' | 'localDevice' | 'remoteDevice' - https://simplewebauthn.dev/docs/packages/server#fine-tuning-the-registration-experience-with-preferredauthenticatortype
+		credentialDeviceType: undefined, // 'multiDevice' | 'singleDevice' - what this instance accepts, independent of the browser hint
 		// Display name shown in the authenticator prompt. Defaults to where
 		// `@1auth/account-username` puts the username, override when it lives
 		// elsewhere on the account.
@@ -295,6 +301,7 @@ export const createInstance = () => {
 			expectedRPID: new URL(options.origin).hostname,
 			requireUserVerification: true, // PassKey
 			authenticatorType: preferredAuthenticatorType,
+			credentialDeviceType: options.credentialDeviceType,
 		};
 		const { id } = await authnCreate(options.token, sub, { value });
 

@@ -114,3 +114,6 @@ dist
 # IDE
 .nova
 .idea
+
+# graphify
+graphify-out

@@ -9,6 +9,7 @@ const preset = {
 	residentKey: "required",
 	userVerification: "required",
 	preferredAuthenticatorType: "localDevice",
+	credentialDeviceType: "multiDevice",
 };
 
 // Its own `options`, separate from `@1auth/authn-webauthn` and
