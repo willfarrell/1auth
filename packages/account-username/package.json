@@ -1,6 +1,6 @@
 {
 	"name": "@1auth/account-username",
-	"version": "0.0.0-rc.2",
+	"version": "0.0.0-rc.3",
 	"description": "Username validation and management for account authentication",
 	"type": "module",
 	"engines": {
@@ -52,7 +52,7 @@
 	},
 	"homepage": "https://github.com/willfarrell/1auth",
 	"dependencies": {
-		"@1auth/account": "0.0.0-rc.2",
-		"@1auth/crypto": "0.0.0-rc.2"
+		"@1auth/account": "0.0.0-rc.3",
+		"@1auth/crypto": "0.0.0-rc.3"
 	}
 }

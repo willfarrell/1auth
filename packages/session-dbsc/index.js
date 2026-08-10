@@ -33,15 +33,15 @@ const algorithms = {
 const defaults = {
 	id,
 	log: false,
-	challengeExpire: 5 * 60,
+	challengeExpire: 1 * 60,
 	registerPath: "/dbsc/register",
 	refreshPath: "/dbsc/refresh",
 	sidCookieName: "__Host-Http-sid",
 	sidCookieAttributes: "Path=/; Secure; HttpOnly; SameSite=Strict",
 	dbscCookieName: "__Host-Http-dbsc",
 	dbscCookieAttributes: "Path=/; Secure; HttpOnly; SameSite=Strict",
-	dbscCookieExpire: 15 * 60,
-	scope: { include_site: true },
+	dbscCookieExpire: 5 * 60,
+	scope: { include_site: false },
 };
 
 // Longest prefix first, `__Host-Http-` is a superset of `__Host-`
@@ -51,6 +51,12 @@ const cookiePrefixes = [
 	["__Http-", { secure: true, httpOnly: true }],
 	["__Secure-", { secure: true }],
 ];
+
+// Reads the prefix table rather than matching `__Host-` by hand, so
+// `__Host-Http-` counts too and there is one place that says what a prefix means
+const hostOnlyCookie = (cookieName) =>
+	cookiePrefixes.find(([prefix]) => cookieName.startsWith(prefix))?.[1]
+		?.hostOnly === true;
 
 // Whole-attribute match, not a substring: `Path=/foo` does not satisfy `Path=/`,
 // and `Domain=secure.example.com` does not satisfy `Secure`. Those are the two
@@ -94,6 +100,14 @@ export default (opt = {}) => {
 	Object.assign(options, defaults, own);
 	assertCookie("sidCookieName", "sidCookieAttributes");
 	assertCookie("dbscCookieName", "dbscCookieAttributes");
+	if (options.scope?.include_site && hostOnlyCookie(options.dbscCookieName)) {
+		throw new Error("500 Internal Server Error", {
+			cause: {
+				dbscCookieName: options.dbscCookieName,
+				scope: options.scope,
+			},
+		});
+	}
 	// The bound cookie has to die before the session does, or the browser never
 	// reaches an expiry to refresh on and the binding is never exercised: a green
 	// looking deployment where DBSC does nothing at all.
@@ -239,17 +253,30 @@ export const verifyProof = async (
 	if (typeof payload?.aud !== "string" || !safeEqual(payload.aud, aud)) {
 		throw unauthorized();
 	}
-	if (!challengeVerify(payload.jti, sessionId)) throw unauthorized();
 	// `sub` only exists on refresh, where it must name the session being refreshed
 	if (sessionId && payload.sub !== sessionId) throw unauthorized();
 	// Fail closed on the refresh path. A refresh names a session, so a stored key
-	// MUST exist to compare against -- without this, an absent `publicKey` reads
-	// as "no binding to enforce" below and any validly signed proof is accepted.
-	// Registration is the one case with legitimately no prior key.
+	// MUST exist to verify against -- without this, an absent `publicKey` reads as
+	// "no binding to enforce" and any self-signed proof is accepted. Registration
+	// is the one case with legitimately no prior key.
 	if (sessionId && !publicKey) throw unauthorized();
-	if (payload.key?.kty !== algorithm.kty) throw unauthorized();
 
-	const jwk = publicJwk(payload.key, algorithm.members);
+	if (!sessionId && header.jwk === undefined) throw unauthorized();
+	if (sessionId && header.jwk !== undefined) throw unauthorized();
+
+	let jwk;
+	try {
+		jwk = publicJwk(
+			sessionId ? JSON.parse(publicKey) : header.jwk,
+			algorithm.members,
+		);
+	} catch {
+		throw unauthorized();
+	}
+	// On refresh this pins the stored key's type to the claimed `alg`, so a session
+	// bound to an EC key cannot be refreshed by an RS256 proof.
+	if (jwk.kty !== algorithm.kty) throw unauthorized();
+
 	let key;
 	try {
 		key = createPublicKey({ key: jwk, format: "jwk" });
@@ -258,10 +285,6 @@ export const verifyProof = async (
 	}
 	if (!algorithm.check(key.asymmetricKeyDetails)) throw unauthorized();
 
-	const proofKey = JSON.stringify(jwk);
-	// On refresh the proof has to come from the key bound at registration
-	if (publicKey && !safeEqual(proofKey, publicKey)) throw unauthorized();
-
 	const verified = asymmetricVerify(
 		algorithm.hashAlgorithm,
 		Buffer.from(`${encodedHeader}.${encodedPayload}`),
@@ -269,7 +292,11 @@ export const verifyProof = async (
 		Buffer.from(encodedSignature, "base64url"),
 	);
 	if (!verified) throw unauthorized();
-	return { publicKey: proofKey, payload };
+
+	if (!challengeVerify(payload.jti, sessionId)) {
+		throw new Error("403 Forbidden", { cause: { aud, sessionId } });
+	}
+	return { publicKey: JSON.stringify(jwk), payload };
 };
 
 // A binding is a session row, so these are @1auth/session verbatim. `list`
