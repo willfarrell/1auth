@@ -1,6 +1,6 @@
 {
 	"name": "@1auth/session-dbsc",
-	"version": "0.0.0-rc.3",
+	"version": "0.0.0-rc.4",
 	"description": "Device Bound Session Credentials (DBSC) for @1auth/session",
 	"type": "module",
 	"engines": {
@@ -53,7 +53,7 @@
 	},
 	"homepage": "https://github.com/willfarrell/1auth",
 	"dependencies": {
-		"@1auth/crypto": "0.0.0-rc.3",
-		"@1auth/session": "0.0.0-rc.3"
+		"@1auth/crypto": "0.0.0-rc.4",
+		"@1auth/session": "0.0.0-rc.4"
 	}
 }

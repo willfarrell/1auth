@@ -250,8 +250,10 @@ export const verifyProof = async (
 	}
 	const algorithm = algorithms[header?.alg];
 	if (header?.typ !== "dbsc+jwt" || !algorithm) throw unauthorized();
-	if (typeof payload?.aud !== "string" || !safeEqual(payload.aud, aud)) {
-		throw unauthorized();
+	if (payload?.aud !== undefined) {
+		if (typeof payload.aud !== "string" || !safeEqual(payload.aud, aud)) {
+			throw unauthorized();
+		}
 	}
 	// `sub` only exists on refresh, where it must name the session being refreshed
 	if (sessionId && payload.sub !== sessionId) throw unauthorized();

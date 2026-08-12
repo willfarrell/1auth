@@ -135,6 +135,10 @@ const makeProof = (
 		key,
 		sub,
 		sendJwk,
+		// `aud: undefined` cannot express "leave it out" -- the default parameter
+		// puts registerUrl back -- and leaving it out is the shape a real browser
+		// sends, so it needs its own flag.
+		omitAud = false,
 		tamper = false,
 	} = {},
 ) => {
@@ -148,7 +152,10 @@ const makeProof = (
 			: { typ, alg },
 	);
 	const challenge = jti ?? dbscChallenge(sub ?? "");
-	const claims = (iat) => base64url({ aud, jti: challenge, iat, sub });
+	// JSON.stringify drops undefined values, which is how `sub` stays off a
+	// registration proof and how `omitAud` drops the audience.
+	const claims = (iat) =>
+		base64url({ aud: omitAud ? undefined : aud, jti: challenge, iat, sub });
 	const payload = claims(Math.floor(Date.now() / 1000));
 	const signature = asymmetricSign(
 		"sha256",
@@ -589,10 +596,8 @@ const tests = (config) => {
 				{ aud: refreshUrl, sessionId },
 			);
 		});
-		it("Will refuse a proof whose `aud` is not a string", async () => {
-			// without the type check `safeEqual` would be handed a non-string and
-			// blow up with a TypeError instead of refusing cleanly
-			for (const aud of [1234, null, undefined, {}, ["a"]]) {
+		it("Will refuse a proof whose `aud` is present but not a string", async () => {
+			for (const aud of [1234, null, {}, ["a"]]) {
 				await rejects(
 					() =>
 						dbscVerifyProof(
@@ -603,6 +608,41 @@ const tests = (config) => {
 					{ aud: registerUrl, sessionId: "" },
 				);
 			}
+		});
+		// Spec 9.10 requires only `jti` in the payload; `aud` is in the example, not
+		// the normative list, and Chrome sends `{jti}` alone at registration. Refusing
+		// those proofs meant no browser could ever bind a session, so an omitted `aud`
+		// has to reach the signature check rather than being rejected outright.
+		//
+		// It reaches the challenge check too, which is where the endpoint binding an
+		// `aud` would have given us actually comes from: `jti` is this server's own
+		// single-use token, issued per endpoint.
+		it("Will accept a registration proof that omits `aud` entirely", async () => {
+			const device = makeDevice();
+			const { publicKey } = await dbscVerifyProof(
+				makeProof(device, { omitAud: true }),
+				{ aud: registerUrl },
+			);
+			const { kty, crv, x, y } = device.publicKey.export({ format: "jwk" });
+			equal(publicKey, JSON.stringify({ kty, crv, x, y }));
+		});
+		it("Will still refuse an `aud`-less proof carrying another endpoint's challenge", async () => {
+			const device = makeDevice();
+			await rejects(
+				() =>
+					dbscVerifyProof(
+						// A refresh challenge names its session; registration signs the
+						// session-less one, so this is the cross-endpoint replay that `aud`
+						// would have caught -- and `jti` still does.
+						makeProof(device, {
+							omitAud: true,
+							jti: dbscChallenge("session_other"),
+						}),
+						{ aud: registerUrl },
+					),
+				"403 Forbidden",
+				{ aud: registerUrl, sessionId: "" },
+			);
 		});
 		it("Will refuse a proof whose payload is not an object", async () => {
 			// `JSON.parse("null")` succeeds, so the payload survives the decode and
