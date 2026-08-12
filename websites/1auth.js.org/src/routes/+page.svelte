@@ -13,9 +13,6 @@ import P from "@design-system/elements/p.svelte";
 import Section from "@design-system/elements/section.svelte";
 import Span from "@design-system/elements/span.svelte";
 import Ul from "@design-system/elements/ul.svelte";
-import { page } from "$app/state";
-
-const { data } = page;
 </script>
 
 <svelte:head>
