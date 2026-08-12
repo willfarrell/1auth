@@ -1,6 +1,6 @@
 {
 	"name": "@1auth/crypto",
-	"version": "0.0.0-rc.2",
+	"version": "0.0.0-rc.4",
 	"description": "Cryptographic utilities for encryption, hashing, and signing with modern algorithms",
 	"type": "module",
 	"engines": {

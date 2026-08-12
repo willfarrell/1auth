@@ -134,17 +134,29 @@ const makeProof = (
 		jti,
 		key,
 		sub,
+		sendJwk,
+		// `aud: undefined` cannot express "leave it out" -- the default parameter
+		// puts registerUrl back -- and leaving it out is the shape a real browser
+		// sends, so it needs its own flag.
+		omitAud = false,
 		tamper = false,
 	} = {},
 ) => {
-	const header = base64url({ typ, alg });
-	const payload = base64url({
-		aud,
-		jti: jti ?? dbscChallenge(sub ?? ""),
-		iat: Math.floor(Date.now() / 1000),
-		key: key ?? device.publicKey.export({ format: "jwk" }),
-		sub,
-	});
+	// The key rides in the JOSE header, and only at registration. A refresh names
+	// the session it is refreshing (`sub`), so the server already holds the key and
+	// the spec forbids sending it again. `sendJwk` overrides that to build the
+	// proofs a browser would never send.
+	const header = base64url(
+		(sendJwk ?? !sub)
+			? { typ, alg, jwk: key ?? device.publicKey.export({ format: "jwk" }) }
+			: { typ, alg },
+	);
+	const challenge = jti ?? dbscChallenge(sub ?? "");
+	// JSON.stringify drops undefined values, which is how `sub` stays off a
+	// registration proof and how `omitAud` drops the audience.
+	const claims = (iat) =>
+		base64url({ aud: omitAud ? undefined : aud, jti: challenge, iat, sub });
+	const payload = claims(Math.floor(Date.now() / 1000));
 	const signature = asymmetricSign(
 		"sha256",
 		Buffer.from(`${header}.${payload}`),
@@ -153,14 +165,7 @@ const makeProof = (
 			: { key: device.privateKey },
 	).toString("base64url");
 	if (tamper) {
-		const swapped = base64url({
-			aud,
-			jti: jti ?? dbscChallenge(sub ?? ""),
-			iat: 0,
-			key: key ?? device.publicKey.export({ format: "jwk" }),
-			sub,
-		});
-		return `${header}.${swapped}.${signature}`;
+		return `${header}.${claims(0)}.${signature}`;
 	}
 	return `${header}.${payload}.${signature}`;
 };
@@ -242,7 +247,7 @@ const tests = (config) => {
 			const options = dbscGetOptions();
 			equal(options.id, "session-dbsc");
 			equal(options.log, false);
-			equal(options.challengeExpire, 5 * 60);
+			equal(options.challengeExpire, 1 * 60);
 			equal(options.registerPath, "/dbsc/register");
 			equal(options.refreshPath, "/dbsc/refresh");
 			equal(options.sidCookieName, "__Host-Http-sid");
@@ -255,8 +260,8 @@ const tests = (config) => {
 				options.dbscCookieAttributes,
 				"Path=/; Secure; HttpOnly; SameSite=Strict",
 			);
-			equal(options.dbscCookieExpire, 15 * 60);
-			deepEqual(options.scope, { include_site: true });
+			equal(options.dbscCookieExpire, 5 * 60);
+			deepEqual(options.scope, { include_site: false });
 		});
 		it("Names the pair that is actually misconfigured", () => {
 			throwsConfig(() => dbsc({ sidCookieAttributes: "Path=/; HttpOnly" }), {
@@ -342,6 +347,39 @@ const tests = (config) => {
 		});
 	});
 
+	describe("scope", () => {
+		// A host-only cookie cannot reach a sibling host, so a site scoped session
+		// puts those requests in scope of a credential that can never be attached:
+		// they defer into a refresh that cannot satisfy them. Unshippable rather
+		// than slow, because the only symptom is latency on another host.
+		it("Will throw when a site scope rides a `__Host-` bound cookie", () => {
+			throwsConfig(() => dbsc({ scope: { include_site: true } }), {
+				dbscCookieName: "__Host-Http-dbsc",
+				scope: { include_site: true },
+			});
+			dbsc({});
+		});
+		it("Will throw for the shorter `__Host-` prefix too", () => {
+			throwsConfig(() =>
+				dbsc({
+					dbscCookieName: "__Host-dbsc",
+					dbscCookieAttributes: "Path=/; Secure",
+					scope: { include_site: true },
+				}),
+			);
+			dbsc({});
+		});
+		it("Can scope to the site with a cookie that can reach it", () => {
+			dbsc({
+				dbscCookieName: "__Secure-dbsc",
+				dbscCookieAttributes: "Domain=example.com; Path=/; Secure; HttpOnly",
+				scope: { include_site: true },
+			});
+			deepEqual(dbscGetOptions().scope, { include_site: true });
+			dbsc({});
+		});
+	});
+
 	describe("lifetime ordering", () => {
 		it("Will throw when the bound cookie outlives the session", () => {
 			// Equal lifetimes mean the bound cookie never expires first, so the
@@ -356,6 +394,13 @@ const tests = (config) => {
 				dbsc({ dbscCookieExpire: session.getOptions().expire + 1 }),
 			);
 			dbsc({});
+		});
+		it("Can take a challenge shorter lived than the bound cookie", () => {
+			// The default pairing. A challenge that dies first is stale by the time
+			// the cookie expires, and that is answered with 403 and a fresh one
+			// rather than a logout -- so shorter is just a smaller replay window.
+			const { challengeExpire, dbscCookieExpire } = dbscGetOptions();
+			ok(challengeExpire < dbscCookieExpire);
 		});
 	});
 
@@ -392,10 +437,12 @@ const tests = (config) => {
 		it("Will NOT accept a bound cookie as a challenge", async () => {
 			const device = makeDevice();
 			// a registration proof whose `jti` is a bound token rather than a challenge
-			await rejects(() =>
-				dbscRegister(sub, makeProof(device, { jti: dbscBoundToken("") }), {
-					aud: registerUrl,
-				}),
+			await rejects(
+				() =>
+					dbscRegister(sub, makeProof(device, { jti: dbscBoundToken("") }), {
+						aud: registerUrl,
+					}),
+				"403 Forbidden",
 			);
 		});
 	});
@@ -549,10 +596,8 @@ const tests = (config) => {
 				{ aud: refreshUrl, sessionId },
 			);
 		});
-		it("Will refuse a proof whose `aud` is not a string", async () => {
-			// without the type check `safeEqual` would be handed a non-string and
-			// blow up with a TypeError instead of refusing cleanly
-			for (const aud of [1234, null, undefined, {}, ["a"]]) {
+		it("Will refuse a proof whose `aud` is present but not a string", async () => {
+			for (const aud of [1234, null, {}, ["a"]]) {
 				await rejects(
 					() =>
 						dbscVerifyProof(
@@ -563,6 +608,41 @@ const tests = (config) => {
 					{ aud: registerUrl, sessionId: "" },
 				);
 			}
+		});
+		// Spec 9.10 requires only `jti` in the payload; `aud` is in the example, not
+		// the normative list, and Chrome sends `{jti}` alone at registration. Refusing
+		// those proofs meant no browser could ever bind a session, so an omitted `aud`
+		// has to reach the signature check rather than being rejected outright.
+		//
+		// It reaches the challenge check too, which is where the endpoint binding an
+		// `aud` would have given us actually comes from: `jti` is this server's own
+		// single-use token, issued per endpoint.
+		it("Will accept a registration proof that omits `aud` entirely", async () => {
+			const device = makeDevice();
+			const { publicKey } = await dbscVerifyProof(
+				makeProof(device, { omitAud: true }),
+				{ aud: registerUrl },
+			);
+			const { kty, crv, x, y } = device.publicKey.export({ format: "jwk" });
+			equal(publicKey, JSON.stringify({ kty, crv, x, y }));
+		});
+		it("Will still refuse an `aud`-less proof carrying another endpoint's challenge", async () => {
+			const device = makeDevice();
+			await rejects(
+				() =>
+					dbscVerifyProof(
+						// A refresh challenge names its session; registration signs the
+						// session-less one, so this is the cross-endpoint replay that `aud`
+						// would have caught -- and `jti` still does.
+						makeProof(device, {
+							omitAud: true,
+							jti: dbscChallenge("session_other"),
+						}),
+						{ aud: registerUrl },
+					),
+				"403 Forbidden",
+				{ aud: registerUrl, sessionId: "" },
+			);
 		});
 		it("Will refuse a proof whose payload is not an object", async () => {
 			// `JSON.parse("null")` succeeds, so the payload survives the decode and
@@ -577,6 +657,88 @@ const tests = (config) => {
 				{ aud: registerUrl, sessionId: "" },
 			);
 		});
+		// The key crosses the wire once, in the JOSE header at registration. A
+		// refresh that carried its own key would certify itself, so the spec forbids
+		// `jwk` there and the server verifies against what it already stored.
+		it("Will throw on a registration proof with no `jwk` header", async () => {
+			const device = makeDevice();
+			await rejects(
+				() =>
+					dbscVerifyProof(makeProof(device, { sendJwk: false }), {
+						aud: registerUrl,
+					}),
+				"401 Unauthorized",
+				{ aud: registerUrl, sessionId: "" },
+			);
+		});
+		it("Will throw on a refresh proof carrying its own `jwk`", async () => {
+			const attacker = makeDevice();
+			const sessionId = "session_selfsigned";
+			await rejects(
+				() =>
+					dbscVerifyProof(
+						makeProof(attacker, {
+							aud: refreshUrl,
+							sub: sessionId,
+							sendJwk: true,
+						}),
+						{
+							aud: refreshUrl,
+							sessionId,
+							publicKey: JSON.stringify(
+								makeDevice().publicKey.export({ format: "jwk" }),
+							),
+						},
+					),
+				"401 Unauthorized",
+				{ aud: refreshUrl, sessionId },
+			);
+		});
+		it("Will throw when the stored key is not readable", async () => {
+			// A corrupt binding fails closed rather than reading as "no key to check"
+			const device = makeDevice();
+			const sessionId = "session_corrupt";
+			for (const publicKey of ["{", "null", '{"kty":"EC"}']) {
+				await rejects(
+					() =>
+						dbscVerifyProof(
+							makeProof(device, { aud: refreshUrl, sub: sessionId }),
+							{
+								aud: refreshUrl,
+								sessionId,
+								publicKey,
+							},
+						),
+					"401 Unauthorized",
+					{ aud: refreshUrl, sessionId },
+				);
+			}
+		});
+		it("Will throw when the stored key is a different type than `alg`", async () => {
+			// a session bound to an EC key cannot be refreshed by an RS256 proof
+			const device = makeDevice("rsa");
+			const sessionId = "session_swapped";
+			await rejects(
+				() =>
+					dbscVerifyProof(
+						makeProof(device, {
+							alg: "RS256",
+							aud: refreshUrl,
+							sub: sessionId,
+						}),
+						{
+							aud: refreshUrl,
+							sessionId,
+							publicKey: JSON.stringify(
+								makeDevice().publicKey.export({ format: "jwk" }),
+							),
+						},
+					),
+				"401 Unauthorized",
+				{ aud: refreshUrl, sessionId },
+			);
+		});
+
 		it("Will name what it was checking when it refuses", async () => {
 			// `cause` is developer-facing only, but it is the only thing that says
 			// which endpoint and session a refusal was about
@@ -700,22 +862,34 @@ const tests = (config) => {
 			await rejects(() => dbscRegister(sub, makeProof(makeDevice()), {}));
 		});
 
+		// Both of these are retriable: the signature already proved the device, so a
+		// challenge that doesn't line up is a stale one, not an attacker. 403 is the
+		// only status the browser retries -- 401 would log the person out.
 		it("Will throw with an unsigned challenge", async () => {
-			await rejects(() =>
-				dbscRegister(sub, makeProof(makeDevice(), { jti: randomUUID() }), {
-					aud: registerUrl,
-				}),
+			await rejects(
+				() =>
+					dbscRegister(sub, makeProof(makeDevice(), { jti: randomUUID() }), {
+						aud: registerUrl,
+					}),
+				"403 Forbidden",
 			);
 		});
 
 		it("Will throw with an expired challenge", async () => {
-			dbsc({ challengeExpire: -1 });
+			// Mutate the live option rather than reconfiguring: default() now refuses
+			// a challenge shorter than the bound cookie, which is the whole point of
+			// the guard, so this is the only way to reach an expired one.
+			const dbscOptions = dbscGetOptions();
+			const original = dbscOptions.challengeExpire;
+			dbscOptions.challengeExpire = -1;
 			try {
-				await rejects(() =>
-					dbscRegister(sub, makeProof(makeDevice()), { aud: registerUrl }),
+				await rejects(
+					() =>
+						dbscRegister(sub, makeProof(makeDevice()), { aud: registerUrl }),
+					"403 Forbidden",
 				);
 			} finally {
-				dbsc({});
+				dbscOptions.challengeExpire = original;
 			}
 		});
 
@@ -902,16 +1076,18 @@ const tests = (config) => {
 			const { id } = await dbscRegister(sub, makeProof(device), {
 				aud: registerUrl,
 			});
-			await rejects(() =>
-				dbscRefresh(
-					id,
-					makeProof(device, {
-						aud: refreshUrl,
-						sub: id,
-						jti: dbscChallenge("session_other"),
-					}),
-					{ aud: refreshUrl },
-				),
+			await rejects(
+				() =>
+					dbscRefresh(
+						id,
+						makeProof(device, {
+							aud: refreshUrl,
+							sub: id,
+							jti: dbscChallenge("session_other"),
+						}),
+						{ aud: refreshUrl },
+					),
+				"403 Forbidden",
 			);
 		});
 
