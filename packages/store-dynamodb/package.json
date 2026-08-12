@@ -1,6 +1,6 @@
 {
 	"name": "@1auth/store-dynamodb",
-	"version": "0.0.0-rc.3",
+	"version": "0.0.0-rc.4",
 	"description": "AWS DynamoDB storage implementation for serverless persistence",
 	"type": "module",
 	"engines": {

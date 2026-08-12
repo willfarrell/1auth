@@ -620,24 +620,22 @@ const tests = (config) => {
 		it("Will accept a registration proof that omits `aud` entirely", async () => {
 			const device = makeDevice();
 			const { publicKey } = await dbscVerifyProof(
-				makeProof(device, { aud: undefined }),
+				makeProof(device, { omitAud: true }),
 				{ aud: registerUrl },
 			);
-			deepEqual(
-				JSON.parse(publicKey),
-				publicJwkOf(device),
-				"the header jwk is still what gets bound",
-			);
+			const { kty, crv, x, y } = device.publicKey.export({ format: "jwk" });
+			equal(publicKey, JSON.stringify({ kty, crv, x, y }));
 		});
 		it("Will still refuse an `aud`-less proof carrying another endpoint's challenge", async () => {
 			const device = makeDevice();
 			await rejects(
 				() =>
 					dbscVerifyProof(
-						// A refresh challenge (names a session) replayed at registration,
-						// which expects the session-less one.
+						// A refresh challenge names its session; registration signs the
+						// session-less one, so this is the cross-endpoint replay that `aud`
+						// would have caught -- and `jti` still does.
 						makeProof(device, {
-							aud: undefined,
+							omitAud: true,
 							jti: dbscChallenge("session_other"),
 						}),
 						{ aud: registerUrl },

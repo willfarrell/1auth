@@ -1,6 +1,6 @@
 {
 	"name": "@1auth/messenger",
-	"version": "0.0.0-rc.3",
+	"version": "0.0.0-rc.4",
 	"description": "Messaging framework for sending notifications and verification codes",
 	"type": "module",
 	"engines": {
@@ -56,7 +56,7 @@
 	},
 	"homepage": "https://github.com/willfarrell/1auth",
 	"dependencies": {
-		"@1auth/authn": "0.0.0-rc.3",
-		"@1auth/crypto": "0.0.0-rc.3"
+		"@1auth/authn": "0.0.0-rc.4",
+		"@1auth/crypto": "0.0.0-rc.4"
 	}
 }
