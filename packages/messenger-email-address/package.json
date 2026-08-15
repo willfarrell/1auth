@@ -1,6 +1,6 @@
 {
 	"name": "@1auth/messenger-email-address",
-	"version": "0.0.0-rc.4",
+	"version": "0.0.0-rc.5",
 	"description": "Email address messenger for email verification and notifications",
 	"type": "module",
 	"engines": {
@@ -52,9 +52,9 @@
 	},
 	"homepage": "https://github.com/willfarrell/1auth",
 	"dependencies": {
-		"@1auth/authn": "0.0.0-rc.4",
-		"@1auth/crypto": "0.0.0-rc.4",
-		"@1auth/messenger": "0.0.0-rc.4",
+		"@1auth/authn": "0.0.0-rc.5",
+		"@1auth/crypto": "0.0.0-rc.5",
+		"@1auth/messenger": "0.0.0-rc.5",
 		"tr46": "6.0.0"
 	}
 }

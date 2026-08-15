@@ -196,7 +196,7 @@ const sessionConfig = (sessionId) => ({
 		{
 			type: "cookie",
 			name: options.dbscCookieName,
-			attributes: dbscAttributes(),
+			attributes: options.dbscCookieAttributes,
 		},
 	],
 });
@@ -255,15 +255,16 @@ export const verifyProof = async (
 			throw unauthorized();
 		}
 	}
-	// `sub` only exists on refresh, where it must name the session being refreshed
-	if (sessionId && payload.sub !== sessionId) throw unauthorized();
+	if (sessionId && payload.sub !== undefined && payload.sub !== sessionId) {
+		throw unauthorized();
+	}
 	// Fail closed on the refresh path. A refresh names a session, so a stored key
 	// MUST exist to verify against -- without this, an absent `publicKey` reads as
 	// "no binding to enforce" and any self-signed proof is accepted. Registration
 	// is the one case with legitimately no prior key.
 	if (sessionId && !publicKey) throw unauthorized();
 
-	if (!sessionId && header.jwk === undefined) throw unauthorized();
+	if (!sessionId && !header.jwk) throw unauthorized();
 	if (sessionId && header.jwk !== undefined) throw unauthorized();
 
 	let jwk;

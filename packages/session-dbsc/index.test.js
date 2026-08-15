@@ -790,6 +790,18 @@ const tests = (config) => {
 			equal(config.session_identifier, id);
 			equal(config.credentials[0].type, "cookie");
 			equal(config.credentials[0].name, dbscGetOptions().dbscCookieName);
+			// A craving permits only domain/path/secure/httponly/samesite. Anything
+			// else makes Chromium drop the session, so it never refreshes.
+			for (const attribute of config.credentials[0].attributes.split(";")) {
+				ok(
+					["domain", "path", "secure", "httponly", "samesite"].includes(
+						attribute.split("=")[0].trim().toLowerCase(),
+					),
+					`unpermitted craving attribute: ${attribute}`,
+				);
+			}
+			// ... while the Set-Cookie still has to expire, or nothing triggers one
+			ok(dbscBoundCookieHeader("token").includes("Max-Age="));
 
 			const binding = await dbscSelect(sub, id);
 			equal(binding.sub, sub);
@@ -933,6 +945,29 @@ const tests = (config) => {
 	});
 
 	describe("`refresh`", () => {
+		// Every other refresh test here hands in `sub: id`, which is OUR shape, not
+		// the browser's. Chromium's CreateKeyRefreshHeaderAndPayload sets exactly
+		// one claim -- `payload.Set("jti", *challenge)` -- so a real refresh proof
+		// carries no `sub` and no `aud`. Requiring `sub` 401s every refresh Chrome
+		// ever sends, and a 401 tears the session down.
+		it("Can refresh with a Chrome-shaped proof: `jti` and nothing else", async () => {
+			const device = makeDevice();
+			const { id } = await dbscRegister(sub, makeProof(device), {
+				aud: registerUrl,
+			});
+			const refreshed = await dbscRefresh(
+				id,
+				makeProof(device, {
+					omitAud: true,
+					sendJwk: false,
+					jti: dbscChallenge(id),
+				}),
+				{ aud: refreshUrl },
+			);
+			equal(refreshed.id, id);
+			ok(refreshed.bound);
+		});
+
 		it("Will throw with an invalid session identifier", async () => {
 			for (const sessionId of [undefined, "", 0, 1234, null, {}]) {
 				await rejects(
