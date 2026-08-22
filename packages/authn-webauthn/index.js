@@ -14,7 +14,11 @@ import {
 	update as authnUpdate,
 	verify as authnVerify,
 } from "@1auth/authn";
-import { makeRandomConfigObject, nowInSeconds } from "@1auth/crypto";
+import {
+	createSeasonedChecksum,
+	makeRandomConfigObject,
+	nowInSeconds,
+} from "@1auth/crypto";
 
 import {
 	generateAuthenticationOptions,
@@ -317,7 +321,28 @@ export const createInstance = () => {
 		return registrationInfo;
 	};
 
-	const createChallenge = async (sub) => {
+	const decoyIdLengths = [27, 43]; // base64url of 20 and 32 bytes
+	const decoyChallenge = async (username) => {
+		const seed = createSeasonedChecksum(
+			`webauthn-decoy:${options.notifyId}:${username}`,
+			{ encoding: "base64url" },
+		);
+		const length =
+			decoyIdLengths[seed.charCodeAt(seed.length - 1) % decoyIdLengths.length];
+		const secret = await generateAuthenticationOptions({
+			rpID: new URL(options.origin).hostname,
+			allowCredentials: [{ id: seed.slice(0, length), type: "public-key" }],
+			userVerification: options.userVerification,
+		});
+		// Nothing is stored: there is no account to store it against, and the
+		// assertion this answers has to fail regardless.
+		return { secret };
+	};
+
+	const createChallenge = async (sub, { username } = {}) => {
+		if (!sub && username) {
+			return await decoyChallenge(username);
+		}
 		// Remove previous challenges for this user
 		const previousChallenges = await authnList(
 			options.challenge,
