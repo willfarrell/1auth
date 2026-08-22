@@ -33,6 +33,7 @@ const algorithms = {
 const defaults = {
 	id,
 	log: false,
+	require: false,
 	challengeExpire: 1 * 60,
 	registerPath: "/dbsc/register",
 	refreshPath: "/dbsc/refresh",
@@ -71,6 +72,7 @@ const attributeSet = (attributes, name) =>
 const ownKeys = new Set([
 	"id",
 	"log",
+	"require",
 	"challengeExpire",
 	"registerPath",
 	"refreshPath",
@@ -316,7 +318,18 @@ export const lookup = async (sid, bound, value = {}) => {
 	// An unbound row is `sid` alone: either registration has not happened yet, or
 	// the browser does not do DBSC at all. Once a key IS bound the bound cookie is
 	// required, so registering retroactively locks out a `sid` stolen beforehand.
-	if (!found.publicKey) return found;
+	// With `require`, an unbound row is only a foothold to reach registration, so
+	// it lives exactly as long as the challenge handed out beside it -- any longer
+	// and a browser without DBSC keeps a working session, which is not "require".
+	if (!found.publicKey) {
+		if (
+			options.require &&
+			!(nowInSeconds() < found.create + options.challengeExpire)
+		) {
+			return;
+		}
+		return found;
+	}
 	if (!boundTokenVerify(bound, found.id)) return;
 	return found;
 };

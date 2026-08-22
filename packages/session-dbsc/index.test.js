@@ -248,6 +248,7 @@ const tests = (config) => {
 			equal(options.id, "session-dbsc");
 			equal(options.log, false);
 			equal(options.challengeExpire, 1 * 60);
+			equal(options.require, false);
 			equal(options.registerPath, "/dbsc/register");
 			equal(options.refreshPath, "/dbsc/refresh");
 			equal(options.sidCookieName, "__Host-Http-sid");
@@ -1238,6 +1239,66 @@ const tests = (config) => {
 			await dbscRegister(sub, makeProof(makeDevice()), { aud: registerUrl });
 			ok(await session.lookup(sid, currentDevice));
 			equal((await session.list(sub)).length, 2);
+		});
+	});
+
+	describe("`require`", () => {
+		it("Will return nothing for an unbound session past the registration window", async (t) => {
+			const dbscOptions = dbscGetOptions();
+			dbscOptions.require = true;
+			try {
+				const { sid, create } = await session.create(sub, {});
+				t.mock.timers.enable({
+					apis: ["Date"],
+					now: (create + dbscOptions.challengeExpire) * 1000,
+				});
+				equal(await dbscLookup(sid, undefined), undefined);
+			} finally {
+				t.mock.timers.reset();
+				dbscOptions.require = false;
+			}
+		});
+		it("Can resolve an unbound session until the registration window closes", async (t) => {
+			const dbscOptions = dbscGetOptions();
+			dbscOptions.require = true;
+			try {
+				const { sid, create } = await session.create(sub, {});
+				t.mock.timers.enable({
+					apis: ["Date"],
+					now: (create + dbscOptions.challengeExpire - 1) * 1000,
+				});
+				ok(await dbscLookup(sid, undefined));
+			} finally {
+				t.mock.timers.reset();
+				dbscOptions.require = false;
+			}
+		});
+		it("Can still resolve a bound session", async () => {
+			const dbscOptions = dbscGetOptions();
+			dbscOptions.require = true;
+			try {
+				const device = makeDevice();
+				const { session: opened, bound } = await dbscRegister(
+					sub,
+					makeProof(device),
+					{ aud: registerUrl },
+				);
+				ok(await dbscLookup(opened.sid, bound));
+			} finally {
+				dbscOptions.require = false;
+			}
+		});
+		it("Will leave a stale unbound session valid when off", async (t) => {
+			const { sid, create } = await session.create(sub, {});
+			t.mock.timers.enable({
+				apis: ["Date"],
+				now: (create + dbscGetOptions().challengeExpire) * 1000,
+			});
+			try {
+				ok(await dbscLookup(sid, undefined));
+			} finally {
+				t.mock.timers.reset();
+			}
 		});
 	});
 
