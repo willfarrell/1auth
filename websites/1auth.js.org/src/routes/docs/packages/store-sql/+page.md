@@ -66,3 +66,7 @@ Beyond the store interface, the statement builders are exported so a backend for
 Copy `index.js` and change what differs. `@1auth/store-postgres` changes two values (`id`, `placeholder`); `@1auth/store-d1` keeps the builders and replaces the operations, because D1 binds prepared statements rather than exposing `query`.
 
 Each backend carrying its own copy is deliberate: none of them take a runtime dependency on another store package, and every operation stays a top-level export so bundlers can tree shake per operation. The trade is real — a fix to a shared builder has to be applied in each copy.
+
+## Post-quantum
+
+Performs no cryptography. Values arrive already encrypted and digested, so a stolen database exposes only quantum-resistant ciphertexts and digests. See the full assessment in [Post-quantum](/docs/security/algorithms#post-quantum).

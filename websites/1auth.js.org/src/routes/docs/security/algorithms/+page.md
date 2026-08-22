@@ -56,10 +56,43 @@ Default password hashing because:
 - Resistant to both GPU and ASIC attacks (memory-hard)
 - Combines Argon2i (side-channel resistant) and Argon2d (GPU-resistant)
 
-## Future: quantum-safe algorithms
+## Post-quantum
 
-The roadmap includes migration to quantum-safe algorithms:
+A cryptographically relevant quantum computer affects the two halves of cryptography very
+differently. Shor's algorithm breaks public-key cryptography built on factoring and discrete
+logarithms (RSA, ECDSA, ECDH) outright. Grover's algorithm merely halves the effective strength
+of symmetric ciphers and hashes — a 256-bit key drops to ~128-bit effective security, which
+remains out of reach.
 
-- **ML-KEM-1024** — Key encapsulation
-- **ML-DSA-87** — Digital signatures
-- **SLH-DSA-SHA2-256** — Stateless hash-based signatures
+Almost everything 1auth does is symmetric, so almost everything is already post-quantum safe:
+
+| Primitive | Used for | Post-quantum status |
+|-----------|----------|---------------------|
+| ChaCha20-Poly1305 / AES-256-GCM | Field encryption at rest | ✅ Safe (256-bit key, Grover-resistant) |
+| HMAC-SHA3-384 | Session cookies, ciphertext packet signatures | ✅ Safe |
+| SHA3-384 | Lookup digests, checksums | ✅ Safe (~192-bit post-quantum) |
+| Argon2id | Password and secret hashing | ✅ Safe (memory-hard, not quantum-relevant) |
+| CSPRNG tokens and identifiers | Session ids, OTPs, recovery codes | ✅ Safe |
+| EC P-384 (`makeAsymmetricKeys`) | Exported helper, unused by other 1auth packages | ❌ Shor-vulnerable — planned move to ML-DSA-65 (FIPS 204) |
+| ES256 / RS256 (DBSC) | Device-bound session proofs | ❌ Shor-vulnerable — algorithms fixed by the browser DBSC spec |
+| ES256 / RS256 (WebAuthn) | Passkey and security-key assertions | ❌ Shor-vulnerable — algorithms fixed by authenticator hardware |
+
+### Harvest now, decrypt later
+
+The realistic quantum threat today is an adversary recording ciphertext now to decrypt once a
+quantum computer exists. That attack only applies to **encrypted data** — and 1auth's data at
+rest is protected exclusively by symmetric encryption, which survives. Signatures are not
+retroactively forgeable: a future quantum computer could only forge proofs for sessions alive
+*at that time*, and sessions expire. This is why the remaining ECDSA usage is a low-urgency,
+ecosystem-paced migration rather than a today-problem.
+
+### Migration plan
+
+- **`makeAsymmetricKeys`** — will move from EC P-384 to ML-DSA-65 (FIPS 204), supported
+  natively by Node.js ≥ 24 (OpenSSL 3.5). No new dependency required.
+- **DBSC** — adopt post-quantum algorithms when the browser spec and TPMs ship them.
+- **WebAuthn** — COSE identifiers for ML-DSA already exist (−48/−49/−50); support lands when
+  authenticators and `@simplewebauthn/server` ship it.
+- **Roadmap** — ML-KEM-1024 (key encapsulation), ML-DSA-87 (signatures), and
+  SLH-DSA-SHA2-256 (stateless hash-based signatures) for configurations wanting NIST
+  category 5 margins.

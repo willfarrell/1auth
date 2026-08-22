@@ -83,3 +83,7 @@ Replace all recovery codes with a new set.
 ### `remove(sub, id)`
 
 Remove a specific recovery code or all codes.
+
+## Post-quantum
+
+Uses only CSPRNG code generation and Argon2id hashing, both post-quantum safe. No migration needed. See the full assessment in [Post-quantum](/docs/security/algorithms#post-quantum).

@@ -141,3 +141,7 @@ for a right-to-erasure sweep. The ciphertext produced here is never stored — o
 - `nowInSeconds()` — Current timestamp in seconds
 - `safeEqual(a, b)` — Timing-safe string comparison
 - `getOptions()` — Get current configuration
+
+## Post-quantum
+
+All symmetric primitives used here — ChaCha20-Poly1305, HMAC-SHA3-384, SHA3-384 digests, Argon2id — are post-quantum safe; Grover's algorithm only halves their effective strength, leaving ≥128-bit security. The one Shor-vulnerable primitive is `makeAsymmetricKeys` (EC P-384), currently unused by any other 1auth package; it will move to ML-DSA-65 (FIPS 204), supported natively by Node.js ≥ 24. See the full assessment in [Post-quantum](/docs/security/algorithms#post-quantum).

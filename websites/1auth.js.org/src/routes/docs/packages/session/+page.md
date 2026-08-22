@@ -238,3 +238,7 @@ Sign a session token with HMAC.
 Verify a signed session token.
 
 **Returns:** Original `sid` if valid, `undefined` otherwise
+
+## Post-quantum
+
+Uses only CSPRNG session identifiers, HMAC-SHA3-384 cookie signatures, and symmetric field encryption, all post-quantum safe. No migration needed. See the full assessment in [Post-quantum](/docs/security/algorithms#post-quantum).

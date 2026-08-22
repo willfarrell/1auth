@@ -386,3 +386,7 @@ Response body telling the browser to stop maintaining the session.
   session cannot be replayed against another.
 - The bound cookie name is checked against its own prefix rules at config time, since a
   cookie the browser silently drops presents as a refresh loop rather than an error.
+
+## Post-quantum
+
+The HMAC signing used internally is post-quantum safe. The device-bound proof, however, is an ES256/RS256 JWT signed by a TPM-held key — Shor-vulnerable, with algorithms fixed by the browser DBSC spec. Signatures are not retroactively forgeable and sessions expire, so this is an ecosystem-paced migration, not a stored-data risk. See the full assessment in [Post-quantum](/docs/security/algorithms#post-quantum).

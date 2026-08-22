@@ -82,3 +82,7 @@ Check username contains only allowed characters.
 ### `validateBlacklist(value)`
 
 Check username is not blacklisted.
+
+## Post-quantum
+
+Uses only SHA3-384 seasoned digests and symmetric field decryption, both post-quantum safe. No migration needed. See the full assessment in [Post-quantum](/docs/security/algorithms#post-quantum).

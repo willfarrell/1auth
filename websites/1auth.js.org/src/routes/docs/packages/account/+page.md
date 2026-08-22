@@ -78,3 +78,7 @@ Delete an account record.
 ### `getOptions()`
 
 Get current module configuration.
+
+## Post-quantum
+
+Uses only symmetric field encryption and CSPRNG identifiers, both post-quantum safe. No migration needed. See the full assessment in [Post-quantum](/docs/security/algorithms#post-quantum).
