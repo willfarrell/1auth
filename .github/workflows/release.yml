@@ -24,6 +24,22 @@ jobs:
       id-token: write # actions/attest-build-provenance
       attestations: write # actions/attest-build-provenance
     steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
+        with:
+          egress-policy: block
+          disable-sudo: true
+          disable-telemetry: true
+          allowed-endpoints: >
+            api.github.com:443
+            fulcio.sigstore.dev:443
+            github.com:443
+            nodejs.org:443
+            objects.githubusercontent.com:443
+            registry.npmjs.org:443
+            rekor.sigstore.dev:443
+            release-assets.githubusercontent.com:443
+            tuf-repo-cdn.sigstore.dev:443
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -31,9 +47,9 @@ jobs:
       - name: Setup Node.js ${{ env.NODE_VERSION }}
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          cache: "npm"
           node-version: ${{ env.NODE_VERSION }}
           registry-url: https://registry.npmjs.org
+          package-manager-cache: false # release artifacts must never touch the shared Actions cache
       - name: Set env
         run: |
           tag=$(npm pkg get version | xargs)
@@ -41,7 +57,10 @@ jobs:
           echo "prerelease=$([ "${tag##*-*}" ] && echo false || echo true)" >> "$GITHUB_ENV"
       - name: Install dependencies
         run: |
-          npm ci
+          npm ci --ignore-scripts
+      - name: Verify dependency signatures
+        run: |
+          npm audit signatures
       - name: Build
         run: |
           npm run build --if-present
@@ -77,12 +96,16 @@ jobs:
     permissions:
       contents: write # softprops/action-gh-release
     steps:
-      - name: Setup Node.js ${{ env.NODE_VERSION }}
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - name: Harden runner
+        uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
         with:
-          node-version: ${{ env.NODE_VERSION }}
-          registry-url: https://registry.npmjs.org
-          package-manager-cache: false
+          egress-policy: block
+          disable-sudo: true
+          disable-telemetry: true
+          allowed-endpoints: >
+            api.github.com:443
+            github.com:443
+            uploads.github.com:443
       - name: Download artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # 8.0.1
         with:
@@ -107,25 +130,47 @@ jobs:
     needs: release
     runs-on: ubuntu-latest
 
+    environment: npm-publish
+
     permissions:
       contents: read
       id-token: write # npm publish
+      attestations: read # gh attestation verify
     steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
+        with:
+          egress-policy: block
+          disable-sudo: true
+          disable-telemetry: true
+          allowed-endpoints: >
+            registry.npmjs.org:443
+            fulcio.sigstore.dev:443
+            rekor.sigstore.dev:443
+            tuf-repo-cdn.sigstore.dev:443
+            github.com:443
+            api.github.com:443
+            tmaproduction.blob.core.windows.net:443
       - name: Setup Node.js ${{ env.NODE_VERSION }}
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: ${{ env.NODE_VERSION }}
           registry-url: https://registry.npmjs.org
-          package-manager-cache: false
+          package-manager-cache: false # release artifacts must never touch the shared Actions cache
       - name: Download artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # 8.0.1
         with:
           name: ${{ needs.release.outputs.tag }}
-      - name: npm publish (next)
+      - name: Verify build provenance attestation
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          find . -name '*.tgz' -print -exec gh attestation verify {} --repo ${{ github.repository }} \;
+      - name: npm stage publish (next)
         if: ${{ needs.release.outputs.prerelease == 'true' }}
         run: |
-          find . -name '*.tgz' -exec npm publish --tag next --provenance --access public {} \;
-      - name: npm publish (latest)
+          find . -name '*.tgz' -exec npm stage publish --tag next --provenance --access public {} \;
+      - name: npm stage publish (latest)
         if: ${{ needs.release.outputs.prerelease == 'false' }}
         run: |
-          find . -name '*.tgz' -exec npm publish --tag latest --provenance --access public {} \;
+          find . -name '*.tgz' -exec npm stage publish --tag latest --provenance --access public {} \;
