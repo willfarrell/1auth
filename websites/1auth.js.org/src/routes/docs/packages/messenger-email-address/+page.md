@@ -80,3 +80,7 @@ Validate email address format.
 ### `mask(value)`
 
 Obfuscate an email for display (e.g., `u***@example.com`).
+
+## Post-quantum
+
+Uses only SHA3-384 seasoned digests, post-quantum safe. No migration needed. See the full assessment in [Post-quantum](/docs/security/algorithms#post-quantum).

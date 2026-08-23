@@ -1,6 +1,6 @@
 {
 	"name": "@1auth/session",
-	"version": "0.0.0-rc.5",
+	"version": "0.0.0-rc.6",
 	"description": "Secure session management with expiration and encryption support",
 	"type": "module",
 	"engines": {
@@ -55,7 +55,7 @@
 	},
 	"homepage": "https://github.com/willfarrell/1auth",
 	"dependencies": {
-		"@1auth/authn": "0.0.0-rc.5",
-		"@1auth/crypto": "0.0.0-rc.5"
+		"@1auth/authn": "0.0.0-rc.6",
+		"@1auth/crypto": "0.0.0-rc.6"
 	}
 }

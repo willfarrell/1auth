@@ -138,3 +138,7 @@ Verify a token and mark the messenger as verified.
 ### `remove(type, sub, id)`
 
 Delete a messenger.
+
+## Post-quantum
+
+Uses only SHA3-384 seasoned digests, symmetric field encryption, Argon2id hashing, and CSPRNG one-time codes, all post-quantum safe. No migration needed. See the full assessment in [Post-quantum](/docs/security/algorithms#post-quantum).

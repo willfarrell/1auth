@@ -31,6 +31,24 @@
 npm install @1auth/session
 ```
 
+## Concurrent sessions
+
+An account holds at most `limit` live sessions. The default is `10`.
+
+At the maximum, `create()` expires the oldest live session, by `create` time, and keeps the new one. It never refuses the new session: refusing it would let anyone who can reach the login form fill an account's list and lock the owner out. Eviction is the same soft expire as `expire(sub, id)`, so the row stays in the table and stops resolving, exactly as it does when a session reaches its own `expire`.
+
+Only live sessions count toward the cap. An expired row leaves room for a new session.
+
+```javascript
+session({
+  store,
+  notify,
+  limit: 10 // 0, or any falsy value, turns the cap off
+})
+```
+
+The count is read, not locked. No store here offers an atomic counter across an account's rows, so two logins arriving at the same moment can both pass the check. Treat the cap as advisory.
+
 ## Documentation and examples
 
 For documentation and examples, refer to the main [1auth monorepo on GitHub](https://github.com/willfarrell/1auth) or the [1auth website](https://1auth.js.org).

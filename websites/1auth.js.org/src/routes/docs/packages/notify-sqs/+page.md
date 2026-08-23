@@ -64,3 +64,7 @@ The Lambda execution role needs the following SQS permissions:
   "Resource": "arn:aws:sqs:*:*:notify-queue"
 }
 ```
+
+## Post-quantum
+
+Performs no cryptography; it hands messages to SQS (transport encryption is AWS's concern). Nothing to migrate. See the full assessment in [Post-quantum](/docs/security/algorithms#post-quantum).

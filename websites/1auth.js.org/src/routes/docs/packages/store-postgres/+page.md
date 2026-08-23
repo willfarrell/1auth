@@ -48,3 +48,7 @@ client.query(sql, parameters) // => rows[]
 Implements the [store interface](/docs/packages/store) using parameterized SQL queries with `$` placeholders.
 
 All queries use parameterized statements to prevent SQL injection.
+
+## Post-quantum
+
+Performs no cryptography. Values arrive already encrypted and digested, so a stolen database exposes only quantum-resistant ciphertexts and digests. See the full assessment in [Post-quantum](/docs/security/algorithms#post-quantum).

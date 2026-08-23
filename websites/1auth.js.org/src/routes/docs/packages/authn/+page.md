@@ -160,3 +160,7 @@ Get a single credential by ID.
 ### `makeType(credentialOptions)`
 
 Create a type identifier for a credential type.
+
+## Post-quantum
+
+Uses only symmetric field encryption and CSPRNG identifiers, both post-quantum safe. Credential-specific concerns live in each `authn-*` package. See the full assessment in [Post-quantum](/docs/security/algorithms#post-quantum).

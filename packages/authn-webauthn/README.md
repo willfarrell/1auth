@@ -31,6 +31,23 @@
 npm install @1auth/authn-webauthn
 ```
 
+## Account enumeration
+
+A login form that answers "no such user" reports which accounts exist. `createChallenge` takes an optional `username` so an unknown account is answered the same way as a known one:
+
+```javascript
+const sub = await subject(username) // undefined when nothing matches
+const { secret } = await createChallenge(sub, { username })
+```
+
+With a `sub`, nothing changes. Without one, and only when `username` is passed, it returns a decoy: a real challenge over a single credential id derived from a seasoned checksum of the username. That id is stable for a username across probes, the way a real credential is, and cannot be recomputed without the pepper, so a decoy cannot be told from a real id offline. Its length is drawn from the seed across the lengths real authenticators emit, because one length shared by every decoy would identify them as a set.
+
+Nothing is stored for a decoy, so the returned object carries no `id`. The assertion it answers fails as an ordinary bad credential.
+
+Omitting `username` keeps the existing throw on a missing `sub`. An authenticated caller that lost its `sub` is a bug, and should not be quietly handed a credential its user can never satisfy.
+
+Two things this does not do. It does not equalise response time, because the real path writes challenge rows and a decoy does not, so the caller should hold both paths to a fixed budget. It also does not pad a real account's credential list, so how many credentials an account holds is still visible.
+
 ## Documentation and examples
 
 For documentation and examples, refer to the main [1auth monorepo on GitHub](https://github.com/willfarrell/1auth) or the [1auth website](https://1auth.js.org).

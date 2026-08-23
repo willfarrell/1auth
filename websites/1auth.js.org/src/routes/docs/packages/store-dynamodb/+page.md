@@ -64,3 +64,7 @@ Implements the [store interface](/docs/packages/store) using DynamoDB operations
   "Resource": "arn:aws:dynamodb:*:*:table/1auth-*"
 }
 ```
+
+## Post-quantum
+
+Performs no cryptography. Values arrive already encrypted and digested, so a stolen table exposes only quantum-resistant ciphertexts and digests. See the full assessment in [Post-quantum](/docs/security/algorithms#post-quantum).

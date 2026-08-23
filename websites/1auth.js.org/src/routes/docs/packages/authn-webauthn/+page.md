@@ -232,3 +232,7 @@ Expire a WebAuthn credential.
 ### `remove(sub, id)`
 
 Delete a WebAuthn credential.
+
+## Post-quantum
+
+Assertions are signed by the authenticator with ES256 or RS256, which a quantum computer breaks via Shor's algorithm — but the algorithms are fixed by authenticator hardware, not by 1auth. COSE identifiers for ML-DSA (−48/−49/−50) already exist; support lands when authenticators and `@simplewebauthn/server` ship it. Signatures are not retroactively forgeable, so recorded assertions carry no harvest-now-decrypt-later risk. See the full assessment in [Post-quantum](/docs/security/algorithms#post-quantum).

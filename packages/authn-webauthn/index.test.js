@@ -692,6 +692,106 @@ const tests = (config) => {
 
 		equal(secret, undefined);
 	});
+	describe("decoy challenge", () => {
+		it("Can return a challenge for an unknown account", async () => {
+			const { secret } = await webauthnCreateChallenge(undefined, {
+				username: "nobody",
+			});
+
+			ok(secret.challenge);
+			equal(secret.userVerification, webauthnGetOptions().userVerification);
+			equal(secret.allowCredentials.length, 1);
+			equal(secret.allowCredentials[0].type, "public-key");
+			ok(/^[a-zA-Z0-9_-]+$/.test(secret.allowCredentials[0].id));
+		});
+
+		// The whole point: anything the client can see has to match, or the shape
+		// of the response is the oracle the error message used to be.
+		it("Can NOT be told apart from a real account's challenge", async () => {
+			await webauthnCreate(sub);
+			const [token] = await store.selectList(authnGetOptions().table, { sub });
+			await overrideCreateChallenge(sub, token);
+			await webauthnVerify(
+				sub,
+				registrationResponse,
+				{ name: "PassKey" },
+				false,
+			);
+
+			const { secret: real } = await webauthnCreateChallenge(sub);
+			const { secret: decoy } = await webauthnCreateChallenge(undefined, {
+				username: "nobody",
+			});
+
+			deepEqual(Object.keys(real).sort(), Object.keys(decoy).sort());
+			deepEqual(
+				Object.keys(real.allowCredentials[0]).sort(),
+				Object.keys(decoy.allowCredentials[0]).sort(),
+			);
+			equal(real.rpId, decoy.rpId);
+			equal(real.userVerification, decoy.userVerification);
+			equal(real.timeout, decoy.timeout);
+			equal(real.challenge.length, decoy.challenge.length);
+		});
+
+		it("Can return the same credential id for the same username", async () => {
+			const a = await webauthnCreateChallenge(undefined, { username: "same" });
+			const b = await webauthnCreateChallenge(undefined, { username: "same" });
+
+			equal(a.secret.allowCredentials[0].id, b.secret.allowCredentials[0].id);
+			// The challenge itself must still be fresh, or a decoy would replay.
+			notEqual(a.secret.challenge, b.secret.challenge);
+		});
+
+		// A single length across every decoy would distinguish them as a set, even
+		// though no one of them looks wrong on its own.
+		it("Can vary the credential id length across usernames", async () => {
+			const lengths = new Set();
+			for (let i = 0; i < 24; i++) {
+				const { secret } = await webauthnCreateChallenge(undefined, {
+					username: `probe-${i}`,
+				});
+				lengths.add(secret.allowCredentials[0].id.length);
+			}
+
+			deepEqual(
+				[...lengths].sort((a, b) => a - b),
+				[27, 43],
+			);
+		});
+
+		it("Can return a different credential id per username", async () => {
+			const a = await webauthnCreateChallenge(undefined, { username: "one" });
+			const b = await webauthnCreateChallenge(undefined, { username: "two" });
+
+			notEqual(
+				a.secret.allowCredentials[0].id,
+				b.secret.allowCredentials[0].id,
+			);
+		});
+
+		// The real path returns the id authnCreateList wrote; a decoy has no account
+		// to write against, so no id is the proof nothing was stored.
+		it("Will NOT persist anything for a decoy", async () => {
+			const decoy = await webauthnCreateChallenge(undefined, {
+				username: "nobody",
+			});
+
+			equal(decoy.id, undefined);
+		});
+
+		// Without a username the caller is an authenticated path that lost its sub,
+		// which is a bug worth hearing about rather than silently masking.
+		it("Will still throw on a missing sub with no username", async () => {
+			try {
+				await webauthnCreateChallenge(undefined);
+				throw new Error("expected a throw");
+			} catch (e) {
+				notEqual(e.message, "expected a throw");
+			}
+		});
+	});
+
 	it("Can NOT remove WebAuthn from someone elses account", async () => {
 		const secret = await webauthnCreate(sub);
 		const [token] = await store.selectList(authnGetOptions().table, { sub });

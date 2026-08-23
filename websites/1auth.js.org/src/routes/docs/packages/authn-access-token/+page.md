@@ -99,3 +99,7 @@ Expire an access token.
 ### `remove(sub, id)`
 
 Delete an access token.
+
+## Post-quantum
+
+Uses only CSPRNG token generation, Argon2id hashing, and SHA3-384 digests, all post-quantum safe. No migration needed. See the full assessment in [Post-quantum](/docs/security/algorithms#post-quantum).

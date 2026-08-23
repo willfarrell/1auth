@@ -40,3 +40,7 @@ The `notifyOptions` object can include:
 - `types` — Array of messenger types to target
 
 The notification service is responsible for rendering templates and delivering messages through the appropriate channel.
+
+## Post-quantum
+
+Performs no cryptography; it hands messages to a transport. Nothing to migrate. See the full assessment in [Post-quantum](/docs/security/algorithms#post-quantum).

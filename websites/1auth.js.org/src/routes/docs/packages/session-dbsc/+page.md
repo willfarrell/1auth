@@ -13,7 +13,8 @@ proof and mints the next one.
 
 > DBSC is a W3C First Public Working Draft and only ships in Chromium. Browsers without it
 > send nothing, so keep your existing `session.lookup()` path as the fallback — this is
-> hardening on top, never the gate.
+> hardening on top, not the gate. It can become the gate with `require: true`, which locks
+> out every browser that cannot register a binding.
 
 ## Install
 
@@ -290,6 +291,7 @@ neither.
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `store` | `object` | **required** | Passed straight through to `@1auth/session`, along with anything else it owns — configure this package, not both |
+| `require` | `boolean` | `false` | Reject unbound sessions on `lookup`. An unbound row then only resolves for `challengeExpire` after creation — long enough to reach the registration endpoint, nothing more. Leave `false` while browsers without DBSC must be able to stay signed in |
 | `challengeExpire` | `number` | `300` (5min) | How long a challenge stays valid |
 | `registerPath` | `string` | `/auth/dbsc/register` | Registration endpoint |
 | `refreshPath` | `string` | `/dbsc/refresh` | Refresh endpoint |
@@ -342,6 +344,11 @@ has not happened yet, or the browser does not do DBSC. Once a key **is** bound t
 cookie is required, which is what makes registering retroactively lock out a `sid` stolen
 beforehand.
 
+With `require: true` an unbound row only resolves for `challengeExpire` after creation. That
+window cannot be zero — the registration endpoint itself resolves `sub` from the unbound
+`sid`, so a session must survive long enough to bind a key, and the challenge issued at login
+already dies on the same clock.
+
 ### `verifyProof(proof, { aud, sessionId, publicKey })`
 
 Verify a `dbsc+jwt` proof on its own. ES256 and RS256 only.
@@ -379,3 +386,7 @@ Response body telling the browser to stop maintaining the session.
   session cannot be replayed against another.
 - The bound cookie name is checked against its own prefix rules at config time, since a
   cookie the browser silently drops presents as a refresh loop rather than an error.
+
+## Post-quantum
+
+The HMAC signing used internally is post-quantum safe. The device-bound proof, however, is an ES256/RS256 JWT signed by a TPM-held key — Shor-vulnerable, with algorithms fixed by the browser DBSC spec. Signatures are not retroactively forgeable and sessions expire, so this is an ecosystem-paced migration, not a stored-data risk. See the full assessment in [Post-quantum](/docs/security/algorithms#post-quantum).

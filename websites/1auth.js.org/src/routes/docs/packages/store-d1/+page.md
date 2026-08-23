@@ -32,3 +32,7 @@ store.default({
 ## API
 
 Implements the [store interface](/docs/packages/store) using D1's `prepare().bind().first/all/run()` API with `?` placeholders.
+
+## Post-quantum
+
+Performs no cryptography. Values arrive already encrypted and digested, so a stolen database exposes only quantum-resistant ciphertexts and digests. See the full assessment in [Post-quantum](/docs/security/algorithms#post-quantum).

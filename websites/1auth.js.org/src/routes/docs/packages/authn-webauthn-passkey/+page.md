@@ -57,3 +57,7 @@ This holds its own [`createInstance()`](/docs/packages/authn-webauthn), so it an
 `@1auth/authn-webauthn-securitykey` keep separate config. Everything else — `@1auth/authn`,
 `@1auth/crypto`, `@1auth/account` — is shared, so both use the same store, table, and
 encryption keys.
+
+## Post-quantum
+
+A configuration preset over [`@1auth/authn-webauthn`](/docs/packages/authn-webauthn) and inherits its post-quantum status: authenticator-signed ES256/RS256 assertions, migrating as the WebAuthn ecosystem does. See the full assessment in [Post-quantum](/docs/security/algorithms#post-quantum).

@@ -19,7 +19,8 @@ import session from '@1auth/session'
 session({
   store,
   notify,
-  expire: 12 * 60 * 60 // absolute cap, the default (OWASP ASVS)
+  expire: 12 * 60 * 60, // absolute cap, the default (OWASP ASVS)
+  limit: 10 // live sessions per account, the default
 })
 ```
 
@@ -32,6 +33,7 @@ session({
 | `table` | `object` | — | Table schema definition |
 | `encryptedFields` | `string[]` | `["value"]` | Fields to encrypt |
 | `expire` | `number` | `43200` (12h) | Absolute session lifetime in seconds, set at `create` and never extended — `rotate()` deliberately leaves it alone, so a session that keeps refreshing still ends. The short idle window is the cookie's `Max-Age`, not this |
+| `limit` | `number` | `10` | Live sessions one account may hold. At the maximum, `create()` expires the oldest live session and keeps the new one. A falsy value turns the cap off |
 | `idGenerate` | `object` | — | ID generation config |
 | `randomId` | `object` | — | Random ID options (prefix: `session_`) |
 | `randomSessionId` | `object` | — | Session token options (prefix: `sid_`, entropy: 128) |
@@ -39,6 +41,12 @@ session({
 | `decode` | `function` | — | Custom session decoding |
 | `checkMetadata` | `function` | — | Device metadata check function |
 | `notifyId` | `string` | `'authn-session'` | Prefix for the notify template id: `{notifyId}-new-device` |
+
+### Concurrent sessions
+
+An account holds at most `limit` live sessions, `10` by default. At the maximum, `create()` expires the oldest live session, by `create` time, and keeps the new one. It never refuses the new session: refusing it would let anyone who can reach the login form fill an account's list and lock the owner out. The eviction is the same soft expire as `expire(sub, id)`, so the row stays in the table and stops resolving, exactly as it does when a session reaches its own `expire`.
+
+Only live sessions count toward the cap, so an expired row leaves room for a new session. The count is read, not locked, and no store here offers an atomic counter across an account's rows, so two logins arriving at the same moment can both pass the check. Treat the cap as advisory.
 
 ### The `publicKey` column
 
@@ -230,3 +238,7 @@ Sign a session token with HMAC.
 Verify a signed session token.
 
 **Returns:** Original `sid` if valid, `undefined` otherwise
+
+## Post-quantum
+
+Uses only CSPRNG session identifiers, HMAC-SHA3-384 cookie signatures, and symmetric field encryption, all post-quantum safe. No migration needed. See the full assessment in [Post-quantum](/docs/security/algorithms#post-quantum).

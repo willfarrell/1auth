@@ -1,6 +1,6 @@
 {
 	"name": "@1auth/store-sql",
-	"version": "0.0.0-rc.5",
+	"version": "0.0.0-rc.6",
 	"description": "Generic SQL storage implementation for any client exposing a query method",
 	"type": "module",
 	"engines": {

@@ -110,6 +110,7 @@ describe("authn-webauthn-securitykey", { concurrency: 1 }, () => {
 		equal(securityKeyGetOptions().residentKey, "discouraged");
 		equal(securityKeyGetOptions().userVerification, "required");
 		equal(securityKeyGetOptions().preferredAuthenticatorType, "securityKey");
+		equal(securityKeyGetOptions().credentialDeviceType, "singleDevice");
 		equal(securityKeyGetOptions().notifyId, "authn-webauthn-securitykey");
 		equal(securityKeyGetOptions().secret.id, "WebAuthnSecurityKey");
 	});

@@ -564,6 +564,16 @@ const tests = (config) => {
 	it("Can sanitize: optional dots for gmail", () => {
 		equal(emailAddressSanitize("user.name@gmail.com"), "username@gmail.com");
 	});
+	it("Can sanitize: optional dots for every default domain", () => {
+		for (const domain of [
+			"gmail.com",
+			"google.com",
+			"googlemail.com",
+			"yahoodns.net",
+		]) {
+			equal(emailAddressSanitize(`user.name@${domain}`), `username@${domain}`);
+		}
+	});
 	it("Can sanitize: optional dots for an overridden list longer than the default", () => {
 		emailAddress({
 			optionalDotDomains: ["a.com", "b.com", "c.com", "d.com", "e.com"],

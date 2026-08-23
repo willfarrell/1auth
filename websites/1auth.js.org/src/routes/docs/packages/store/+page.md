@@ -68,3 +68,7 @@ All stores share common options:
 | `client` | `object` | — | Database client instance |
 | `timeToLiveExpireOffset` | `number` | `864000` (10 days) | TTL offset in seconds |
 | `timeToLiveKey` | `string` | `"remove"` | Column/attribute name for TTL |
+
+## Post-quantum
+
+Performs no cryptography. Values arrive already encrypted and digested by the packages above it, so a stolen table exposes only quantum-resistant ChaCha20-Poly1305 ciphertexts and SHA3-384 digests. See the full assessment in [Post-quantum](/docs/security/algorithms#post-quantum).

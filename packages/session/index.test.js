@@ -146,6 +146,21 @@ const tests = (config) => {
 			...opt,
 		});
 
+	// `create` is stored in whole seconds, so sessions made in the same second are
+	// the same age and which one is "oldest" is arbitrary. Backdating is how a
+	// test names an oldest that no store can disagree with.
+	const backdate = async (session, seconds) =>
+		await store.update(
+			sessionGetOptions().table,
+			{ sub: session.sub, id: session.id },
+			{ create: session.create - seconds },
+		);
+
+	const liveSessions = async (sub) => {
+		const now = nowInSeconds();
+		return (await sessionList(sub)).filter((session) => now <= session.expire);
+	};
+
 	test.before(async () => {
 		mocks = config.mocks;
 
@@ -200,6 +215,7 @@ const tests = (config) => {
 			equal(options.idGenerate, true);
 			equal(options.log, false);
 			equal(options.expire, 12 * 60 * 60);
+			equal(options.limit, 10);
 			deepEqual(options.encryptedFields, ["value"]);
 
 			const generator = sessionRandomId();
@@ -590,6 +606,142 @@ const tests = (config) => {
 				data: {},
 				options: {},
 			});
+		});
+	});
+
+	describe("`limit`", () => {
+		it("Will cap an account at ten live sessions by default", async () => {
+			const currentDevice = { os: "MacOS" };
+			const first = await sessionCreate(sub, currentDevice);
+			await backdate(first, 60);
+			for (let i = 0; i < 9; i++) {
+				await sessionCreate(sub, currentDevice);
+			}
+			const eleventh = await sessionCreate(sub, currentDevice);
+
+			equal((await liveSessions(sub)).length, 10);
+			equal(await sessionLookup(first.sid, currentDevice), undefined);
+			ok(await sessionLookup(eleventh.sid, currentDevice));
+		});
+		it("Will keep every session live below the limit", async () => {
+			configure({ limit: 3 });
+			const currentDevice = { os: "MacOS" };
+			const first = await sessionCreate(sub, currentDevice);
+			const second = await sessionCreate(sub, currentDevice);
+
+			ok(await sessionLookup(first.sid, currentDevice));
+			ok(await sessionLookup(second.sid, currentDevice));
+		});
+		it("Will not count an already expired session toward the limit", async () => {
+			configure({ limit: 3 });
+			const currentDevice = { os: "MacOS" };
+			const first = await sessionCreate(sub, currentDevice);
+			const second = await sessionCreate(sub, currentDevice);
+			const third = await sessionCreate(sub, currentDevice);
+			// the dead row stays in the table, so a count of rows is not a count of
+			// live sessions
+			await sessionExpire(sub, third.id);
+
+			const fourth = await sessionCreate(sub, currentDevice);
+			ok(await sessionLookup(first.sid, currentDevice));
+			ok(await sessionLookup(second.sid, currentDevice));
+			ok(await sessionLookup(fourth.sid, currentDevice));
+		});
+		it("Will expire the oldest session once the limit is reached", async () => {
+			configure({ limit: 2 });
+			const currentDevice = { os: "MacOS" };
+			const first = await sessionCreate(sub, currentDevice);
+			await backdate(first, 60);
+			const second = await sessionCreate(sub, currentDevice);
+			const third = await sessionCreate(sub, currentDevice);
+
+			equal(await sessionLookup(first.sid, currentDevice), undefined);
+			ok(await sessionLookup(second.sid, currentDevice));
+			ok(await sessionLookup(third.sid, currentDevice));
+			equal((await liveSessions(sub)).length, 2);
+		});
+		it("Will expire down to the limit when the limit is lowered", async () => {
+			const currentDevice = { os: "MacOS" };
+			// four sessions predate the cap, so one eviction is not enough to get
+			// back under it
+			const first = await sessionCreate(sub, currentDevice);
+			const second = await sessionCreate(sub, currentDevice);
+			const third = await sessionCreate(sub, currentDevice);
+			const fourth = await sessionCreate(sub, currentDevice);
+			await backdate(first, 40);
+			await backdate(second, 30);
+			await backdate(third, 20);
+			await backdate(fourth, 10);
+
+			configure({ limit: 2 });
+			const fifth = await sessionCreate(sub, currentDevice);
+			equal((await liveSessions(sub)).length, 2);
+			equal(await sessionLookup(first.sid, currentDevice), undefined);
+			ok(await sessionLookup(fourth.sid, currentDevice));
+			ok(await sessionLookup(fifth.sid, currentDevice));
+		});
+		it("Will soft expire the evicted session, leaving the row in place", async () => {
+			configure({ limit: 2 });
+			const currentDevice = { os: "MacOS" };
+			const first = await sessionCreate(sub, currentDevice);
+			await backdate(first, 60);
+			await sessionCreate(sub, currentDevice);
+			await sessionCreate(sub, currentDevice);
+
+			// an eviction has to read like any other expiry, so the DBSC binding on
+			// the row and everything downstream behaves the way it already does
+			const evicted = await sessionSelect(sub, first.id);
+			ok(evicted);
+			ok(evicted.expire < nowInSeconds());
+			equal(await sessionLookup(first.sid, currentDevice), undefined);
+		});
+		it("Will not cap anything when the limit is falsy", async () => {
+			// a limit of nothing has to read as no enforcement, never as a cap of
+			// zero that expires a session the moment it is made
+			configure({ limit: 0 });
+			const currentDevice = { os: "MacOS" };
+			const first = await sessionCreate(sub, currentDevice);
+			await backdate(first, 60);
+			const second = await sessionCreate(sub, currentDevice);
+			const third = await sessionCreate(sub, currentDevice);
+
+			equal((await liveSessions(sub)).length, 3);
+			ok(await sessionLookup(first.sid, currentDevice));
+			ok(await sessionLookup(second.sid, currentDevice));
+			ok(await sessionLookup(third.sid, currentDevice));
+		});
+		it("Will read only the fields the count needs", async () => {
+			// the cap costs one extra read on every create, so it must not drag an
+			// account's encrypted values and keys back for rows it only counts
+			const selects = [];
+			configure({
+				limit: 2,
+				store: {
+					...store,
+					selectList: async (table, filters, fields) => {
+						selects.push({ filters, fields });
+						return await store.selectList(table, filters, fields);
+					},
+				},
+			});
+			await sessionCreate(sub, { os: "MacOS" });
+			deepEqual(selects[0], {
+				filters: { sub },
+				fields: ["id", "create", "expire"],
+			});
+		});
+		it("Will expire by oldest `create`, not by the order the store lists", async () => {
+			configure({ limit: 2 });
+			const currentDevice = { os: "MacOS" };
+			const first = await sessionCreate(sub, currentDevice);
+			const second = await sessionCreate(sub, currentDevice);
+			// backdating the newer row makes `create` disagree with both the list
+			// order and the id order, which is the only way to tell them apart
+			await backdate(second, 60);
+
+			await sessionCreate(sub, currentDevice);
+			ok(await sessionLookup(first.sid, currentDevice));
+			equal(await sessionLookup(second.sid, currentDevice), undefined);
 		});
 	});
 
