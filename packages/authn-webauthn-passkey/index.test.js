@@ -107,6 +107,7 @@ describe("authn-webauthn-passkey", { concurrency: 1 }, () => {
 		equal(passkeyGetOptions().residentKey, "required");
 		equal(passkeyGetOptions().userVerification, "required");
 		equal(passkeyGetOptions().preferredAuthenticatorType, "localDevice");
+		equal(passkeyGetOptions().credentialDeviceType, "multiDevice");
 		equal(passkeyGetOptions().notifyId, "authn-webauthn-passkey");
 		equal(passkeyGetOptions().secret.id, "WebAuthnPassKey");
 	});

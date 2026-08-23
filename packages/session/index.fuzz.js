@@ -201,7 +201,14 @@ test("fuzz sessionCreate w/ sub", async () => {
 	await fc.assert(
 		fc.asyncProperty(fc.anything(), async (sub) => {
 			try {
-				await sessionCreate(sub, testSession.value, testSession.values);
+				const created = await sessionCreate(
+					sub,
+					testSession.value,
+					testSession.values,
+				);
+				// Keep the table bounded: `create` scans every row the sub has, so
+				// 100k leftover rows turn each run quadratic and time the job out.
+				await sessionRemove(sub, created.id);
 			} catch (e) {
 				catchError(sub, e);
 			}
@@ -217,7 +224,8 @@ test("fuzz sessionCreate w/ value", async () => {
 	await fc.assert(
 		fc.asyncProperty(fc.anything(), async (value) => {
 			try {
-				await sessionCreate(sub, value, testSession.values);
+				const created = await sessionCreate(sub, value, testSession.values);
+				await sessionRemove(sub, created.id);
 			} catch (e) {
 				catchError(value, e);
 			}
@@ -235,7 +243,8 @@ test("fuzz sessionCreate w/ values", async () => {
 			fc.record({ metadata: fc.anything() }, { withDeletedKeys: true }),
 			async (values) => {
 				try {
-					await sessionCreate(sub, testSession.value, values);
+					const created = await sessionCreate(sub, testSession.value, values);
+					await sessionRemove(sub, created.id);
 				} catch (e) {
 					catchError(values, e);
 				}
