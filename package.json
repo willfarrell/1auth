@@ -46,7 +46,7 @@
 		"update": "npm update --workspaces && npm install --workspaces",
 		"outdated": "npm outdated --workspaces",
 		"audit": "npm audit fix --workspaces",
-		"release:approve": "npm query '.workspace:not([private])' | jq -r '.[].name' | xargs -n1 -I{} npm stage list {} --json | jq -r --arg v \"$npm_package_version\" '.[] | select(.version == $v) | .id' | xargs -n1 -o npm stage approve",
+		"release:approve": "npm query '.workspace:not([private])' | jq -r '.[].name' | xargs -n1 -I{} npm stage list {} --json | jq -r --arg v \"$npm_package_version\" '.[] | select(.version == $v) | \"\\(.packageName)@\\(.version) \\(.id)\"' | xargs -n2 -o sh -c 'echo \"Approving $0\"; npm stage approve \"$1\"'",
 		"release:license:add": "license-check-and-add add -f .license.config.json",
 		"release:license:remove": "license-check-and-add remove -f .license.config.json",
 		"release:sync": "npm version $npm_package_version --workspaces; v=$(npm pkg get version | tr -d '\"'); find ./packages -name \"package.json\" -exec sed -i '' -E \"s|\\\"@1auth/(.*)\\\": ([^,]*)|\\\"@1auth/\\1\\\": \\\"$v\\\"|g\" {} \\; && npm run rm && npm install",
