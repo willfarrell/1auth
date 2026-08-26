@@ -95,12 +95,13 @@ export const list = async (credentialOptions, sub, params, fields) => {
 const createCredential = async (
 	credentialOptions,
 	sub,
-	{ id, value, ...values },
+	{ id, value, expire, ...values },
 ) => {
 	assertSub(sub);
 	const now = nowInSeconds();
 	const type = makeType(credentialOptions);
-	let { otp, expire } = credentialOptions;
+	const { otp } = credentialOptions;
+	expire ??= credentialOptions.expire;
 	expire &&= now + expire;
 
 	if (options.idGenerate) {
@@ -183,7 +184,12 @@ export const subject = async (username) => {
 	});
 };
 
-export const authenticate = async (credentialOptions, username, secret) => {
+export const authenticate = async (
+	credentialOptions,
+	username,
+	secret,
+	credentialParams = {},
+) => {
 	const timeout = setTimeout(options.authenticationDuration);
 
 	const sub = await subject(username);
@@ -225,7 +231,12 @@ export const authenticate = async (credentialOptions, username, secret) => {
 		let { value, ...values } = decryptedCredential;
 		value = await credentialOptions.decode(value);
 		try {
-			valid = await credentialOptions.verify(secret, value, values);
+			valid = await credentialOptions.verify(
+				secret,
+				value,
+				values,
+				credentialParams,
+			);
 		} catch (e) {
 			if (options.log) {
 				options.log(e);

@@ -1,4 +1,4 @@
-import { deepEqual, equal, notEqual, ok } from "node:assert/strict";
+import { deepEqual, equal, notEqual, ok, throws } from "node:assert/strict";
 import { sign as asymmetricSign, generateKeyPairSync } from "node:crypto";
 import { describe, it, test } from "node:test";
 import account, {
@@ -34,6 +34,8 @@ import * as mockDynamoDB from "../store-dynamodb/mock.js";
 // import * as mockPostgres from "../store-postgres/mock.js";
 import * as mockSQLite from "../store-sqlite/mock.js";
 import webauthn, {
+	formInputName,
+	makeRequestHash,
 	authenticate as webauthnAuthenticate,
 	challenge as webauthnChallenge,
 	count as webauthnCount,
@@ -189,6 +191,53 @@ const tests = (config) => {
 		mocks.storeClient.after?.();
 	});
 
+	// The recipe for naming a request, and the exclusion that goes with it. Both
+	// live here rather than in the app because the other half of the mechanism,
+	// the composite challenge in `verify`, is in this file: split them and they
+	// drift, and a drifted pair fails as an unexplained 401.
+	describe("`makeRequestHash`", () => {
+		const url = new URL("https://app.example.com/settings/billing?/refund");
+
+		it("Is stable regardless of field order", () => {
+			const a = makeRequestHash({ url, body: new URLSearchParams("b=2&a=1") });
+			const b = makeRequestHash({ url, body: new URLSearchParams("a=1&b=2") });
+			equal(a, b);
+		});
+
+		it("Covers the query string, so sibling actions on one path differ", () => {
+			const other = new URL("https://app.example.com/settings/billing?/cancel");
+			notEqual(
+				makeRequestHash({ url, body: new URLSearchParams() }),
+				makeRequestHash({ url: other, body: new URLSearchParams() }),
+			);
+		});
+
+		it("Ignores the origin, which a CDN can rewrite to an internal host", () => {
+			const internal = new URL("https://10.0.0.1/settings/billing?/refund");
+			equal(
+				makeRequestHash({ url, body: new URLSearchParams() }),
+				makeRequestHash({ url: internal, body: new URLSearchParams() }),
+			);
+		});
+
+		it("Skips the credential field, which only exists on the second post", () => {
+			const before = new URLSearchParams("orderId=in_1");
+			const after = new URLSearchParams("orderId=in_1");
+			after.set(formInputName, '{"id":"credential"}');
+			equal(
+				makeRequestHash({ url, body: before }),
+				makeRequestHash({ url, body: after }),
+			);
+		});
+
+		it("Refuses anything it cannot hash the same way twice", () => {
+			throws(() => makeRequestHash({ url: "/a", body: new URLSearchParams() }));
+			// A plain object stringifies an array to "x,y", which collides with the
+			// literal string "x,y".
+			throws(() => makeRequestHash({ url, body: { a: ["x", "y"] } }));
+		});
+	});
+
 	describe("`count`", () => {
 		it("Will throw with ({sub:undefined})", async () => {
 			try {
@@ -210,7 +259,9 @@ const tests = (config) => {
 			const count = await webauthnCount(sub);
 			equal(count, 1);
 		});
-		it("Will replace previous challenges rather than accumulate", async () => {
+		it("Will keep more than one live challenge for one account", async () => {
+			// Two tabs each need their own. Evicting across them is what made the
+			// second page load silently break the tap in the first.
 			await webauthnCreate(sub);
 			const [token] = await store.selectList(authnGetOptions().table, { sub });
 			await overrideCreateChallenge(sub, token);
@@ -220,21 +271,25 @@ const tests = (config) => {
 				{ name: "PassKey" },
 				false,
 			);
+			const live = async () =>
+				(await store.selectList(authnGetOptions().table, { sub })).filter(
+					(row) => row.type === "WebAuthn-challenge",
+				);
+
 			await webauthnCreateChallenge(sub);
-			const afterFirst = await store.selectList(authnGetOptions().table, {
-				sub,
-				type: "WebAuthn-challenge",
-			});
+			const afterOne = await live();
 			await webauthnCreateChallenge(sub);
-			const afterSecond = await store.selectList(authnGetOptions().table, {
-				sub,
-				type: "WebAuthn-challenge",
-			});
-			// a second call removes the first challenge instead of leaving both
-			// redeemable
-			equal(afterSecond.length, afterFirst.length);
-			notEqual(afterSecond[0].id, afterFirst[0].id);
+			equal((await live()).length, afterOne.length * 2);
+
+			// ...but not without bound. Past the cap the oldest go, so a loop cannot
+			// write rows for free behind nothing but a username cookie.
+			for (let i = 0; i < 5; i++) await webauthnCreateChallenge(sub);
+			equal(
+				(await live()).length,
+				webauthnGetOptions().challengeKeep + afterOne.length,
+			);
 		});
+
 		it("Can encode an absent secret without throwing", async () => {
 			// `encode` is handed whatever the credential config produced; a falsy
 			// value has to pass straight through rather than be dereferenced
@@ -477,6 +532,70 @@ const tests = (config) => {
 		authnDB = authnDB.filter((item) => !item.expire);
 		equal(authnDB.length, 1);
 	});
+
+	// The fixture assertion signed one 32 byte challenge. Split those bytes and
+	// the front half stands in for the stored nonce, the back half for the request
+	// hash. If `verify` rebuilds the composite correctly the same recorded
+	// assertion still verifies, and if it does not, nothing else could make it.
+	const splitChallenge = () => {
+		const full = Buffer.from(
+			authenticationOptionsOverride.challenge,
+			"base64url",
+		);
+		return {
+			nonce: full.subarray(0, 16).toString("base64url"),
+			requestHash: full.subarray(16).toString("base64url"),
+		};
+	};
+
+	const registeredChallenge = async () => {
+		await webauthnCreate(sub);
+		const [token] = await store.selectList(authnGetOptions().table, { sub });
+		await overrideCreateChallenge(sub, token);
+		await webauthnVerify(sub, registrationResponse, { name: "PassKey" });
+		await webauthnCreateChallenge(sub);
+		const rows = await store.selectList(authnGetOptions().table, { sub });
+		return rows.find((row) => row.type === "WebAuthn-challenge");
+	};
+
+	it("Can authenticate against a challenge bound to the request", async () => {
+		const { nonce, requestHash } = splitChallenge();
+		await overrideGetChallenge(sub, await registeredChallenge(), nonce);
+		equal(
+			await webauthnAuthenticate(username, authenticationResponse, {
+				requestHash,
+			}),
+			sub,
+		);
+	});
+
+	it("Will refuse an assertion approved for a different request", async () => {
+		const { nonce } = splitChallenge();
+		await overrideGetChallenge(sub, await registeredChallenge(), nonce);
+		try {
+			await webauthnAuthenticate(username, authenticationResponse, {
+				requestHash: Buffer.alloc(16, 1).toString("base64url"),
+			});
+			ok(false, "a mismatched request must not authenticate");
+		} catch (e) {
+			equal(e.message, "401 Unauthorized");
+		}
+	});
+
+	it("Will refuse a bound challenge answered with no request at all", async () => {
+		// The downgrade path: minting bound then verifying unbound leaves the
+		// stored nonce as the whole expected challenge, which the assertion never
+		// signed. It has to fail rather than fall back to the nonce.
+		const { nonce } = splitChallenge();
+		await overrideGetChallenge(sub, await registeredChallenge(), nonce);
+		try {
+			await webauthnAuthenticate(username, authenticationResponse);
+			ok(false, "an unbound verify must not clear a bound challenge");
+		} catch (e) {
+			equal(e.message, "401 Unauthorized");
+		}
+	});
+
 	it("Can create WebAuthn on an account without a username", async () => {
 		const subWithoutUsername = await accountCreate();
 
@@ -1172,7 +1291,15 @@ const tests = (config) => {
 		);
 	};
 
-	const overrideGetChallenge = async (sub, challenge) => {
+	// `expectedChallenge` defaults to the fixture's own, so the recorded assertion
+	// verifies. A caller can pass a shorter one to stand in for the stored NONCE,
+	// which is what the composite tests need: nonce plus request must rebuild
+	// exactly the value the fixture signed.
+	const overrideGetChallenge = async (
+		sub,
+		challenge,
+		expected = authenticationOptionsOverride.challenge,
+	) => {
 		await store.update(
 			authnGetOptions().table,
 			{ sub, id: challenge.id },
@@ -1185,7 +1312,7 @@ const tests = (config) => {
 								encryptedKey: challenge.encryptionKey,
 							}),
 						),
-						expectedChallenge: authenticationOptionsOverride.challenge,
+						expectedChallenge: expected,
 						expectedOrigin: webauthnOrigin,
 						expectedRPID: authenticationOptionsOverride.rpId,
 						requireUserVerification: true,

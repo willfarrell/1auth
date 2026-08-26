@@ -206,12 +206,12 @@ const tests = (config) => {
 			// the credential's id and type together name the stored row
 			equal(authnMakeType(secretConfig), "accessToken-secret");
 		});
-		it("Generates 112 bits of prefixed username and secret", () => {
-			// 112 bits over the 62 alphanumerics needs 19 characters
+		it("Generates 128 bits of prefixed username and secret", () => {
+			// 128 bits over the 62 alphanumerics needs 22 characters
 			for (const config of [accessTokenUsername(), accessTokenSecret()]) {
 				const value = config.create();
 				ok(value.startsWith("pat-"));
-				equal(value.length, "pat-".length + 19);
+				equal(value.length, "pat-".length + 22);
 				notEqual(value, config.create());
 			}
 		});

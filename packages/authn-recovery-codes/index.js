@@ -22,7 +22,7 @@ const id = "recoveryCodes";
 
 export const secret = ({
 	type = "secret",
-	entropy = 112,
+	entropy = 128, // ASVS 5.0 11.5.1
 	otp = true,
 	encode = (value) => createSecretHash(value),
 	decode = (value) => value,

@@ -46,6 +46,7 @@
 		"update": "npm update --workspaces && npm install --workspaces",
 		"outdated": "npm outdated --workspaces",
 		"audit": "npm audit fix --workspaces",
+		"release:staged": "npm whoami >/dev/null && npm query '.workspace:not([private])' | jq -r '.[].name' | xargs -n1 -I{} npm stage list {} --json | jq -r '.[] | \"\\(.packageName)@\\(.version) \\(.actor) \\(.shasum)\"'",
 		"release:approve": "npm query '.workspace:not([private])' | jq -r '.[].name' | xargs -n1 -I{} npm stage list {} --json | jq -r --arg v \"$npm_package_version\" '.[] | select(.version == $v) | \"\\(.packageName)@\\(.version) \\(.id)\"' | xargs -n2 -o sh -c 'echo \"Approving $0\"; npm stage approve \"$1\"'",
 		"release:license:add": "license-check-and-add add -f .license.config.json",
 		"release:license:remove": "license-check-and-add remove -f .license.config.json",
