@@ -4,7 +4,7 @@ on:
   pull_request:
 
 env:
-  NODE_VERSION: 24.x
+  NODE_VERSION: 26.x
 
 permissions:
   contents: read
