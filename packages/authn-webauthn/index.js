@@ -385,7 +385,7 @@ export const createInstance = () => {
 			["id", "create"],
 		);
 		const stale = previousChallenges
-			.sort((a, b) => (b.create ?? 0) - (a.create ?? 0))
+			.sort((a, b) => b.create - a.create)
 			.slice(options.challengeKeep);
 		for (const prev of stale) {
 			await authnRemove(options.challenge, sub, prev.id);
