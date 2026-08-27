@@ -1,6 +1,6 @@
 {
 	"name": "@1auth/notify",
-	"version": "0.0.0-rc.6",
+	"version": "0.0.0-rc.7",
 	"description": "Base notification interface for sending messages through various channels",
 	"type": "module",
 	"engines": {
