@@ -85,19 +85,19 @@ export default (opt = {}) => {
 	options.digestChecksumSalt = makeOptionsBuffer(options.digestChecksumSalt);
 	if (!options.digestChecksumPepper) {
 		throw new Error(
-			"@1auth/crypto digestChecksumPepper is empty, use a stored secret made from randomBytes(12) Checksum peppering disabled.",
+			"@1auth/crypto digestChecksumPepper is empty, use a stored secret made from randomBytes(32) Checksum peppering disabled.",
 		);
 	}
 	options.digestChecksumPepper = makeOptionsBuffer(
 		options.digestChecksumPepper,
 	);
-	// The pepper is handed to createCipheriv as the IV, so anything but 12 bytes
-	// throws ERR_CRYPTO_INVALID_IV on the first digest, far from the config that
-	// caused it. randomBytes(32) is the natural wrong guess, because every other
-	// secret here is 32 bytes.
-	if (options.digestChecksumPepper.length !== ivLength) {
+	// The pepper is the digest HMAC key; anything shorter than the 256 bit
+	// secret every other option uses weakens the blind index. A 12 byte pepper
+	// is the old encrypt-era size — it must rotate anyway, because the digest
+	// construction changed under it.
+	if (options.digestChecksumPepper.length < 32) {
 		throw new RangeError(
-			`@1auth/crypto digestChecksumPepper must be ${ivLength} bytes, received ${options.digestChecksumPepper.length}. Use randomChecksumPepper().`,
+			`@1auth/crypto digestChecksumPepper must be at least 32 bytes, received ${options.digestChecksumPepper.length}. Use randomChecksumPepper().`,
 			{ cause: { length: options.digestChecksumPepper.length } },
 		);
 	}
@@ -188,7 +188,7 @@ export const randomChecksumSalt = () => {
 	return randomBytes(32); // 256 bits
 };
 export const randomChecksumPepper = () => {
-	return randomIV(); // 96
+	return randomBytes(32); // 256 bits
 };
 
 export const createSaltedValue = (value, { checksumSalt } = {}) => {
@@ -199,32 +199,23 @@ export const createSaltedValue = (value, { checksumSalt } = {}) => {
 	const newValue = value + checksumSalt;
 	return newValue;
 };
-// Deterministic encryption using a fixed IV (checksumPepper) to enable
-// privacy-compliant digest lookups. Rotating the pepper invalidates all
-// existing digests, supporting GDPR right-to-erasure workflows.
-// The ciphertexts are never stored directly - only their hashes are persisted.
-// A digest is keyed by all four of the pepper, the salt, the encryption key, and
-// the signature secret, because symmetricEncrypt signs the packet on the way
-// out. Every one of them has to be passable, or a caller that supplies the whole
-// set still silently gets whatever the module globals happen to hold. That is
+// HMAC keyed by the pepper (a blind index): deterministic so equal values
+// yield equal digests for lookups, one-way without the pepper. Rotating the
+// pepper invalidates all existing digests, supporting GDPR right-to-erasure
+// workflows. The pepper has to be passable, or a caller that supplies it
+// still silently gets whatever the module globals happen to hold. That is
 // what a key rotation needs: the new digest, computed before the new material
 // is live.
 export const createPepperedValue = (
 	value,
-	{ checksumPepper, encryptionKey, signatureSecret } = {},
+	{ hashAlgorithm, checksumPepper } = {},
 ) => {
+	hashAlgorithm ??= options.digestChecksumHashAlgorithm;
 	checksumPepper ??= options.digestChecksumPepper;
-	encryptionKey ??= options.symmetricEncryptionKey;
-	if (!checksumPepper || !encryptionKey) {
+	if (!checksumPepper) {
 		return value;
 	}
-	const newValue = symmetricEncrypt(value, {
-		encryptionKey,
-		signatureSecret,
-		sub: "",
-		iv: checksumPepper,
-	});
-	return newValue;
+	return createHmac(hashAlgorithm, checksumPepper).update(value).digest();
 };
 
 export const createChecksum = (value, { hashAlgorithm, encoding } = {}) => {
@@ -234,20 +225,12 @@ export const createChecksum = (value, { hashAlgorithm, encoding } = {}) => {
 };
 export const createSeasonedChecksum = (
 	value,
-	{
-		hashAlgorithm,
-		encoding,
-		checksumSalt,
-		checksumPepper,
-		encryptionKey,
-		signatureSecret,
-	} = {},
+	{ hashAlgorithm, encoding, checksumSalt, checksumPepper } = {},
 ) => {
 	return createChecksum(
 		createPepperedValue(createSaltedValue(value, { checksumSalt }), {
+			hashAlgorithm,
 			checksumPepper,
-			encryptionKey,
-			signatureSecret,
 		}),
 		{
 			hashAlgorithm,
@@ -274,20 +257,13 @@ export const createSaltedDigest = (
 };
 export const createPepperedDigest = (
 	value,
-	{
-		hashAlgorithm,
-		encoding,
-		checksumPepper,
-		encryptionKey,
-		signatureSecret,
-	} = {},
+	{ hashAlgorithm, encoding, checksumPepper } = {},
 ) => {
 	hashAlgorithm ??= options.digestChecksumHashAlgorithm;
 	const checksum = createChecksum(
 		createPepperedValue(value, {
+			hashAlgorithm,
 			checksumPepper,
-			encryptionKey,
-			signatureSecret,
 		}),
 		{
 			hashAlgorithm,
@@ -298,14 +274,7 @@ export const createPepperedDigest = (
 };
 export const createSeasonedDigest = (
 	value,
-	{
-		hashAlgorithm,
-		encoding,
-		checksumSalt,
-		checksumPepper,
-		encryptionKey,
-		signatureSecret,
-	} = {},
+	{ hashAlgorithm, encoding, checksumSalt, checksumPepper } = {},
 ) => {
 	hashAlgorithm ??= options.digestChecksumHashAlgorithm;
 	const checksum = createSeasonedChecksum(value, {
@@ -313,8 +282,6 @@ export const createSeasonedDigest = (
 		encoding,
 		checksumSalt,
 		checksumPepper,
-		encryptionKey,
-		signatureSecret,
 	});
 	return `${hashAlgorithm}:${checksum}`;
 };
@@ -450,8 +417,7 @@ export const verifySecretHash = verifyArgon2;
 
 // *** Symmetric Encryption *** //
 const authTagLength = 16;
-// 96 bits, the nonce size both supported AEAD ciphers take. Named because the
-// checksum pepper is used as an IV and has to be validated against it.
+// 96 bits, the nonce size both supported AEAD ciphers take.
 const ivLength = 12;
 // 16 is already node's default for both supported AEAD ciphers, so this is
 // belt-and-braces against a future cipher whose default differs.

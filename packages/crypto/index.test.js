@@ -65,7 +65,7 @@ const testOptions = {
 	symmetricEncryptionKey: "K6u9kqw3u+w/VxR48wYT21hUY56gDIWgxzL5uPTK9zw=", // symmetricRandomEncryptionKey()
 	symmetricSignatureSecret: "B6u9kqw3u+w/VxR48wYT21hUY56gDIWgxzL5uPTK9zw=", // symmetricRandomSignatureSecret()
 	digestChecksumSalt: "ViB9S/dvoJUB7lcNU9oA97/hT+kUvD2FLat7lXudF34=", // randomChecksumSalt()
-	digestChecksumPepper: "yTJifrFGweECzlse", // randomChecksumPepper()
+	digestChecksumPepper: "x7yUpaFphJU4hLDzL7dSUxpMkPuYOn2s0uz2pIVwYWQ=", // randomChecksumPepper()
 };
 crypto(testOptions);
 
@@ -181,11 +181,13 @@ describe("crypto", () => {
 			let digest = createPepperedDigest("1auth", {
 				hashAlgorithm: "sha3-256",
 			});
-			equal(digest, "sha3-256:r9VPCMbABiWVy/xTFYwHtJ3SyUhZcu5cNSIhYI7Awtg=");
+			// KAT: sha3-256(HMAC-sha3-256(pepper, value)), computed from raw
+			// node:crypto primitives, independent of the implementation
+			equal(digest, "sha3-256:pPMf8HzDgpriPYOHKXwBJI9Sd9PIQptWm4kkfNcw+cQ=");
 			digest = createPepperedDigest("1auth", {
 				hashAlgorithm: "sha3-256",
 			});
-			equal(digest, "sha3-256:r9VPCMbABiWVy/xTFYwHtJ3SyUhZcu5cNSIhYI7Awtg=");
+			equal(digest, "sha3-256:pPMf8HzDgpriPYOHKXwBJI9Sd9PIQptWm4kkfNcw+cQ=");
 		});
 		it("createPepperedDigest w/o checksumPepper", async () => {
 			let digest = createPepperedDigest("1auth", {
@@ -203,11 +205,12 @@ describe("crypto", () => {
 			let digest = createSeasonedDigest("1auth", {
 				hashAlgorithm: "sha3-256",
 			});
-			equal(digest, "sha3-256:9zAIe3Jee2+s+AFK18LERL6OiwVaGZgE2xtM7eB2TfA=");
+			// KAT: sha3-256(HMAC-sha3-256(pepper, value + salt))
+			equal(digest, "sha3-256:aNyexR/m4tFFX5FyROEHKcS2yPwmuZd5a/6b03H5UJo=");
 			digest = createSeasonedDigest("1auth", {
 				hashAlgorithm: "sha3-256",
 			});
-			equal(digest, "sha3-256:9zAIe3Jee2+s+AFK18LERL6OiwVaGZgE2xtM7eB2TfA=");
+			equal(digest, "sha3-256:aNyexR/m4tFFX5FyROEHKcS2yPwmuZd5a/6b03H5UJo=");
 		});
 		it("createSeasonedDigest w/o checksumSalt & checksumPepper", async () => {
 			let digest = createSeasonedDigest("1auth", {
@@ -226,11 +229,8 @@ describe("crypto", () => {
 		it("createSeasonedDigest keys off every secret it is given", async () => {
 			// A rotation has to compute the new digest before the new material is
 			// live, so each of these has to reach the primitive rather than fall
-			// back to the module globals. createPepperedDigest already honoured
-			// encryptionKey while createSeasonedDigest silently dropped it.
+			// back to the module globals.
 			const other = {
-				encryptionKey: symmetricRandomEncryptionKey(),
-				signatureSecret: symmetricRandomSignatureSecret(),
 				checksumSalt: randomChecksumSalt(),
 				checksumPepper: randomChecksumPepper(),
 			};
@@ -245,8 +245,6 @@ describe("crypto", () => {
 		});
 		it("createPepperedDigest keys off every secret it is given", async () => {
 			const other = {
-				encryptionKey: symmetricRandomEncryptionKey(),
-				signatureSecret: symmetricRandomSignatureSecret(),
 				checksumPepper: randomChecksumPepper(),
 			};
 			const base = createPepperedDigest("1auth");
@@ -257,6 +255,24 @@ describe("crypto", () => {
 					secret,
 				);
 			}
+		});
+		it("digests are independent of the encryption key and signature secret", async () => {
+			// The digest is an HMAC keyed only by the pepper (and salt), so
+			// rotating the encryption material no longer invalidates digests.
+			const base = createSeasonedDigest("1auth");
+			try {
+				crypto({
+					...testOptions,
+					symmetricEncryptionKey: symmetricRandomEncryptionKey(),
+					symmetricSignatureSecret: symmetricRandomSignatureSecret(),
+				});
+				equal(createSeasonedDigest("1auth"), base);
+			} finally {
+				crypto(testOptions);
+			}
+		});
+		it("randomChecksumPepper returns a 256 bit HMAC key", async () => {
+			equal(randomChecksumPepper().length, 32);
 		});
 	});
 
@@ -1185,14 +1201,21 @@ describe("crypto", () => {
 			digestChecksumSalt: randomChecksumSalt(),
 			digestChecksumPepper: randomChecksumPepper(),
 		};
-		it("Should fail when digestChecksumPepper is not the IV length", () => {
-			// it is handed straight to createCipheriv, so a 32 byte pepper used to
-			// throw ERR_CRYPTO_INVALID_IV on the first digest instead of here
+		it("Should fail when digestChecksumPepper is shorter than 32 bytes", () => {
+			// the pepper is the digest HMAC key; a 12 byte pepper is the old
+			// encrypt-era size, which must rotate anyway
 			try {
 				throws(
-					() => crypto({ ...secrets, digestChecksumPepper: randomBytes(32) }),
-					{ name: "RangeError", message: /must be 12 bytes, received 32/ },
+					() => crypto({ ...secrets, digestChecksumPepper: randomBytes(31) }),
+					{ name: "RangeError", message: /at least 32 bytes, received 31/ },
 				);
+			} finally {
+				restore();
+			}
+		});
+		it("Should accept a digestChecksumPepper of exactly 32 bytes", () => {
+			try {
+				crypto({ ...secrets, digestChecksumPepper: randomBytes(32) });
 			} finally {
 				restore();
 			}
