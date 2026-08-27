@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 import { makePreset } from "@1auth/authn-webauthn";
 
+export { formInputName, makeRequestHash } from "@1auth/authn-webauthn";
+
 // A discoverable credential, usable as the only factor: it has to be resident to
 // log in without a username, and user verified to stand in for a password.
 const preset = {

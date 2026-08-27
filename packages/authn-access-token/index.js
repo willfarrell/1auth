@@ -24,7 +24,7 @@ const id = "accessToken";
 export const username = ({
 	type = "username",
 	prefix = "pat-",
-	entropy = 112,
+	entropy = 128, // ASVS 5.0 11.5.1
 	...params
 } = {}) =>
 	makeRandomConfigObject({
@@ -38,7 +38,7 @@ export const username = ({
 export const secret = ({
 	type = "secret",
 	prefix = "pat-",
-	entropy = 112,
+	entropy = 128, // ASVS 5.0 11.5.1
 	otp = false,
 	expire = 30 * 24 * 60 * 60,
 	encode = (value) => createSecretHash(value),

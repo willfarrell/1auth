@@ -24,7 +24,7 @@ accessToken()
 Access tokens use these defaults:
 
 - **Username prefix:** `pat-`
-- **Entropy:** 112 bits
+- **Entropy:** 128 bits
 - **Expiry:** 30 days
 - **`notifyId`:** `'authn-access-token'` — prefix for the notify template ids: `{notifyId}-create`, `{notifyId}-expire`, `{notifyId}-remove`
 
@@ -88,7 +88,7 @@ List all access tokens for a subject.
 
 ### `create(sub, values)`
 
-Create a new access token.
+Create a new access token. `values.expire` is a lifetime in seconds and overrides the configured default, so one config can offer a choice of lifetimes.
 
 **Returns:** Object with `username` and `secret` (the secret is only returned once at creation)
 

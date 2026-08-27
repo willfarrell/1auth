@@ -121,6 +121,8 @@ List credentials with automatic decryption.
 
 Create a single credential.
 
+`values.expire` is a lifetime in seconds and overrides `credentialOptions.expire` for this one credential, so a single config can back a choice of lifetimes. Leave it out and the credential default applies.
+
 ### `createList(credentialOptions, sub, list)`
 
 Create multiple credentials at once (e.g., recovery codes).

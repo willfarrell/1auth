@@ -403,6 +403,18 @@ describe("authn", () => {
 			const row = await storeSQLite.select(table, { sub, id });
 			ok(!row.expire);
 		});
+		it("Can create with the caller's expiry over the credential default", async () => {
+			// one credential config, a choice of lifetimes: the caller passes a
+			// duration in seconds and it wins over `credentialOptions.expire`
+			const { id, expire } = await authnCreate(plain({ expire: 600 }), sub, {
+				value: "a",
+				expire: 60,
+			});
+			ok(expire > nowInSeconds());
+			ok(expire <= nowInSeconds() + 60);
+			const row = await storeSQLite.select(table, { sub, id });
+			equal(row.expire, expire);
+		});
 		it("Will throw without a sub", async () => {
 			await rejects(() => authnCreate(plain(), undefined, { value: "a" }), {
 				cause: { sub: undefined },

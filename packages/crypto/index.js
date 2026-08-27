@@ -24,6 +24,7 @@ const defaults = {
 	symmetricEncryptionKey: undefined, // symmetricRandomEncryptionKey()
 	symmetricEncryptionAlgorithm: "chacha20-poly1305", // 2025-03: AES-256 GCM (aes-256-gcm) or ChaCha20-Poly1305 (chacha20-poly1305)
 	symmetricEncryptionEncoding: undefined, // https://nodejs.org/api/buffer.html#buffers-and-character-encodings
+	encryptionKeyProvider: "1", // wraps new row keys, see Encryption key providers
 	symmetricSignatureHashAlgorithm: undefined, // fallback to defaultHashAlgorithm
 	symmetricSignatureSecret: undefined, // symmetricRandomSignatureSecret()
 	symmetricSignatureEncoding: undefined, // fallback to defaultEncoding
@@ -84,12 +85,22 @@ export default (opt = {}) => {
 	options.digestChecksumSalt = makeOptionsBuffer(options.digestChecksumSalt);
 	if (!options.digestChecksumPepper) {
 		throw new Error(
-			"@1auth/crypto digestChecksumPepper is empty, use a stored secret made from randomBytes(12) Checksum peppering disabled.",
+			"@1auth/crypto digestChecksumPepper is empty, use a stored secret made from randomBytes(32) Checksum peppering disabled.",
 		);
 	}
 	options.digestChecksumPepper = makeOptionsBuffer(
 		options.digestChecksumPepper,
 	);
+	// The pepper is the digest HMAC key; anything shorter than the 256 bit
+	// secret every other option uses weakens the blind index. A 12 byte pepper
+	// is the old encrypt-era size — it must rotate anyway, because the digest
+	// construction changed under it.
+	if (options.digestChecksumPepper.length < 32) {
+		throw new RangeError(
+			`@1auth/crypto digestChecksumPepper must be at least 32 bytes, received ${options.digestChecksumPepper.length}. Use randomChecksumPepper().`,
+			{ cause: { length: options.digestChecksumPepper.length } },
+		);
+	}
 	options.digestChecksumHashAlgorithm ??= options.defaultHashAlgorithm;
 	options.digestChecksumEncoding ??= options.defaultEncoding;
 
@@ -97,7 +108,7 @@ export default (opt = {}) => {
 	const encodedLength = (byteLength) =>
 		Buffer.alloc(byteLength).toString(options.symmetricEncryptionEncoding)
 			.length;
-	symmetricEncryptionEncodingLengths.iv = encodedLength(12);
+	symmetricEncryptionEncodingLengths.iv = encodedLength(ivLength);
 	symmetricEncryptionEncodingLengths.ivAndAuthTag =
 		symmetricEncryptionEncodingLengths.iv + encodedLength(authTagLength);
 };
@@ -177,7 +188,7 @@ export const randomChecksumSalt = () => {
 	return randomBytes(32); // 256 bits
 };
 export const randomChecksumPepper = () => {
-	return randomIV(); // 96
+	return randomBytes(32); // 256 bits
 };
 
 export const createSaltedValue = (value, { checksumSalt } = {}) => {
@@ -188,25 +199,23 @@ export const createSaltedValue = (value, { checksumSalt } = {}) => {
 	const newValue = value + checksumSalt;
 	return newValue;
 };
-// Deterministic encryption using a fixed IV (checksumPepper) to enable
-// privacy-compliant digest lookups. Rotating the pepper invalidates all
-// existing digests, supporting GDPR right-to-erasure workflows.
-// The ciphertexts are never stored directly - only their hashes are persisted.
+// HMAC keyed by the pepper (a blind index): deterministic so equal values
+// yield equal digests for lookups, one-way without the pepper. Rotating the
+// pepper invalidates all existing digests, supporting GDPR right-to-erasure
+// workflows. The pepper has to be passable, or a caller that supplies it
+// still silently gets whatever the module globals happen to hold. That is
+// what a key rotation needs: the new digest, computed before the new material
+// is live.
 export const createPepperedValue = (
 	value,
-	{ checksumPepper, encryptionKey } = {},
+	{ hashAlgorithm, checksumPepper } = {},
 ) => {
+	hashAlgorithm ??= options.digestChecksumHashAlgorithm;
 	checksumPepper ??= options.digestChecksumPepper;
-	encryptionKey ??= options.symmetricEncryptionKey;
-	if (!checksumPepper || !encryptionKey) {
+	if (!checksumPepper) {
 		return value;
 	}
-	const newValue = symmetricEncrypt(value, {
-		encryptionKey,
-		sub: "",
-		iv: checksumPepper,
-	});
-	return newValue;
+	return createHmac(hashAlgorithm, checksumPepper).update(value).digest();
 };
 
 export const createChecksum = (value, { hashAlgorithm, encoding } = {}) => {
@@ -220,6 +229,7 @@ export const createSeasonedChecksum = (
 ) => {
 	return createChecksum(
 		createPepperedValue(createSaltedValue(value, { checksumSalt }), {
+			hashAlgorithm,
 			checksumPepper,
 		}),
 		{
@@ -247,11 +257,14 @@ export const createSaltedDigest = (
 };
 export const createPepperedDigest = (
 	value,
-	{ hashAlgorithm, encoding, checksumPepper, encryptionKey } = {},
+	{ hashAlgorithm, encoding, checksumPepper } = {},
 ) => {
 	hashAlgorithm ??= options.digestChecksumHashAlgorithm;
 	const checksum = createChecksum(
-		createPepperedValue(value, { checksumPepper, encryptionKey }),
+		createPepperedValue(value, {
+			hashAlgorithm,
+			checksumPepper,
+		}),
 		{
 			hashAlgorithm,
 			encoding,
@@ -261,7 +274,7 @@ export const createPepperedDigest = (
 };
 export const createSeasonedDigest = (
 	value,
-	{ hashAlgorithm, encoding, checksumSalt, checksumPepper, encryptionKey } = {},
+	{ hashAlgorithm, encoding, checksumSalt, checksumPepper } = {},
 ) => {
 	hashAlgorithm ??= options.digestChecksumHashAlgorithm;
 	const checksum = createSeasonedChecksum(value, {
@@ -269,7 +282,6 @@ export const createSeasonedDigest = (
 		encoding,
 		checksumSalt,
 		checksumPepper,
-		encryptionKey,
 	});
 	return `${hashAlgorithm}:${checksum}`;
 };
@@ -405,6 +417,8 @@ export const verifySecretHash = verifyArgon2;
 
 // *** Symmetric Encryption *** //
 const authTagLength = 16;
+// 96 bits, the nonce size both supported AEAD ciphers take.
+const ivLength = 12;
 // 16 is already node's default for both supported AEAD ciphers, so this is
 // belt-and-braces against a future cipher whose default differs.
 // Stryker disable next-line ObjectLiteral: byte-identical output either way
@@ -418,23 +432,91 @@ export const symmetricRandomEncryptionKey = () => {
 };
 
 export const randomIV = () => {
-	return randomBytes(12); // 96 bits
+	return randomBytes(ivLength); // 96 bits
 };
 
-export const symmetricGenerateEncryptionKey = (
-	sub,
-	{ encryptionKey, signatureSecret } = {},
-) => {
-	encryptionKey ??= options.symmetricEncryptionKey;
-	signatureSecret ??= options.symmetricSignatureSecret;
+// *** Encryption key providers *** //
+// Wrapped keys store as `<provider>:<payload>` and read by prefix, not config,
+// so providers change with no migration. Name = package suffix + version:
+// `@1auth/crypto` -> `1`, `@1auth/crypto-kms` -> `kms1`. No prefix predates the
+// scheme, unambiguous because base64, base64url and hex all exclude `:`.
+export const encryptionKeyProviderSeparator = ":";
+const encryptionKeyProviderDefault = "1";
 
-	const rowEncryptionKey = symmetricRandomEncryptionKey();
-	const rowEncryptedKey = symmetricEncrypt(rowEncryptionKey, {
-		encryptionKey,
-		signatureSecret,
+// Null prototype: the name comes off a stored wrapped key, so on a plain object
+// `toString:…` or `constructor:…` resolves to an inherited function, passes the
+// truthiness guards below, and dies on `provider.decrypt is not a function`
+// instead of falling back as documented. It also makes `__proto__` a storable
+// provider name rather than a silently discarded assignment.
+const encryptionKeyProviders = Object.create(null);
+
+export const registerEncryptionKeyProvider = (name, provider) => {
+	encryptionKeyProviders[name] = provider;
+};
+
+export const getEncryptionKeyProviders = () => encryptionKeyProviders;
+
+const parseEncryptedKey = (encryptedKey) => {
+	const separatorIndex = encryptedKey.indexOf(encryptionKeyProviderSeparator);
+	const name = encryptedKey.substring(0, separatorIndex);
+	// unknown prefix falls to `1` and fails its signature check, never mis-decrypts
+	if (separatorIndex < 0 || !encryptionKeyProviders[name]) {
+		return {
+			provider: encryptionKeyProviders[encryptionKeyProviderDefault],
+			payload: encryptedKey,
+		};
+	}
+	return {
+		provider: encryptionKeyProviders[name],
+		payload: encryptedKey.substring(separatorIndex + 1),
+	};
+};
+
+// The in-process provider, and the format every pre-prefix row was written in.
+registerEncryptionKeyProvider(encryptionKeyProviderDefault, {
+	generate: (sub, { encryptionKey, signatureSecret } = {}) => {
+		encryptionKey ??= options.symmetricEncryptionKey;
+		signatureSecret ??= options.symmetricSignatureSecret;
+
+		const rowEncryptionKey = symmetricRandomEncryptionKey();
+		const rowEncryptedKey = symmetricEncrypt(rowEncryptionKey, {
+			encryptionKey,
+			signatureSecret,
+			sub,
+		});
+		return { encryptionKey: rowEncryptionKey, encryptedKey: rowEncryptedKey };
+	},
+	decrypt: (payload, sub, { encryptionKey, signatureSecret } = {}) => {
+		encryptionKey ??= options.symmetricEncryptionKey;
+		signatureSecret ??= options.symmetricSignatureSecret;
+
+		return Buffer.from(
+			symmetricDecrypt(payload, {
+				encryptionKey,
+				signatureSecret,
+				sub,
+				encoding: options.symmetricEncryptionEncoding,
+			}),
+			options.symmetricEncryptionEncoding,
+		);
+	},
+});
+
+export const symmetricGenerateEncryptionKey = (sub, providerOptions = {}) => {
+	const name =
+		providerOptions.encryptionKeyProvider ?? options.encryptionKeyProvider;
+	const provider = encryptionKeyProviders[name];
+	if (!provider) {
+		throw new Error("Unknown encryptionKeyProvider", { cause: { name } });
+	}
+	const { encryptionKey, encryptedKey } = provider.generate(
 		sub,
-	});
-	return { encryptionKey: rowEncryptionKey, encryptedKey: rowEncryptedKey };
+		providerOptions,
+	);
+	return {
+		encryptionKey,
+		encryptedKey: `${name}${encryptionKeyProviderSeparator}${encryptedKey}`,
+	};
 };
 
 // sub add context to encryption
@@ -528,17 +610,8 @@ export const symmetricDecryptKey = (
 	encryptedKey,
 	{ sub, encryptionKey, signatureSecret } = {},
 ) => {
-	encryptionKey ??= options.symmetricEncryptionKey;
-	signatureSecret ??= options.symmetricSignatureSecret;
-	return Buffer.from(
-		symmetricDecrypt(encryptedKey, {
-			encryptionKey,
-			signatureSecret,
-			sub,
-			encoding: options.symmetricEncryptionEncoding,
-		}),
-		options.symmetricEncryptionEncoding,
-	);
+	const { provider, payload } = parseEncryptedKey(encryptedKey);
+	return provider.decrypt(payload, sub, { encryptionKey, signatureSecret });
 };
 
 export const symmetricDecrypt = (

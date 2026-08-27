@@ -78,20 +78,21 @@ Encryption is randomised, so an encrypted email cannot be searched for. Digests 
 deterministic, one-way value that can be indexed.
 
 ```
-  value ──► + digestChecksumSalt ──► encrypt with a FIXED iv ──► hash ──► digest
-                     │                (digestChecksumPepper)      │
-                     │                        │                   │
-        a secret the │           deterministic, so equal          │
-        table does   │           values yield equal output        │
-        not contain  │           -- that is what makes it         │
-                     │           searchable at all                │
-                     ▼                        ▼                   ▼
+  value ──► + digestChecksumSalt ──► HMAC keyed with ──────► hash ──► digest
+                     │               digestChecksumPepper      │
+                     │                        │                │
+        a secret the │           a keyed PRF: deterministic,   │
+        table does   │           so equal values yield equal   │
+        not contain  │           output -- that is what makes  │
+                     │           it searchable at all          │
+                     ▼                        ▼                ▼
               a stolen table cannot be brute forced without BOTH
               secrets, and neither lives in the database
 ```
 
 Rotating `digestChecksumPepper` invalidates every digest at once, which is the intended lever
-for a right-to-erasure sweep. The ciphertext produced here is never stored — only its hash is.
+for a right-to-erasure sweep. Digests are keyed only by the salt and pepper, so rotating the
+encryption key or signature secret leaves them intact.
 
 ## API
 

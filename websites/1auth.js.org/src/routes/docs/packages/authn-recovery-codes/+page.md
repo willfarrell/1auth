@@ -23,7 +23,7 @@ recoveryCodes()
 
 Recovery codes use sensible defaults:
 
-- **Entropy:** 112 bits per code
+- **Entropy:** 128 bits per code
 - **Count:** 5 codes per account
 - **OTP:** Single-use (removed after use)
 - **`notifyId`:** `'authn-recovery-codes'` — prefix for the notify template ids: `{notifyId}-create`, `{notifyId}-update`, `{notifyId}-remove`

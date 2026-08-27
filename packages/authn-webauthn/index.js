@@ -15,6 +15,7 @@ import {
 	verify as authnVerify,
 } from "@1auth/authn";
 import {
+	createChecksum,
 	createSeasonedChecksum,
 	makeRandomConfigObject,
 	nowInSeconds,
@@ -30,6 +31,34 @@ import { isoUint8Array } from "@simplewebauthn/server/helpers";
 
 const id = "WebAuthn";
 // minimumAuthenticateAllowCredentials: 3, // Add fake auth ids
+
+export const formInputName = "webauthnCredential";
+
+export const makeRequestHash = ({ url, body } = {}) => {
+	if (!(url instanceof URL)) {
+		throw new TypeError("makeRequestHash: url must be a URL");
+	}
+	if (!(body instanceof FormData || body instanceof URLSearchParams)) {
+		throw new TypeError(
+			"makeRequestHash: body must be FormData or URLSearchParams",
+		);
+	}
+	const params = new URLSearchParams(body);
+	params.delete(formInputName);
+	params.sort();
+	const canonical =
+		`${url.pathname}${url.search}\n${params.toString()}`.normalize("NFC");
+	return createChecksum(canonical, {
+		hashAlgorithm: "sha256",
+		encoding: "base64url",
+	});
+};
+
+const compositeChallenge = (nonce, requestHash) =>
+	Buffer.concat([
+		Buffer.from(nonce, "base64url"),
+		Buffer.from(requestHash, "base64url"),
+	]).toString("base64url");
 
 // https://simplewebauthn.dev/docs/packages/server#fine-tuning-the-registration-experience-with-preferredauthenticatortype
 const authenticatorAttachments = {
@@ -155,10 +184,13 @@ export const createInstance = () => {
 			value.authenticator = jsonParseSecret(value.authenticator);
 			return value;
 		},
-		verify = async (response, value) => {
+		verify = async (response, value, values, { requestHash } = {}) => {
 			const { verified, authenticationInfo } =
 				await verifyAuthenticationResponse({
 					...value,
+					expectedChallenge: requestHash
+						? compositeChallenge(value.expectedChallenge, requestHash)
+						: value.expectedChallenge,
 					credential: value.authenticator.credential,
 					response,
 				});
@@ -208,6 +240,7 @@ export const createInstance = () => {
 		name: undefined,
 		residentKey: "discouraged", // https://fy.blackhats.net.au/blog/2023-02-02-how-hype-will-turn-your-security-key-into-junk/
 		userVerification: "preferred",
+		challengeKeep: 3,
 		preferredAuthenticatorType: undefined, // 'securityKey' | 'localDevice' | 'remoteDevice' - https://simplewebauthn.dev/docs/packages/server#fine-tuning-the-registration-experience-with-preferredauthenticatortype
 		credentialDeviceType: undefined, // 'multiDevice' | 'singleDevice' - what this instance accepts, independent of the browser hint
 		// Display name shown in the authenticator prompt. Defaults to where
@@ -236,8 +269,10 @@ export const createInstance = () => {
 		return await authnSelect(options.secret, sub, id);
 	};
 
-	const authenticate = async (username, input) => {
-		return await authnAuthenticate(options.challenge, username, input);
+	const authenticate = async (username, input, { requestHash } = {}) => {
+		return await authnAuthenticate(options.challenge, username, input, {
+			requestHash,
+		});
 	};
 
 	const create = async (
@@ -343,14 +378,16 @@ export const createInstance = () => {
 		if (!sub && username) {
 			return await decoyChallenge(username);
 		}
-		// Remove previous challenges for this user
 		const previousChallenges = await authnList(
 			options.challenge,
 			sub,
 			undefined,
-			["id"],
+			["id", "create"],
 		);
-		for (const prev of previousChallenges) {
+		const stale = previousChallenges
+			.sort((a, b) => b.create - a.create)
+			.slice(options.challengeKeep);
+		for (const prev of stale) {
 			await authnRemove(options.challenge, sub, prev.id);
 		}
 

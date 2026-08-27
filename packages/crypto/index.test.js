@@ -27,7 +27,9 @@ import crypto, {
 	createSecretHash,
 	decodeArgon2,
 	encodeArgon2,
+	encryptionKeyProviderSeparator,
 	entropyToCharacterLength,
+	getEncryptionKeyProviders,
 	getOptions,
 	makeAsymmetricKeys,
 	makeAsymmetricSignature,
@@ -38,6 +40,7 @@ import crypto, {
 	randomChecksumPepper,
 	randomChecksumSalt,
 	randomNumeric,
+	registerEncryptionKeyProvider,
 	safeEqual,
 	symmetricDecrypt,
 	symmetricDecryptFields,
@@ -62,7 +65,7 @@ const testOptions = {
 	symmetricEncryptionKey: "K6u9kqw3u+w/VxR48wYT21hUY56gDIWgxzL5uPTK9zw=", // symmetricRandomEncryptionKey()
 	symmetricSignatureSecret: "B6u9kqw3u+w/VxR48wYT21hUY56gDIWgxzL5uPTK9zw=", // symmetricRandomSignatureSecret()
 	digestChecksumSalt: "ViB9S/dvoJUB7lcNU9oA97/hT+kUvD2FLat7lXudF34=", // randomChecksumSalt()
-	digestChecksumPepper: "yTJifrFGweECzlse", // randomChecksumPepper()
+	digestChecksumPepper: "x7yUpaFphJU4hLDzL7dSUxpMkPuYOn2s0uz2pIVwYWQ=", // randomChecksumPepper()
 };
 crypto(testOptions);
 
@@ -178,11 +181,13 @@ describe("crypto", () => {
 			let digest = createPepperedDigest("1auth", {
 				hashAlgorithm: "sha3-256",
 			});
-			equal(digest, "sha3-256:r9VPCMbABiWVy/xTFYwHtJ3SyUhZcu5cNSIhYI7Awtg=");
+			// KAT: sha3-256(HMAC-sha3-256(pepper, value)), computed from raw
+			// node:crypto primitives, independent of the implementation
+			equal(digest, "sha3-256:pPMf8HzDgpriPYOHKXwBJI9Sd9PIQptWm4kkfNcw+cQ=");
 			digest = createPepperedDigest("1auth", {
 				hashAlgorithm: "sha3-256",
 			});
-			equal(digest, "sha3-256:r9VPCMbABiWVy/xTFYwHtJ3SyUhZcu5cNSIhYI7Awtg=");
+			equal(digest, "sha3-256:pPMf8HzDgpriPYOHKXwBJI9Sd9PIQptWm4kkfNcw+cQ=");
 		});
 		it("createPepperedDigest w/o checksumPepper", async () => {
 			let digest = createPepperedDigest("1auth", {
@@ -200,11 +205,12 @@ describe("crypto", () => {
 			let digest = createSeasonedDigest("1auth", {
 				hashAlgorithm: "sha3-256",
 			});
-			equal(digest, "sha3-256:9zAIe3Jee2+s+AFK18LERL6OiwVaGZgE2xtM7eB2TfA=");
+			// KAT: sha3-256(HMAC-sha3-256(pepper, value + salt))
+			equal(digest, "sha3-256:aNyexR/m4tFFX5FyROEHKcS2yPwmuZd5a/6b03H5UJo=");
 			digest = createSeasonedDigest("1auth", {
 				hashAlgorithm: "sha3-256",
 			});
-			equal(digest, "sha3-256:9zAIe3Jee2+s+AFK18LERL6OiwVaGZgE2xtM7eB2TfA=");
+			equal(digest, "sha3-256:aNyexR/m4tFFX5FyROEHKcS2yPwmuZd5a/6b03H5UJo=");
 		});
 		it("createSeasonedDigest w/o checksumSalt & checksumPepper", async () => {
 			let digest = createSeasonedDigest("1auth", {
@@ -219,6 +225,54 @@ describe("crypto", () => {
 				checksumPepper: "",
 			});
 			equal(digest, "sha3-256:0uITV182D6igoH3CrcihY+fFrN1s/1aQlYjJoCOjhDs=");
+		});
+		it("createSeasonedDigest keys off every secret it is given", async () => {
+			// A rotation has to compute the new digest before the new material is
+			// live, so each of these has to reach the primitive rather than fall
+			// back to the module globals.
+			const other = {
+				checksumSalt: randomChecksumSalt(),
+				checksumPepper: randomChecksumPepper(),
+			};
+			const base = createSeasonedDigest("1auth");
+			for (const secret of Object.keys(other)) {
+				notEqual(
+					createSeasonedDigest("1auth", { [secret]: other[secret] }),
+					base,
+					secret,
+				);
+			}
+		});
+		it("createPepperedDigest keys off every secret it is given", async () => {
+			const other = {
+				checksumPepper: randomChecksumPepper(),
+			};
+			const base = createPepperedDigest("1auth");
+			for (const secret of Object.keys(other)) {
+				notEqual(
+					createPepperedDigest("1auth", { [secret]: other[secret] }),
+					base,
+					secret,
+				);
+			}
+		});
+		it("digests are independent of the encryption key and signature secret", async () => {
+			// The digest is an HMAC keyed only by the pepper (and salt), so
+			// rotating the encryption material no longer invalidates digests.
+			const base = createSeasonedDigest("1auth");
+			try {
+				crypto({
+					...testOptions,
+					symmetricEncryptionKey: symmetricRandomEncryptionKey(),
+					symmetricSignatureSecret: symmetricRandomSignatureSecret(),
+				});
+				equal(createSeasonedDigest("1auth"), base);
+			} finally {
+				crypto(testOptions);
+			}
+		});
+		it("randomChecksumPepper returns a 256 bit HMAC key", async () => {
+			equal(randomChecksumPepper().length, 32);
 		});
 	});
 
@@ -448,10 +502,137 @@ describe("crypto", () => {
 				{
 					message: "Signature incorrect",
 					// the wrapped key is unwrapped first, so that is the packet
-					// whose signature fails, and it is carried for debugging
-					cause: { signedEncryptedDataPacket: encryptedKey },
+					// whose signature fails, and it is carried for debugging. The
+					// provider prefix is stripped before the packet gets that far.
+					cause: {
+						signedEncryptedDataPacket: encryptedKey.split(
+							encryptionKeyProviderSeparator,
+						)[1],
+					},
 				},
 			);
+		});
+		it("Should tag a new wrapped key with the provider that wrote it", async () => {
+			const { encryptedKey } = symmetricGenerateEncryptionKey("sub_000000");
+			ok(encryptedKey.startsWith(`1${encryptionKeyProviderSeparator}`));
+		});
+		it("Should read a wrapped key written before the prefix existed", async () => {
+			const sub = "sub_000000";
+
+			const { encryptedKey, encryptionKey } =
+				symmetricGenerateEncryptionKey(sub);
+			// exactly what every row held before providers were introduced
+			const legacyKey = encryptedKey.substring(
+				encryptedKey.indexOf(encryptionKeyProviderSeparator) + 1,
+			);
+			ok(!legacyKey.includes(encryptionKeyProviderSeparator));
+
+			equal(
+				symmetricDecryptKey(legacyKey, { sub }).toString("base64"),
+				encryptionKey.toString("base64"),
+			);
+		});
+		it("Should NOT silently read a key whose provider is not loaded", async () => {
+			// a row wrapped by a provider this deployment has not loaded must fail
+			// loudly, never fall back to a local unwrap that returns garbage
+			const sub = "sub_000000";
+			const { encryptedKey } = symmetricGenerateEncryptionKey(sub);
+
+			throws(
+				() =>
+					symmetricDecryptKey(
+						`kms9${encryptionKeyProviderSeparator}${encryptedKey}`,
+						{ sub },
+					),
+				{ message: "Signature incorrect" },
+			);
+		});
+		it("Should throw when the configured provider does not exist", async () => {
+			throws(
+				() =>
+					symmetricGenerateEncryptionKey("sub_000000", {
+						encryptionKeyProvider: "nope",
+					}),
+				{ message: "Unknown encryptionKeyProvider" },
+			);
+		});
+		it("Should treat an Object.prototype name as a provider that does not exist", async () => {
+			// the registry is keyed by a name taken off a stored wrapped key, so on
+			// a plain object these resolve to inherited functions, pass the
+			// truthiness guards, and die on `provider.generate is not a function`
+			for (const name of ["toString", "constructor", "valueOf", "__proto__"]) {
+				throws(
+					() =>
+						symmetricGenerateEncryptionKey("sub_000000", {
+							encryptionKeyProvider: name,
+						}),
+					{ message: "Unknown encryptionKeyProvider" },
+					name,
+				);
+			}
+		});
+		it("Should NOT silently read a key prefixed with an Object.prototype name", async () => {
+			const sub = "sub_000000";
+			const { encryptedKey } = symmetricGenerateEncryptionKey(sub);
+
+			for (const name of ["toString", "constructor", "valueOf", "__proto__"]) {
+				throws(
+					() =>
+						symmetricDecryptKey(
+							`${name}${encryptionKeyProviderSeparator}${encryptedKey}`,
+							{ sub },
+						),
+					{ message: "Signature incorrect" },
+					name,
+				);
+			}
+		});
+		it("Should let a provider name itself after an Object.prototype member", async () => {
+			const sub = "sub_000000";
+			const rowKey = symmetricRandomEncryptionKey();
+			registerEncryptionKeyProvider("__proto__", {
+				generate: () => ({
+					encryptionKey: rowKey,
+					encryptedKey: "wrapped-by-proto",
+				}),
+				decrypt: () => rowKey,
+			});
+			// an own key, which is the point: on a plain object this assignment
+			// would have set the prototype and stored nothing
+			ok(Object.hasOwn(getEncryptionKeyProviders(), "__proto__"));
+
+			const { encryptedKey } = symmetricGenerateEncryptionKey(sub, {
+				encryptionKeyProvider: "__proto__",
+			});
+			equal(
+				encryptedKey,
+				`__proto__${encryptionKeyProviderSeparator}wrapped-by-proto`,
+			);
+			deepEqual(symmetricDecryptKey(encryptedKey, { sub }), rowKey);
+		});
+		it("Should let a provider register itself", async () => {
+			const sub = "sub_000000";
+			const rowKey = symmetricRandomEncryptionKey();
+			registerEncryptionKeyProvider("test1", {
+				generate: () => ({
+					encryptionKey: rowKey,
+					encryptedKey: "wrapped-by-test1",
+				}),
+				decrypt: (payload) => {
+					equal(payload, "wrapped-by-test1");
+					return rowKey;
+				},
+			});
+			ok(getEncryptionKeyProviders().test1);
+
+			const { encryptedKey } = symmetricGenerateEncryptionKey(sub, {
+				encryptionKeyProvider: "test1",
+			});
+			equal(
+				encryptedKey,
+				`test1${encryptionKeyProviderSeparator}wrapped-by-test1`,
+			);
+			deepEqual(symmetricDecryptKey(encryptedKey, { sub }), rowKey);
 		});
 		it("encrypt can be decrypted object fields", async () => {
 			const sub = "sub_000000";
@@ -1020,6 +1201,25 @@ describe("crypto", () => {
 			digestChecksumSalt: randomChecksumSalt(),
 			digestChecksumPepper: randomChecksumPepper(),
 		};
+		it("Should fail when digestChecksumPepper is shorter than 32 bytes", () => {
+			// the pepper is the digest HMAC key; a 12 byte pepper is the old
+			// encrypt-era size, which must rotate anyway
+			try {
+				throws(
+					() => crypto({ ...secrets, digestChecksumPepper: randomBytes(31) }),
+					{ name: "RangeError", message: /at least 32 bytes, received 31/ },
+				);
+			} finally {
+				restore();
+			}
+		});
+		it("Should accept a digestChecksumPepper of exactly 32 bytes", () => {
+			try {
+				crypto({ ...secrets, digestChecksumPepper: randomBytes(32) });
+			} finally {
+				restore();
+			}
+		});
 		for (const missing of Object.keys(secrets)) {
 			it(`Should fail when missing ${missing}`, () => {
 				const opt = { ...secrets };
