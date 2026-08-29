@@ -101,7 +101,7 @@ Generate a random messenger ID.
 
 ### `token(options)`
 
-Token configuration — 6-digit numeric OTP with 10 minute expiry by default.
+Token configuration: 6-digit numeric OTP with 10 minute expiry by default, the out-of-band minimum in NIST SP 800-63B-4 Sec. 3.1.3. That minimum assumes the verifier rate limits failed attempts — 1auth does not do this for you.
 
 ### `exists(type, value)`
 

@@ -32,6 +32,8 @@ export const token = ({
 	type = "token",
 	otp = true,
 	expire = 10 * 60,
+	// 6 digits is the out-of-band minimum in NIST SP 800-63B-4 Sec. 3.1.3, paired
+	// with the 10 min expiry above; brute force is bounded by the app's rate limiting
 	create = () => randomNumeric(6),
 	encode = (value) => createSecretHash(value),
 	decode = (value) => value,

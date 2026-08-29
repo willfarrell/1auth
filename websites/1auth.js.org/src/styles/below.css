@@ -6,6 +6,7 @@
 @import "@willfarrell-ds/vanilla/elements/h3.css";
 @import "@willfarrell-ds/vanilla/elements/hr.css";
 @import "@willfarrell-ds/vanilla/elements/input.css";
+@import "@willfarrell-ds/vanilla/elements/input[type=search].css";
 @import "@willfarrell-ds/vanilla/elements/label.css";
 @import "@willfarrell-ds/vanilla/elements/ol.css";
 @import "@willfarrell-ds/vanilla/elements/p.css";
@@ -16,6 +17,8 @@
 @import "@willfarrell-ds/vanilla/classes/li.card.css";
 @import "@willfarrell-ds/vanilla/classes/select.chevron.css";
 @import "@willfarrell-ds/vanilla/classes/.grid.css";
+@import "@willfarrell-ds/vanilla/classes/.group.css";
 @import "@willfarrell-ds/vanilla/classes/.icon.css";
 @import "@willfarrell-ds/vanilla/components/ds-card.css";
+@import "@willfarrell-ds/vanilla/components/ds-copy-pre.css";
 @import "@willfarrell-ds/vanilla/components/ds-input-focus.css";

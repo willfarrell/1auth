@@ -9,7 +9,8 @@ on:
       - main
 
 env:
-  NODE_VERSION: 24.x
+  NODE_VERSION: 26.x
+
   DOMAIN_NAME: 1auth.js.org
 
 permissions:
