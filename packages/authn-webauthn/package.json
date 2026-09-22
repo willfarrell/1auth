@@ -56,6 +56,6 @@
 		"@1auth/account": "0.0.0-rc.7",
 		"@1auth/authn": "0.0.0-rc.7",
 		"@1auth/crypto": "0.0.0-rc.7",
-		"@simplewebauthn/server": "13.3.2"
+		"@simplewebauthn/server": "14.0.1"
 	}
 }
