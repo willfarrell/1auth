@@ -1,0 +1,42 @@
+{
+	"kit": {
+		"csp": {
+			"mode": "hash",
+			"directives": {
+				"base-uri": ["none"],
+				"connect-src": ["self"],
+				"default-src": ["report-sample", "'report-sha256'"],
+				"form-action": ["self"],
+				"frame-ancestors": ["none"],
+				"img-src": ["self"],
+				"manifest-src": ["self"],
+				"report-to": ["default"],
+				"report-uri": [
+					"https://a3c1ef07-86cc-5c2f-a093-7d3b4d8095e8.report-to.org"
+				],
+				"script-src": ["self", "report-sample", "'report-sha256'"],
+				"script-src-attr": ["report-sample", "'report-sha256'"],
+				"style-src": ["self", "report-sample", "'report-sha256'"],
+				"style-src-attr": ["report-sample", "'report-sha256'"],
+				"upgrade-insecure-requests": true,
+				"worker-src": ["self"]
+			},
+			"reportOnly": {
+				"base-uri": ["none"],
+				"default-src": ["report-sample", "'report-sha256'"],
+				"form-action": ["none"],
+				"frame-ancestors": ["none"],
+				"img-src": ["self"],
+				"manifest-src": ["self"],
+				"report-to": ["default"],
+				"report-uri": [
+					"https://a3c1ef07-86cc-5c2f-a093-7d3b4d8095e8.report-to.org"
+				],
+				"require-trusted-types-for": ["script"],
+				"script-src-elem": ["self", "report-sample", "'report-sha256'"],
+				"style-src-elem": ["self", "report-sample", "'report-sha256'"],
+				"trusted-types": ["none"]
+			}
+		}
+	}
+}
