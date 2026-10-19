@@ -412,13 +412,12 @@ export const createSecretHash = createArgon2;
 export const verifySecretHash = verifyArgon2;
 
 // *** Symmetric Encryption *** //
+// node's default for both supported AEAD ciphers, and since v26 the only tag
+// length a decipher accepts without an explicit authTagLength, so it is not
+// passed to createCipheriv/createDecipheriv.
 const authTagLength = 16;
 // 96 bits, the nonce size both supported AEAD ciphers take.
 const ivLength = 12;
-// 16 is already node's default for both supported AEAD ciphers, so this is
-// belt-and-braces against a future cipher whose default differs.
-// Stryker disable next-line ObjectLiteral: byte-identical output either way
-const cipherOptions = { authTagLength };
 // The subject is bound into the ciphertext as associated data. Buffer.from
 // decodes utf8 by default, which is what every stored packet was written with.
 const associatedData = (sub) => Buffer.from(sub);
@@ -521,10 +520,7 @@ const missingEncryptionKey = "@1auth/crypto encryption key is missing";
 export const symmetricEncryptFields = (
 	values,
 	{ encryptedKey, encryptionKey, signatureSecret, sub },
-	// naming a field the values do not carry is a no-op: `values[key] &&= ...`
-	// never assigns, so no default other than empty is observable
-	// Stryker disable next-line ArrayDeclaration
-	fields = [],
+	fields,
 ) => {
 	if (encryptedKey) {
 		encryptionKey ??= symmetricDecryptKey(encryptedKey, {
@@ -532,7 +528,7 @@ export const symmetricEncryptFields = (
 			sub,
 		});
 	}
-	if (!fields.length) return values;
+	if (!fields?.length) return values;
 	if (!encryptionKey) {
 		throw new Error(missingEncryptionKey, { cause: { sub, fields } });
 	}
@@ -561,18 +557,15 @@ export const symmetricEncrypt = (
 	if (!encryptionKey) {
 		throw new Error(missingEncryptionKey, { cause: { sub } });
 	}
-	// Stryker disable next-line StringLiteral: node's normalizeEncoding maps "" to
-	// utf8, so the two spellings are the same encoding to every Buffer API
-	decoding ??= "utf8";
 	encoding ??= options.symmetricEncryptionEncoding;
 	iv ??= randomIV();
 	const cipher = createCipheriv(
 		options.symmetricEncryptionAlgorithm,
 		encryptionKey,
 		iv,
-		cipherOptions,
 	);
 	cipher.setAAD(associatedData(sub));
+	// an undefined decoding reads a string as utf8
 	const encryptedData =
 		cipher.update(data, decoding, encoding) + cipher.final(encoding);
 	const authTag = cipher.getAuthTag();
@@ -588,9 +581,7 @@ export const symmetricEncrypt = (
 export const symmetricDecryptFields = (
 	encryptedValues,
 	{ encryptedKey, encryptionKey, signatureSecret, sub },
-	// see symmetricEncryptFields
-	// Stryker disable next-line ArrayDeclaration
-	fields = [],
+	fields,
 ) => {
 	if (encryptedKey) {
 		encryptionKey ??= symmetricDecryptKey(encryptedKey, {
@@ -598,7 +589,7 @@ export const symmetricDecryptFields = (
 			sub,
 		});
 	}
-	if (!encryptionKey) return encryptedValues;
+	if (!encryptionKey || !fields?.length) return encryptedValues;
 	const values = structuredClone(encryptedValues);
 	for (const key of fields) {
 		values[key] &&= symmetricDecrypt(values[key], {
@@ -631,8 +622,6 @@ export const symmetricDecrypt = (
 	if (!encryptionKey || !signedEncryptedDataPacket)
 		return signedEncryptedDataPacket;
 	decoding ??= options.symmetricEncryptionEncoding;
-	// Stryker disable next-line StringLiteral: see symmetricEncrypt's decoding
-	encoding ??= "utf8";
 
 	// remove signature when successful
 	const encryptedDataPacket = symmetricSignatureVerify(
@@ -669,15 +658,15 @@ export const symmetricDecrypt = (
 		options.symmetricEncryptionAlgorithm,
 		encryptionKey,
 		iv,
-		cipherOptions,
 	);
 	decipher.setAAD(associatedData(sub));
 
 	decipher.setAuthTag(authTag);
-	const data =
-		decipher.update(encryptedData, decoding, encoding) +
-		decipher.final(encoding);
-	return data;
+	// an undefined encoding writes utf8
+	return Buffer.concat([
+		decipher.update(encryptedData),
+		decipher.final(),
+	]).toString(encoding);
 };
 
 // *** Symmetric Signatures *** //
@@ -694,11 +683,8 @@ export const symmetricSignatureSign = (
 	const digest = createHmac(hashAlgorithm, signatureSecret)
 		.update(data)
 		.digest(options.symmetricSignatureEncoding);
-	// base64 uses `=` only as trailing padding, so an unanchored match can never
-	// find one mid-string; the anchor documents the intent and still holds if the
-	// encoding ever changes.
-	// Stryker disable next-line Regex: equivalent for every padded encoding
-	const signature = digest.replace(/=+$/, "");
+	// drop base64 padding; `=` only ever trails in a padded encoding
+	const signature = digest.replaceAll("=", "");
 
 	const signedData = `${data}.${signature}`;
 	return signedData;
@@ -710,11 +696,8 @@ export const symmetricSignatureVerify = (
 ) => {
 	if (typeof signedData !== "string") return false;
 	const lastIndexOf = signedData.lastIndexOf(".");
-	// Reject unsigned data
-	// Stryker disable next-line ConditionalExpression: without this guard the
-	// comparison below still fails for unsigned data, but only by accident of
-	// substring(0, -1); the explicit rejection is the contract.
-	if (lastIndexOf < 0) return false;
+	// Unsigned data (no `.`) fails the comparison below: every signed string
+	// contains a `.`, so none can equal it.
 	const data = signedData.substring(0, lastIndexOf);
 	const signedDataExpected = symmetricSignatureSign(data, {
 		hashAlgorithm,
