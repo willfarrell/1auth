@@ -26,7 +26,12 @@ export const create = async (client, table = name) => {
      CONSTRAINT ${table}_ukey UNIQUE ("sub")
    );
    `;
-	return await client.query(sql);
+	await client.query(sql);
+	// A username belongs to one account. Closes the exists-then-write race in
+	// @1auth/account-username; NULLs (no username) never collide.
+	return await client.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS ${table}_digest_ukey ON ${table} ("digest");
+  `);
 };
 
 export const truncate = async (client, table = name) => {

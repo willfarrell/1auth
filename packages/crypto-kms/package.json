@@ -1,0 +1,61 @@
+{
+	"name": "@1auth/crypto-kms",
+	"version": "0.0.0-rc.7",
+	"description": "AWS KMS encryption key provider, keeps the key-encryption key inside an isolated security module",
+	"type": "module",
+	"engines": {
+		"node": ">=26"
+	},
+	"publishConfig": {
+		"access": "public"
+	},
+	"main": "./index.js",
+	"module": "./index.js",
+	"sideEffects": false,
+	"exports": {
+		".": {
+			"import": "./index.js"
+		}
+	},
+	"files": [
+		"index.js"
+	],
+	"scripts": {
+		"test": "npm run test:unit",
+		"test:unit": "node --test"
+	},
+	"license": "MIT",
+	"funding": {
+		"type": "github",
+		"url": "https://github.com/sponsors/willfarrell"
+	},
+	"keywords": [
+		"1auth",
+		"OWASP",
+		"ASVS",
+		"crypto",
+		"encryption",
+		"KMS",
+		"HSM",
+		"AWS"
+	],
+	"author": {
+		"name": "1auth contributors",
+		"url": "https://github.com/willfarrell/1auth/graphs/contributors"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/willfarrell/1auth.git",
+		"directory": "packages/crypto-kms"
+	},
+	"bugs": {
+		"url": "https://github.com/willfarrell/1auth/issues"
+	},
+	"homepage": "https://github.com/willfarrell/1auth",
+	"dependencies": {
+		"@1auth/crypto": "0.0.0-rc.7"
+	},
+	"peerDependencies": {
+		"@aws-sdk/client-kms": "^3.0.0"
+	}
+}

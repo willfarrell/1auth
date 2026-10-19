@@ -1,5 +1,6 @@
 // Copyright 2003 - 2026 will Farrell, and 1Auth contributors.
 // SPDX-License-Identifier: MIT
+import { setTimeout } from "node:timers/promises";
 import {
 	BatchWriteItemCommand,
 	DeleteItemCommand,
@@ -7,6 +8,7 @@ import {
 	GetItemCommand,
 	PutItemCommand,
 	QueryCommand,
+	TransactWriteItemsCommand,
 	UpdateItemCommand,
 } from "@aws-sdk/client-dynamodb";
 import { marshall, unmarshall } from "@aws-sdk/util-dynamodb";
@@ -34,23 +36,47 @@ configure();
 
 export default configure;
 
+// Dropping a condition would widen the match, so a filter the caller could not
+// fill in is refused rather than skipped.
+const assertFilters = (filters) => {
+	for (const key in filters) {
+		const value = filters[key];
+		if (typeof value === "undefined") {
+			throw new Error("@1auth/store-dynamodb filter value is undefined", {
+				cause: { key },
+			});
+		}
+		if (Array.isArray(value) && !value.length) {
+			throw new Error("@1auth/store-dynamodb filter value is an empty array", {
+				cause: { key },
+			});
+		}
+	}
+};
+
+const refuseUnfiltered = (table) => {
+	throw new Error("@1auth/store-dynamodb refusing to write without a filter", {
+		cause: { table },
+	});
+};
+
+const isKeyAttribute = (key) => key === "sub" || key === "id";
+const nonKeyFilters = (filters) =>
+	Object.fromEntries(
+		Object.entries(filters).filter(([key]) => !isKeyAttribute(key)),
+	);
+const matches = (item, filters) =>
+	Object.entries(filters).every(([key, value]) =>
+		Array.isArray(value) ? value.includes(item[key]) : item[key] === value,
+	);
+
 export const exists = async (table, filters) => {
 	if (options.log) {
 		options.log(`@1auth/store-${options.id} exists(`, table, filters, ")");
 	}
+	assertFilters(filters);
 	const item = await getItem(table, filters);
 	return item?.sub;
-};
-
-export const count = async (table, filters) => {
-	if (options.log) {
-		options.log(`@1auth/store-${options.id} count(`, table, filters, ")");
-	}
-	const commandParams = buildQueryCommand(table, filters);
-	commandParams.Select = "COUNT";
-	return await options.client
-		.send(new QueryCommand(commandParams))
-		.then((res) => res.Count);
 };
 
 export const select = async (table, filters = {}, fields = []) => {
@@ -63,70 +89,78 @@ export const select = async (table, filters = {}, fields = []) => {
 			")",
 		);
 	}
+	assertFilters(filters);
 	// `getItem` picks between GetItemCommand and an index query itself
 	return await getItem(table, filters, fields);
 };
 
 const getItem = async (table, filters = {}, fields = []) => {
-	let indexName; // must be length of >=3
-	if (filters.digest) {
-		indexName = "digest";
-	} else if (filters.sub && !filters.id) {
-		indexName = "sub";
-	} else if (filters.id && !filters.sub) {
-		indexName = "key";
-	}
-	if (indexName) {
+	if (getIndexName(filters)) {
 		return await queryCommand(table, filters, fields).then((res) => res[0]);
 	}
-	// Only pass table key attributes to GetItemCommand; `marshallOptions` drops
-	// either one when the filter did not carry it
+	// GetItemCommand only takes the table key; every other filter is checked
+	// against the item it returns
 	const key = { sub: filters.sub, id: filters.id };
+	const others = nonKeyFilters(filters);
 	const commandParams = {
 		TableName: table,
 		Key: marshall(key, marshallOptions),
 	};
 	if (fields.length) {
-		commandParams.AttributesToGet = fields;
+		commandParams.AttributesToGet = [
+			...new Set([...fields, ...Object.keys(others)]),
+		];
 	}
-	try {
-		return await options.client
-			.send(new GetItemCommand(commandParams))
-			.then((res) => unmarshall(res.Item));
-	} catch (e) {
-		if (e.message === "No value defined: {}") {
-			return;
-		}
-
-		throw e;
-	}
+	const res = await options.client.send(new GetItemCommand(commandParams));
+	if (!res.Item) return;
+	const item = unmarshall(res.Item);
+	if (!matches(item, others)) return;
+	if (!fields.length) return item;
+	return Object.fromEntries(
+		fields
+			.filter((field) => field in item)
+			.map((field) => [field, item[field]]),
+	);
 };
 
 export const selectList = async (table, filters = {}, fields = []) => {
 	if (options.log) {
 		options.log(`@1auth/store-${options.id} selectList(`, table, filters, ")");
 	}
+	assertFilters(filters);
 	return await queryCommand(table, filters, fields);
 };
 
 // Shared by buildQueryCommand (splits key vs filter conditions) and
-// makeQueryParams (uses them all as one expression).
-const makeExpressions = (filters) => {
+// makeQueryParams (uses them all as one expression). `prefix` keeps the value
+// placeholders of an update's SET apart from those of its condition.
+const makeExpressions = (filters, prefix = "") => {
 	const expressionAttributeNames = {};
 	const expressionAttributeValues = {};
 	const conditions = new Map();
 	for (const key in filters) {
-		let value = filters[key];
+		const value = filters[key];
 		if (typeof value === "undefined") {
 			continue;
 		}
-		const isArray = Array.isArray(value);
-		if (isArray) {
-			value = new Set(value);
-		}
 		expressionAttributeNames[`#${key}`] = key;
-		expressionAttributeValues[`:${key}`] = marshall(value, marshallOptions);
-		conditions.set(key, isArray ? `#${key} IN (:${key})` : `#${key} = :${key}`);
+		if (Array.isArray(value)) {
+			const placeholders = value.map((item, idx) => {
+				const placeholder = `:${prefix}${key}_${idx}`;
+				expressionAttributeValues[placeholder] = marshall(
+					item,
+					marshallOptions,
+				);
+				return placeholder;
+			});
+			conditions.set(key, `#${key} IN (${placeholders.join(", ")})`);
+			continue;
+		}
+		expressionAttributeValues[`:${prefix}${key}`] = marshall(
+			value,
+			marshallOptions,
+		);
+		conditions.set(key, `#${key} = :${prefix}${key}`);
 	}
 	return { expressionAttributeNames, expressionAttributeValues, conditions };
 };
@@ -140,15 +174,16 @@ const indexKeyAttributes = {
 	key: ["id"],
 };
 
+const getIndexName = (filters) => {
+	// must be length of >=3
+	if (filters.digest) return "digest";
+	// a list of ids can only be filtered, and a table's own key can't be
+	if (filters.sub && (!filters.id || Array.isArray(filters.id))) return "sub";
+	if (filters.id && !filters.sub) return "key";
+};
+
 const buildQueryCommand = (table, filters = {}) => {
-	let indexName; // must be length of >=3
-	if (filters.digest) {
-		indexName = "digest";
-	} else if (filters.sub && !filters.id) {
-		indexName = "sub";
-	} else if (filters.id && !filters.sub) {
-		indexName = "key";
-	}
+	const indexName = getIndexName(filters);
 	// no index: the table itself, partitioned on sub+id
 	const keyAttributeSet = new Set(
 		indexKeyAttributes[indexName] ?? ["sub", "id"],
@@ -159,11 +194,19 @@ const buildQueryCommand = (table, filters = {}) => {
 	const keyConditions = [];
 	const filterConditions = [];
 	for (const [key, condition] of conditions) {
-		if (keyAttributeSet.has(key)) {
+		// a key condition can't take IN
+		if (keyAttributeSet.has(key) && !Array.isArray(filters[key])) {
 			keyConditions.push(condition);
 		} else {
 			filterConditions.push(condition);
 		}
+	}
+
+	// DynamoDB can't Query without an equality on the partition key
+	if (!keyConditions.length) {
+		throw new Error("@1auth/store-dynamodb filters have no key to query on", {
+			cause: { table, filters },
+		});
 	}
 
 	const commandParams = {
@@ -193,16 +236,21 @@ const queryCommand = async (table, filters = {}, fields = []) => {
 			.join(", ");
 	}
 
-	return await options.client
-		.send(new QueryCommand(commandParams))
-		.then((res) => res.Items.map(unmarshall));
+	// A page stops at 1MB, before any FilterExpression is applied, so a page can
+	// be empty and still not be the last one
+	const items = [];
+	let ExclusiveStartKey;
+	do {
+		const res = await options.client.send(
+			new QueryCommand({ ...commandParams, ExclusiveStartKey }),
+		);
+		items.push(...res.Items.map(unmarshall));
+		ExclusiveStartKey = res.LastEvaluatedKey;
+	} while (ExclusiveStartKey);
+	return items;
 };
 
-export const insert = async (table, inputValues = {}) => {
-	const values = structuredClone(inputValues);
-	if (options.log) {
-		options.log(`@1auth/store-${options.id} insert(`, table, values, ")");
-	}
+const withTimeToLive = (values) => {
 	if (
 		values.expire &&
 		options.timeToLiveKey &&
@@ -211,6 +259,25 @@ export const insert = async (table, inputValues = {}) => {
 		values[options.timeToLiveKey] =
 			values.expire + options.timeToLiveExpireOffset;
 	}
+	return values;
+};
+
+// Both, whatever the key schema: every row written here carries an id, and a
+// row without a sub would slip past a check on sub alone
+const makePut = (table, values) => ({
+	TableName: table,
+	Item: marshall(values, marshallOptions),
+	ConditionExpression:
+		"attribute_not_exists(#sub) and attribute_not_exists(#id)",
+	ExpressionAttributeNames: { "#sub": "sub", "#id": "id" },
+});
+
+export const insert = async (table, inputValues = {}) => {
+	const values = structuredClone(inputValues);
+	if (options.log) {
+		options.log(`@1auth/store-${options.id} insert(`, table, values, ")");
+	}
+	withTimeToLive(values);
 	if (values.id == null) {
 		if (typeof options.randomId !== "function") {
 			throw new Error(
@@ -219,50 +286,71 @@ export const insert = async (table, inputValues = {}) => {
 		}
 		values.id = options.randomId();
 	}
-	const commandParams = {
-		TableName: table,
-		Item: marshall(values, marshallOptions),
-	};
-	await options.client.send(new PutItemCommand(commandParams));
+	await options.client.send(new PutItemCommand(makePut(table, values)));
 	return values.id;
+};
+
+// ponytail: 5 retries with 25ms doubling backoff (~0.8s) before giving up on a batch
+const batchWriteRetries = 5;
+const batchWriteDelay = 25;
+// BatchWriteItem takes at most 25 requests, and may hand any of them back
+const batchWrite = async (table, requests) => {
+	for (let i = 0, l = requests.length; i < l; i += 25) {
+		let RequestItems = { [table]: requests.slice(i, i + 25) };
+		for (let attempt = 0; ; attempt++) {
+			const res = await options.client.send(
+				new BatchWriteItemCommand({ RequestItems }),
+			);
+			const unprocessed = res.UnprocessedItems?.[table];
+			if (!unprocessed?.length) break;
+			if (attempt === batchWriteRetries) {
+				throw new Error(
+					"@1auth/store-dynamodb batch write left unprocessed items",
+					{ cause: { table, count: unprocessed.length } },
+				);
+			}
+			await setTimeout(batchWriteDelay * 2 ** attempt);
+			RequestItems = { [table]: unprocessed };
+		}
+	}
 };
 
 export const insertList = async (table, rows = []) => {
 	if (options.log) {
 		options.log(`@1auth/store-${options.id} insertList(`, table, rows, ")");
 	}
-	// BatchWriteItem rejects an empty request list
-	if (!rows.length) return [];
-
-	const ids = [];
-	const putRequests = [];
-	for (let i = 0, l = rows.length; i < l; i++) {
-		const values = structuredClone(rows[i]);
-		if (
-			values.expire &&
-			options.timeToLiveKey &&
-			values[options.timeToLiveKey] == null
-		) {
-			values[options.timeToLiveKey] =
-				values.expire + options.timeToLiveExpireOffset;
-		}
-		ids.push(values.id);
-		putRequests.push({
-			PutRequest: {
-				Item: marshall(values, marshallOptions),
-			},
-		});
+	const puts = rows.map((row) => ({
+		Put: makePut(table, withTimeToLive(structuredClone(row))),
+	}));
+	// BatchWriteItem can't carry a condition, so an existing key would be
+	// silently overwritten. A transaction takes up to 100 conditional puts and
+	// writes all or none of them; a list longer than that can still fail
+	// part-way, with the earlier transactions kept.
+	for (let i = 0, l = puts.length; i < l; i += 100) {
+		await options.client.send(
+			new TransactWriteItemsCommand({ TransactItems: puts.slice(i, i + 100) }),
+		);
 	}
-
-	const commandParams = {
-		RequestItems: {
-			[table]: putRequests,
-		},
-	};
-	await options.client.send(new BatchWriteItemCommand(commandParams));
-	return ids;
+	return rows.map((row) => row.id);
 };
 
+// Key plus the condition every other filter adds to a write on it
+const makeKeyedParams = (filters) => {
+	const key = { sub: filters.sub, id: filters.id };
+	const { expressionAttributeNames, expressionAttributeValues, conditions } =
+		makeExpressions(nonKeyFilters(filters), "if_");
+	return {
+		Key: marshall(key, marshallOptions),
+		ExpressionAttributeNames: expressionAttributeNames,
+		ExpressionAttributeValues: expressionAttributeValues,
+		conditions: [...conditions.values()],
+	};
+};
+
+const isConditionFailure = (e) => e.name === "ConditionalCheckFailedException";
+
+// Matches the SQL stores: an update that matches no row changes nothing,
+// rather than creating one
 export const update = async (table, filters = {}, inputValues = {}) => {
 	const values = structuredClone(inputValues);
 	if (options.log) {
@@ -274,105 +362,123 @@ export const update = async (table, filters = {}, inputValues = {}) => {
 			")",
 		);
 	}
-	if (
-		values.expire &&
-		options.timeToLiveKey &&
-		values[options.timeToLiveKey] == null
-	) {
-		values[options.timeToLiveKey] =
-			values.expire + options.timeToLiveExpireOffset;
+	assertFilters(filters);
+	// an update addresses one row by its key
+	if (filters.sub === undefined && filters.id === undefined) {
+		refuseUnfiltered(table);
 	}
-
 	const {
+		Key,
 		ExpressionAttributeNames,
 		ExpressionAttributeValues,
-		KeyConditionExpression,
-	} = makeQueryParams(values);
-	// Only pass table key attributes to UpdateItemCommand
-	const key = { sub: filters.sub, id: filters.id };
+		conditions,
+	} = makeKeyedParams(filters);
+	const set = makeQueryParams(withTimeToLive(values));
+	const keyConditions = ["sub", "id"]
+		.filter((key) => filters[key] !== undefined)
+		.map((key) => {
+			ExpressionAttributeNames[`#${key}`] = key;
+			return `attribute_exists(#${key})`;
+		});
 	const commandParams = {
 		TableName: table,
-		Key: marshall(key, marshallOptions),
-		ExpressionAttributeNames,
-		ExpressionAttributeValues,
-		UpdateExpression: `SET ${KeyConditionExpression.replaceAll(" and ", ", ")}`,
+		Key,
+		ExpressionAttributeNames: {
+			...set.ExpressionAttributeNames,
+			...ExpressionAttributeNames,
+		},
+		ExpressionAttributeValues: {
+			...set.ExpressionAttributeValues,
+			...ExpressionAttributeValues,
+		},
+		UpdateExpression: set.UpdateExpression,
+		ConditionExpression: [...keyConditions, ...conditions].join(" and "),
 	};
-	await options.client.send(new UpdateItemCommand(commandParams));
+	try {
+		await options.client.send(new UpdateItemCommand(commandParams));
+	} catch (e) {
+		if (!isConditionFailure(e)) throw e;
+	}
 };
 
-export const updateList = async (table, filtersList = [], values = {}) => {
-	if (options.log) {
-		options.log(
-			`@1auth/store-${options.id} updateList(`,
-			table,
-			filtersList,
-			values,
-			")",
+// Without the full key there is no single row to delete. Query to find
+// matching items, then delete each by primary key.
+const removeMatching = async (table, filters) => {
+	const items = await queryCommand(table, filters);
+	let deleted = false;
+	for (const item of items) {
+		const res = await options.client.send(
+			new DeleteItemCommand({
+				TableName: table,
+				Key: marshall({ sub: item.sub, id: item.id }, marshallOptions),
+				ReturnValues: "ALL_OLD",
+			}),
 		);
+		if (res.Attributes) deleted = true;
 	}
-	return await Promise.allSettled(
-		filtersList.map((filters) => update(table, filters, values)),
-	);
+	return deleted;
 };
 
 export const remove = async (table, filters = {}) => {
 	if (options.log) {
 		options.log(`@1auth/store-${options.id} remove(`, table, filters, ")");
 	}
-	const key = { sub: filters.sub, id: filters.id };
-	const hasNonKeyFilters = Object.keys(filters).some(
-		(k) => k !== "sub" && k !== "id",
-	);
-	if (hasNonKeyFilters) {
-		// Non-key attributes can't be used in DeleteItemCommand.
-		// Query to find matching items, then delete each by primary key.
-		const items = await queryCommand(table, filters);
-		let deleted = false;
-		for (const item of items) {
-			const res = await options.client.send(
-				new DeleteItemCommand({
-					TableName: table,
-					Key: marshall({ sub: item.sub, id: item.id }, marshallOptions),
-					ReturnValues: "ALL_OLD",
-				}),
-			);
-			if (res.Attributes) deleted = true;
-		}
-		return deleted;
+	assertFilters(filters);
+	if (!Object.keys(filters).length) {
+		refuseUnfiltered(table);
 	}
-	const res = await options.client.send(
-		new DeleteItemCommand({
-			TableName: table,
-			Key: marshall(key, marshallOptions),
-			ReturnValues: "ALL_OLD",
-		}),
-	);
-	return !!res.Attributes;
+	const {
+		Key,
+		ExpressionAttributeNames,
+		ExpressionAttributeValues,
+		conditions,
+	} = makeKeyedParams(filters);
+	// {sub, id} or, for a table keyed on sub alone, {sub}
+	const keyed =
+		!Array.isArray(filters.sub) &&
+		!Array.isArray(filters.id) &&
+		filters.sub !== undefined &&
+		(filters.id !== undefined || !conditions.length);
+	if (!keyed) {
+		return await removeMatching(table, filters);
+	}
+	const commandParams = {
+		TableName: table,
+		Key,
+		ReturnValues: "ALL_OLD",
+	};
+	if (conditions.length) {
+		commandParams.ExpressionAttributeNames = ExpressionAttributeNames;
+		commandParams.ExpressionAttributeValues = ExpressionAttributeValues;
+		commandParams.ConditionExpression = conditions.join(" and ");
+	}
+	try {
+		const res = await options.client.send(new DeleteItemCommand(commandParams));
+		return !!res.Attributes;
+	} catch (e) {
+		if (!isConditionFailure(e)) throw e;
+		return false;
+	}
 };
 
-// Can only be used with recovery-codes for now
+// {sub, id: [...]}, plus any other filters
 export const removeList = async (table, filters = {}) => {
 	if (options.log) {
 		options.log(`@1auth/store-${options.id} removeList(`, table, filters, ")");
 	}
-
-	const deleteRequests = [];
-	for (let i = 0, l = filters.id.length; i < l; i++) {
-		// Only pass table key attributes to DeleteItemCommand
-		const key = { sub: filters.sub, id: filters.id[i] };
-		deleteRequests.push({
-			DeleteRequest: {
-				Key: marshall(key, marshallOptions),
-			},
-		});
+	assertFilters(filters);
+	// BatchWriteItem can't carry a condition, so other filters (e.g. `type`)
+	// take the query-then-delete route
+	if (Object.keys(nonKeyFilters(filters)).length) {
+		await removeMatching(table, filters);
+		return;
 	}
-
-	const commandParams = {
-		RequestItems: {
-			[table]: deleteRequests,
+	const deleteRequests = filters.id.map((id) => ({
+		DeleteRequest: {
+			Key: marshall({ sub: filters.sub, id }, marshallOptions),
 		},
-	};
-	await options.client.send(new BatchWriteItemCommand(commandParams));
+	}));
+	await batchWrite(table, deleteRequests);
 };
 
 export const makeQueryParams = (filters = {}) => {

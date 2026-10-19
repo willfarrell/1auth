@@ -1,4 +1,4 @@
-import { deepStrictEqual, ok, strictEqual } from "node:assert/strict";
+import { deepStrictEqual, ok, rejects, strictEqual } from "node:assert/strict";
 import { describe, it, test } from "node:test";
 
 const nowInSeconds = () => Math.floor(Date.now() / 1000);
@@ -58,32 +58,16 @@ const tests = (store, mocks) => {
 			strictEqual(result, row.sub);
 			strictEqual(mocks.log.mock.calls.length, 2);
 		});
-		it("Should return sub when something found {sub, id:undefined}", async () => {
+		it("Should reject an undefined filter value {sub, id:undefined}", async () => {
 			const row = { id: 1, sub: "sub_000", value: "a" };
 			await store.insert(table, row);
-			const result = await store.exists(table, { sub: row.sub, id: undefined });
-			strictEqual(result, row.sub);
-			strictEqual(mocks.log.mock.calls.length, 2);
+			await rejects(() => store.exists(table, { sub: row.sub, id: undefined }));
 		});
 		it("Should return sub when something found {digest}", async () => {
 			const row = { id: 1, sub: "sub_000", value: "a", digest: "d" };
 			await store.insert(table, row);
 			const result = await store.exists(table, { digest: row.digest });
 			strictEqual(result, row.sub);
-			strictEqual(mocks.log.mock.calls.length, 2);
-		});
-	});
-	describe("count", () => {
-		it("Should return 0 when nothing found", async () => {
-			const result = await store.count(table, { id: 1 });
-			strictEqual(result, 0);
-			strictEqual(mocks.log.mock.calls.length, 1);
-		});
-		it("Should return # when something found", async () => {
-			const row = { id: 1, sub: "sub_000", value: "a" };
-			await store.insert(table, row);
-			const result = await store.count(table, { id: row.id });
-			strictEqual(result, 1);
 			strictEqual(mocks.log.mock.calls.length, 2);
 		});
 	});
@@ -246,24 +230,106 @@ const tests = (store, mocks) => {
 			strictEqual(mocks.log.mock.calls.length, 3);
 		});
 	});
-	describe("updateList", () => {
-		it("Should update multiple rows in store", async () => {
-			const rows = [
-				{ id: 1, sub: "sub_000", value: "a" },
-				{ id: 2, sub: "sub_000", value: "b" },
-			];
-			await store.insertList(table, rows);
-			await store.updateList(
+	describe("contract", () => {
+		it("Should not expose count or updateList", async () => {
+			// nothing called them; each was one more surface to keep in step
+			strictEqual(store.count, undefined);
+			strictEqual(store.updateList, undefined);
+		});
+		const rows = [
+			{ id: 1, sub: "sub_000", value: "a" },
+			{ id: 2, sub: "sub_000", value: "b" },
+		];
+		const valuesOf = async () =>
+			(await store.selectList(table, { sub: "sub_000" }))
+				.map((row) => row.value)
+				.sort();
+		it("Should reject insert of an existing primary key", async () => {
+			await store.insert(table, rows[0]);
+			await rejects(() => store.insert(table, { ...rows[0], value: "z" }));
+			deepStrictEqual(await valuesOf(), ["a"]);
+		});
+		it("Should not create a row when update matches nothing", async () => {
+			const result = await store.update(
 				table,
-				[
-					{ sub: "sub_000", id: rows[0].id },
-					{ sub: "sub_000", id: rows[1].id },
-				],
+				{ sub: "sub_000", id: 1 },
 				{ value: "z" },
 			);
-			const result = await store.selectList(table, { sub: "sub_000" });
-			strictEqual(result[0].value, "z");
-			strictEqual(result[1].value, "z");
+			strictEqual(result, undefined);
+			deepStrictEqual(await store.selectList(table, { sub: "sub_000" }), []);
+			strictEqual(
+				await store.select(table, { sub: "sub_000", id: 1 }),
+				undefined,
+			);
+		});
+		it("Should not select a row when a non-key filter does not match", async () => {
+			await store.insert(table, rows[0]);
+			strictEqual(
+				await store.select(table, { sub: "sub_000", id: 1, value: "z" }),
+				undefined,
+			);
+			strictEqual(
+				(await store.select(table, { sub: "sub_000", id: 1, value: "a" }))
+					.value,
+				"a",
+			);
+		});
+		it("Should not update a row when a non-key filter does not match", async () => {
+			await store.insert(table, rows[0]);
+			const result = await store.update(
+				table,
+				{ sub: "sub_000", id: 1, value: "z" },
+				{ value: "y" },
+			);
+			strictEqual(result, undefined);
+			deepStrictEqual(await valuesOf(), ["a"]);
+			await store.update(
+				table,
+				{ sub: "sub_000", id: 1, value: "a" },
+				{ value: "y" },
+			);
+			deepStrictEqual(await valuesOf(), ["y"]);
+		});
+		it("Should not remove a row when a non-key filter does not match", async () => {
+			await store.insert(table, rows[0]);
+			strictEqual(
+				await store.remove(table, { sub: "sub_000", id: 1, value: "z" }),
+				false,
+			);
+			deepStrictEqual(await valuesOf(), ["a"]);
+			strictEqual(
+				await store.remove(table, { sub: "sub_000", id: 1, value: "a" }),
+				true,
+			);
+			deepStrictEqual(await valuesOf(), []);
+		});
+		it("Should refuse to remove with an empty array filter", async () => {
+			await store.insertList(table, rows);
+			await rejects(() => store.remove(table, { sub: [] }));
+			await rejects(() => store.remove(table, { sub: "sub_000", id: [] }));
+			deepStrictEqual(await valuesOf(), ["a", "b"]);
+		});
+		it("Should refuse to update or remove with an undefined filter value", async () => {
+			await store.insertList(table, rows);
+			await rejects(() =>
+				store.update(table, { sub: "sub_000", id: undefined }, { value: "z" }),
+			);
+			await rejects(() =>
+				store.remove(table, { sub: "sub_000", id: undefined }),
+			);
+			deepStrictEqual(await valuesOf(), ["a", "b"]);
+		});
+		it("Should select from a list filter", async () => {
+			await store.insertList(table, [
+				...rows,
+				{ id: 3, sub: "sub_000", value: "c" },
+			]);
+			deepStrictEqual(
+				(await store.selectList(table, { sub: "sub_000", value: ["a", "c"] }))
+					.map((row) => row.value)
+					.sort(),
+				["a", "c"],
+			);
 		});
 	});
 	describe("log", () => {
@@ -286,10 +352,6 @@ const tests = (store, mocks) => {
 				`${prefix}exists(`,
 			);
 			strictEqual(
-				await firstArgOf(() => store.count(table, { id: row.id })),
-				`${prefix}count(`,
-			);
-			strictEqual(
 				await firstArgOf(() => store.select(table, { id: row.id })),
 				`${prefix}select(`,
 			);
@@ -310,10 +372,6 @@ const tests = (store, mocks) => {
 				`${prefix}update(`,
 			);
 			strictEqual(
-				await firstArgOf(() => store.updateList(table, [key], { value: "y" })),
-				`${prefix}updateList(`,
-			);
-			strictEqual(
 				await firstArgOf(() => store.remove(table, key)),
 				`${prefix}remove(`,
 			);
@@ -330,10 +388,7 @@ const tests = (store, mocks) => {
 	describe("empty lists", () => {
 		it("Should insert nothing from an omitted list", async () => {
 			deepStrictEqual(await store.insertList(table), []);
-			strictEqual(await store.count(table, { sub: "sub_000" }), 0);
-		});
-		it("Should settle nothing from an omitted filter list", async () => {
-			deepStrictEqual(await store.updateList(table), []);
+			deepStrictEqual(await store.selectList(table, { sub: "sub_000" }), []);
 		});
 	});
 	describe("removeList", () => {

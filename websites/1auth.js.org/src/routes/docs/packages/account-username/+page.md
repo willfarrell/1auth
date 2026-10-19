@@ -37,19 +37,21 @@ accountUsername({
 
 ### `exists(username)`
 
-Check if a username is already taken.
+Resolve a username to its account. An expired or removed account does not resolve, though its username stays taken until the row is deleted.
 
-**Returns:** `boolean`
+**Returns:** the `sub`, or `undefined`
 
 ### `lookup(username)`
 
-Find an account by username. Sanitizes and digests the input before lookup.
+Find an account by username. Sanitizes and digests the input before lookup. An expired or removed account is not found.
 
 **Returns:** Account object or `undefined`
 
 ### `create(sub, username)`
 
-Create a username for an account.
+Create a username for an account. The sanitized username is stored, so the value shown and sent by `recover` is the one it resolves as (`Ádmin` is stored as `admin`).
+
+Throws `409 Conflict` when the username is taken. On SQL stores a unique index on the digest also catches two claims racing each other. DynamoDB has no unique index and its digest index is eventually consistent, so two claims made at the same moment can both succeed there.
 
 ### `update(sub, username)`
 

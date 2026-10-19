@@ -5,7 +5,7 @@ description: Generic SQL storage implementation for any client exposing a query 
 
 Generic SQL storage implementation, for any client exposing a `query` method.
 
-Use it directly when your database speaks standard SQL and you don't need a dialect-specific package. For PostgreSQL, SQLite or Cloudflare D1, prefer the dedicated backend — each is this package customized for that dialect, with no dependency on it.
+Use it directly when your database speaks standard SQL and you don't need a dialect-specific package. For PostgreSQL, SQLite or Cloudflare D1, prefer the dedicated backend — each is a thin wrapper that calls this package's `createSqlStore` with its dialect's settings.
 
 ## Install
 
@@ -47,6 +47,16 @@ A client that returns a bare row rather than a one-element array for writes will
 
 Implements the [store interface](/docs/packages/store) using parameterized SQL. Generated statements quote identifiers (`"column"`), use `LIMIT 1` for single reads, and `RETURNING id` for `INSERT` and `DELETE`.
 
+Values are always bound as parameters. Column names can't be, so every key in `values`, `filters` and `fields` must match `^[A-Za-z_][A-Za-z0-9_]*$`. Any other key throws before a statement is built.
+
+Filters are never silently dropped:
+
+- A filter value of `undefined` throws.
+- An empty array throws. `{ sub: [] }` would otherwise produce no condition at all.
+- `update` and `remove` throw when the filter is empty, instead of touching every row.
+- `insert` throws when the primary key already exists (the database's constraint error).
+- `update` on a row that doesn't exist changes nothing and resolves `undefined`.
+
 Beyond the store interface, the statement builders are exported so a backend for a different client shape can reuse them:
 
 | Export | Purpose |
@@ -63,9 +73,20 @@ Beyond the store interface, the statement builders are exported so a backend for
 
 ## Writing a backend
 
-Copy `index.js` and change what differs. `@1auth/store-postgres` changes two values (`id`, `placeholder`); `@1auth/store-d1` keeps the builders and replaces the operations, because D1 binds prepared statements rather than exposing `query`.
+```javascript
+import { createSqlStore } from '@1auth/store-sql'
 
-Each backend carrying its own copy is deliberate: none of them take a runtime dependency on another store package, and every operation stays a top-level export so bundlers can tree shake per operation. The trade is real — a fix to a shared builder has to be applied in each copy.
+const store = createSqlStore({
+  id: 'mydb',          // used in log lines: @1auth/store-mydb
+  placeholder: '$',    // default "?"
+  // default: (client, sql, parameters) => client.query(sql, parameters)
+  query: (client, sql, parameters) => client.run(sql, parameters)
+})
+export default store.default
+export const { exists, select, selectList, insert, insertList, update, remove, removeList } = store
+```
+
+Each call gets its own options, so two backends loaded in one process never share a client or placeholder. `@1auth/store-postgres` sets `placeholder: "$"`. `@1auth/store-d1` supplies a `query` that reads `prepare(sql).bind(...parameters).all()` into rows.
 
 ## Post-quantum
 

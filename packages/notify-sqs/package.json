@@ -4,9 +4,8 @@
 	"description": "AWS SQS notification implementation for scalable message queuing",
 	"type": "module",
 	"engines": {
-		"node": ">=24"
+		"node": ">=26"
 	},
-	"engineStrict": true,
 	"publishConfig": {
 		"access": "public"
 	},

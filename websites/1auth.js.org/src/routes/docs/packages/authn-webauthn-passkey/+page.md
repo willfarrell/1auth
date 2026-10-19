@@ -39,7 +39,7 @@ Everything `@1auth/authn-webauthn` accepts, over these defaults:
 | Option | Default | Why |
 |--------|---------|-----|
 | `residentKey` | `'required'` | A PassKey has to be discoverable to log in without a username |
-| `userVerification` | `'required'` | Verification is enforced on verify either way; `'preferred'` lets an authenticator skip it and fail afterwards |
+| `userVerification` | `'required'` | Asked of the browser and enforced on verify. Overriding it to `'preferred'` lets an authenticator without user verification in |
 | `preferredAuthenticatorType` | `'localDevice'` | Sends `hints` and `authenticatorAttachment` so the browser prompts for a PassKey, and is enforced on verify — a security key is rejected with `401 Unauthorized` |
 | `id` | `'WebAuthnPassKey'` | Credentials are stored as `{id}-{type}`, so they never appear in `@1auth/authn-webauthn-securitykey`'s `list`/`allowCredentials` |
 | `notifyId` | `'authn-webauthn-passkey'` | Prefix for the notify template ids: `{notifyId}-create`, `{notifyId}-expire`, `{notifyId}-remove` |

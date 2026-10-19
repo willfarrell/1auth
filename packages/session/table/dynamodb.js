@@ -162,6 +162,7 @@ export const create = async (client, table = name, { dbsc = true } = {}) => {
 								"value",
 								"publicKey", // to support sesson-dbsc
 								"create",
+								"update", // idle timeout, read on every lookup
 								"expire",
 							],
 						},

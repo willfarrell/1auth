@@ -46,8 +46,11 @@ only half that proves anything.
   authenticate(username, secret)
       │
       ├──► find the credential by the username's digest
-      └──► verify the secret against the stored hash, in constant time
+      └──► verify the secret against THAT row's hash only, in constant time
 ```
+
+A username is bound to its own secret. Another token's secret on the same account, or the
+username of an expired token, does not authenticate.
 
 Hand the caller both, usually concatenated into one string your API splits back apart. Losing
 the secret means issuing a new token — there is nothing to recover, which is the point.
@@ -64,11 +67,16 @@ Access token secret configuration.
 
 ### `authenticate(username, secret)`
 
-Verify an access token.
+Verify an access token. Only the row named by `username` is checked.
+
+**Rate limiting is your job.** There is no attempt counter on access tokens. 128 bits of
+entropy makes guessing a secret hopeless, but every attempt costs an Argon2 hash on your server,
+so limit attempts per IP (and per token username) in your application or gateway.
 
 ### `exists(username)`
 
-Check if a token username exists.
+Resolve a token username to its `sub`, or `undefined` when there is no such token or it has
+expired. Register it in authn's `usernameExists`.
 
 ### `count(sub)`
 

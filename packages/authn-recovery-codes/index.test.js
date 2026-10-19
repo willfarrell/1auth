@@ -46,7 +46,7 @@ crypto({
 	digestChecksumSalt: randomChecksumSalt(),
 	digestChecksumPepper: randomChecksumPepper(),
 	secretArgon2TimeCost: 1,
-	secretArgon2MemoryCost: 2 ** 3,
+	secretArgon2MemoryCost: 3,
 	secretArgon2Parallelism: 1,
 });
 notify.default({
@@ -275,7 +275,8 @@ const tests = (config) => {
 		count = await recoveryCodesCount(sub);
 		equal(count, 4);
 
-		ok(!("attempts" in authnDB), "attempts field should not be persisted");
+		// attempt limits are for `verify`; authenticate never counts on a code
+		ok(!authnDB.attempts, "no attempts counted on a recovery code");
 	});
 	it("A failed authenticate does not burn other codes and surfaces no attempts count", async () => {
 		const secrets = await recoveryCodesCreate(sub);
@@ -302,9 +303,8 @@ const tests = (config) => {
 		equal(secrets.length, 5);
 		await recoveryCodesAuthenticate(username, secrets[0].value);
 
+		// a used code is removed, not kept around expired
 		let authnDB = await store.selectList(authnGetOptions().table, { sub });
-		equal(authnDB.length, 5);
-		authnDB = authnDB.filter((item) => !item.expire);
 		equal(authnDB.length, 4);
 
 		secrets = await recoveryCodesUpdate(sub);
@@ -413,7 +413,7 @@ const tests = (config) => {
 		equal(row.length, 0);
 	});
 };
-describe("authn-recovery-codes", { concurrency: 1 }, () => {
+describe("@1auth/authn-recovery-codes", { concurrency: 1 }, () => {
 	for (const storeKey of Object.keys(mockStores)) {
 		describe(`using store-${storeKey}`, () => {
 			tests(mockStores[storeKey]);

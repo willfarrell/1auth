@@ -4,9 +4,8 @@
 	"description": "One-time recovery code generation and verification for account recovery",
 	"type": "module",
 	"engines": {
-		"node": ">=24"
+		"node": ">=26"
 	},
-	"engineStrict": true,
 	"publishConfig": {
 		"access": "public"
 	},

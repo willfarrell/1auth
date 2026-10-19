@@ -17,6 +17,7 @@ import {
 import {
 	createChecksum,
 	createSeasonedChecksum,
+	createSeasonedDigest,
 	makeRandomConfigObject,
 	nowInSeconds,
 } from "@1auth/crypto";
@@ -174,17 +175,24 @@ export const createInstance = () => {
 		type = "challenge",
 		otp = true,
 		expire = 10 * 60,
-		encode = (value) => {
-			value.authenticator = jsonEncodeSecret(value.authenticator);
-			const encodedValue = JSON.stringify(value);
-			return encodedValue;
-		},
-		decode = (encodedValue) => {
-			const value = JSON.parse(encodedValue);
-			value.authenticator = jsonParseSecret(value.authenticator);
-			return value;
-		},
-		verify = async (response, value, values, { requestHash } = {}) => {
+		encode = (value) => JSON.stringify(value),
+		decode = (value) => JSON.parse(value),
+		// Checked against the credential as it is now, not a copy taken when the
+		// challenge was issued: a revoked credential, or one whose counter has
+		// since moved on, must not answer a challenge minted before either.
+		verify = async (
+			response,
+			value,
+			{ sourceId } = {},
+			{ requestHash } = {},
+		) => {
+			const source = await authnSelect(options.secret, value.sub, sourceId);
+			if (!source || (source.expire && source.expire < nowInSeconds())) {
+				throw new Error("Failed verifyAuthenticationResponse", {
+					cause: { sourceId },
+				});
+			}
+			value.authenticator = options.secret.decode(source.value);
 			const { verified, authenticationInfo } =
 				await verifyAuthenticationResponse({
 					...value,
@@ -292,10 +300,25 @@ export const createInstance = () => {
 
 	const verify = async (sub, response, { name = null } = {}, notify = true) => {
 		const value = await verifyToken(sub, response);
+		// WebAuthn §7.1 step 22: one credential id, one registration, on any
+		// account. An expired (revoked) registration can be replaced.
+		// ponytail: check-then-insert, two concurrent registrations of the same
+		// authenticator can both pass. Needs a unique index on `digest` to close.
+		const digest = createSeasonedDigest(value.credential.id);
+		const now = nowInSeconds();
+		const registrations = await options.store.selectList(
+			options.table,
+			{ digest },
+			["expire"],
+		);
+		if (registrations.some(({ expire }) => !expire || now <= expire)) {
+			throw new Error("409 Conflict", { cause: { sub } });
+		}
 		const { id } = await authnCreate(options.secret, sub, {
 			name,
 			value,
-			verify: nowInSeconds(),
+			digest,
+			verify: now,
 		});
 
 		if (notify) {
@@ -309,14 +332,13 @@ export const createInstance = () => {
 			authnList(options.secret, sub, undefined, ["encryptionKey", "value"]),
 			accountLookup(sub),
 		]);
+		// No `type`: @simplewebauthn/server sets "public-key" on every entry itself,
+		// here and in allowCredentials
 		const excludeCredentials = [];
 		for (let i = credentials.length; i--; ) {
 			const credential = credentials[i];
 			const value = options.secret.decode(credential.value);
-			excludeCredentials.push({
-				id: value.credential.id,
-				type: "public-key",
-			});
+			excludeCredentials.push({ id: value.credential.id });
 		}
 
 		const registrationOptions = {
@@ -338,7 +360,7 @@ export const createInstance = () => {
 			expectedChallenge: secret.challenge,
 			expectedOrigin: options.origin,
 			expectedRPID: new URL(options.origin).hostname,
-			requireUserVerification: true, // PassKey
+			requireUserVerification: options.userVerification === "required",
 			authenticatorType: preferredAuthenticatorType,
 			credentialDeviceType: options.credentialDeviceType,
 		};
@@ -366,7 +388,7 @@ export const createInstance = () => {
 			decoyIdLengths[seed.charCodeAt(seed.length - 1) % decoyIdLengths.length];
 		const secret = await generateAuthenticationOptions({
 			rpID: new URL(options.origin).hostname,
-			allowCredentials: [{ id: seed.slice(0, length), type: "public-key" }],
+			allowCredentials: [{ id: seed.slice(0, length) }],
 			userVerification: options.userVerification,
 		});
 		// Nothing is stored: there is no account to store it against, and the
@@ -402,17 +424,15 @@ export const createInstance = () => {
 		for (let i = credentials.length; i--; ) {
 			const credential = credentials[i];
 			const authenticator = options.secret.decode(credential.value);
-			allowCredentials.push({
-				id: authenticator.credential.id,
-				type: "public-key",
-			});
+			allowCredentials.push({ id: authenticator.credential.id });
 		}
 
 		if (!allowCredentials.length) {
 			if (options.log) {
 				options.log("@1auth/authn-webauthn allowCredentials is empty");
 			}
-			return {};
+			// An account with nothing registered answers like one that doesn't exist
+			return await decoyChallenge(username ?? sub);
 		}
 
 		const authenticationOptions = {
@@ -425,13 +445,12 @@ export const createInstance = () => {
 		const challenges = [];
 		for (let i = credentials.length; i--; ) {
 			const credential = credentials[i];
-			const authenticator = options.secret.decode(credential.value);
 			const value = {
-				authenticator,
+				sub,
 				expectedChallenge: secret.challenge,
 				expectedOrigin: options.origin,
 				expectedRPID: new URL(options.origin).hostname,
-				requireUserVerification: true, // PassKey
+				requireUserVerification: options.userVerification === "required",
 			};
 			challenges.push({
 				sourceId: credential.id,
@@ -444,13 +463,26 @@ export const createInstance = () => {
 		return { id, secret };
 	};
 
+	// `verify` already refuses a challenge whose credential is gone, this just
+	// stops the rows waiting out their ttl
+	const removeChallenges = async (sub, sourceId) => {
+		const challenges = await authnList(options.challenge, sub, { sourceId }, [
+			"id",
+		]);
+		for (const { id } of challenges) {
+			await authnRemove(options.challenge, sub, id);
+		}
+	};
+
 	const expire = async (sub, id) => {
 		await authnExpire(options.secret, sub, id);
+		await removeChallenges(sub, id);
 		await options.notify.trigger(`${options.notifyId}-expire`, sub);
 	};
 
 	const remove = async (sub, id) => {
 		await authnRemove(options.secret, sub, id);
+		await removeChallenges(sub, id);
 		await options.notify.trigger(`${options.notifyId}-remove`, sub);
 	};
 

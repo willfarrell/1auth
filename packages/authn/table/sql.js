@@ -18,6 +18,7 @@ export const create = async (client, table = name) => {
      "otp"                BOOLEAN      DEFAULT FALSE,
      "sourceId"           VARCHAR(32)  DEFAULT NULL,
      "lastused"           TIMESTAMP WITH TIME ZONE DEFAULT NULL,
+     "attempts"           SMALLINT     DEFAULT 0, -- failed verify attempts on a one-time credential
 
      "create"             TIMESTAMP WITH TIME ZONE DEFAULT NULL, -- postges: DEFAULT NOW(), sqlite: DEFAULT CURRENT_TIME,
      "update"             TIMESTAMP WITH TIME ZONE DEFAULT NULL, -- NOW()

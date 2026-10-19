@@ -43,7 +43,8 @@
 				"style-src-attr": ["report-sample"],
 				"upgrade-insecure-requests": true,
 				"worker-src": ["self"],
-				"report-to": ["default"]
+				"report-to": ["default"],
+				"require-trusted-types-for": ["script"]
 			}
 		}
 	}

@@ -54,7 +54,7 @@ crypto({
 	digestChecksumSalt: randomChecksumSalt(),
 	digestChecksumPepper: randomChecksumPepper(),
 	secretArgon2TimeCost: 1,
-	secretArgon2MemoryCost: 2 ** 3,
+	secretArgon2MemoryCost: 3,
 	secretArgon2Parallelism: 1,
 });
 notify.default({
@@ -304,11 +304,16 @@ const tests = (config) => {
 			// a messenger row carries the encrypted value and its key; these calls
 			// are not allowed to pull those back
 			const selects = [];
+			const selectLists = [];
 			const recording = {
 				...store,
 				select: async (table, filters, fields) => {
 					selects.push({ filters, fields });
 					return await store.select(table, filters, fields);
+				},
+				selectList: async (table, filters, fields) => {
+					selectLists.push({ filters, fields });
+					return await store.selectList(table, filters, fields);
 				},
 			};
 			configure({ store: recording });
@@ -316,12 +321,15 @@ const tests = (config) => {
 				value: messengerValue,
 				digest: createSeasonedDigest(messengerValue),
 			});
-			deepEqual(selects[0], {
-				filters: { digest: createSeasonedDigest(messengerValue) },
+			deepEqual(selectLists[0], {
+				filters: {
+					type: messengerType,
+					digest: createSeasonedDigest(messengerValue),
+				},
 				fields: ["id", "sub", "verify"],
 			});
 			await messengerRemove(messengerType, sub, messengerId);
-			deepEqual(selects[1], {
+			deepEqual(selects[0], {
 				filters: { id: messengerId, sub, type: messengerType },
 				fields: ["encryptionKey", "value", "verify"],
 			});
@@ -568,10 +576,11 @@ const tests = (config) => {
 
 	it("Can create a messenger on an account when already attempted by anther account", async () => {
 		const subOther = "sub_111111";
-		await messengerCreate(messengerType, subOther, {
+		const otherId = await messengerCreate(messengerType, subOther, {
 			value: messengerValue,
 			digest: createSeasonedDigest(messengerValue),
 		});
+		const otherToken = mocks.notifyClient.mock.calls[0].arguments[0].data.token;
 
 		const messengerId = await messengerCreate(messengerType, sub, {
 			value: messengerValue,
@@ -585,6 +594,297 @@ const tests = (config) => {
 		});
 		equal(messengerDB?.id, messengerId);
 		ok(messengerDB.verify);
+
+		// verified ownership wins: the other account's unverified claim, and the
+		// token that would have verified it, are gone
+		ok(
+			!(await store.select(messengerGetOptions().table, {
+				sub: subOther,
+				id: otherId,
+			})),
+		);
+		ok(
+			!(await store.select(authnGetOptions().table, {
+				sub: subOther,
+				sourceId: otherId,
+			})),
+		);
+		await rejects(
+			() => messengerVerifyToken(messengerType, subOther, otherToken, otherId),
+			"401 Unauthorized",
+		);
+		equal((await messengerLookup(messengerType, messengerValue)).sub, sub);
+		equal(await messengerExists(messengerType, messengerValue), sub);
+	});
+
+	it("Will leave another account's unverified claim alone until one is verified", async () => {
+		// claiming an address someone is still verifying must not cancel theirs
+		const messengerId = await messengerCreate(messengerType, sub, {
+			value: messengerValue,
+			digest: createSeasonedDigest(messengerValue),
+		});
+		const { token } = mocks.notifyClient.mock.calls[0].arguments[0].data;
+		const subOther = "sub_111111";
+		const otherId = await messengerCreate(messengerType, subOther, {
+			value: messengerValue,
+			digest: createSeasonedDigest(messengerValue),
+		});
+		ok(otherId);
+		notEqual(otherId, messengerId);
+		ok(
+			await store.select(messengerGetOptions().table, { sub, id: messengerId }),
+		);
+
+		await messengerVerifyToken(messengerType, sub, token, messengerId);
+		equal(await messengerExists(messengerType, messengerValue), sub);
+		ok(
+			!(await store.select(messengerGetOptions().table, {
+				sub: subOther,
+				id: otherId,
+			})),
+		);
+	});
+
+	it("Will only clear unverified claims on the same type and value", async () => {
+		const subOther = "sub_111111";
+		const otherValue = "@other.00";
+		const otherSameValueId = await messengerCreate("other", subOther, {
+			value: messengerValue,
+			digest: createSeasonedDigest(messengerValue),
+		});
+		const otherSameTypeId = await messengerCreate(messengerType, subOther, {
+			value: otherValue,
+			digest: createSeasonedDigest(otherValue),
+		});
+		const messengerId = await messengerCreate(messengerType, sub, {
+			value: messengerValue,
+			digest: createSeasonedDigest(messengerValue),
+		});
+		const { token } = mocks.notifyClient.mock.calls[2].arguments[0].data;
+		await messengerVerifyToken(messengerType, sub, token, messengerId);
+		for (const id of [otherSameValueId, otherSameTypeId]) {
+			ok(
+				await store.select(messengerGetOptions().table, { sub: subOther, id }),
+			);
+			ok(
+				await store.select(authnGetOptions().table, {
+					sub: subOther,
+					sourceId: id,
+				}),
+			);
+		}
+	});
+
+	it("Will resolve the verified owner when an unverified claim is also stored", async () => {
+		// rows an older version left behind, or a DynamoDB race: the unverified
+		// claim is stored first, so it is the one an unordered LIMIT 1 finds
+		const subOther = "sub_111111";
+		await messengerCreate(messengerType, subOther, {
+			value: messengerValue,
+			digest: createSeasonedDigest(messengerValue),
+		});
+		const messengerId = await messengerCreate(messengerType, sub, {
+			value: messengerValue,
+			digest: createSeasonedDigest(messengerValue),
+		});
+		await store.update(
+			messengerGetOptions().table,
+			{ sub, id: messengerId },
+			{ verify: nowInSeconds() },
+		);
+		const messenger = await messengerLookup(messengerType, messengerValue);
+		equal(messenger?.sub, sub);
+		equal(messenger.value, messengerValue);
+		equal(messenger.encryptionKey, undefined);
+		equal(await messengerExists(messengerType, messengerValue), sub);
+	});
+
+	it("Will NOT resolve an address only claimed, never verified", async () => {
+		await messengerCreate(messengerType, "sub_111111", {
+			value: messengerValue,
+			digest: createSeasonedDigest(messengerValue),
+		});
+		equal(await messengerExists(messengerType, messengerValue), undefined);
+		equal(await messengerLookup(messengerType, messengerValue), undefined);
+	});
+
+	it("Will NOT store two verified owners of one address (SQL)", async () => {
+		if (!store.makeSqlParts) return;
+		const subOther = "sub_111111";
+		const otherId = await messengerCreate(messengerType, subOther, {
+			value: messengerValue,
+			digest: createSeasonedDigest(messengerValue),
+		});
+		const messengerId = await messengerCreate(messengerType, sub, {
+			value: messengerValue,
+			digest: createSeasonedDigest(messengerValue),
+		});
+		await store.update(
+			messengerGetOptions().table,
+			{ sub: subOther, id: otherId },
+			{ verify: nowInSeconds() },
+		);
+		let error;
+		try {
+			await store.update(
+				messengerGetOptions().table,
+				{ sub, id: messengerId },
+				{ verify: nowInSeconds() },
+			);
+		} catch (e) {
+			error = e;
+		}
+		ok(error);
+	});
+
+	it("Will burn a token after too many wrong guesses", async () => {
+		// the limit lives in @1auth/authn `verify`; a messenger token is otp, so
+		// it is subject to it
+		const messengerId = await messengerCreate(messengerType, sub, {
+			value: messengerValue,
+			digest: createSeasonedDigest(messengerValue),
+		});
+		const { token } = mocks.notifyClient.mock.calls[0].arguments[0].data;
+		const wrong = token === "000000" ? "111111" : "000000";
+		for (let i = authnGetOptions().otpMaxAttempts; i--; ) {
+			await rejects(
+				() => messengerVerifyToken(messengerType, sub, wrong, messengerId),
+				"401 Unauthorized",
+			);
+		}
+		await rejects(
+			() => messengerVerifyToken(messengerType, sub, token, messengerId),
+			"401 Unauthorized",
+		);
+		equal(await messengerCount(messengerType, sub), 0);
+	});
+
+	it("Will only resolve, list and select the messenger asked for", async () => {
+		// another account's verified messenger is stored first, where a filter
+		// that went missing would find it
+		const subOther = "sub_111111";
+		const otherValue = "@other.00";
+		const otherId = await messengerCreate(messengerType, subOther, {
+			value: otherValue,
+			digest: createSeasonedDigest(otherValue),
+		});
+		await messengerVerifyToken(
+			messengerType,
+			subOther,
+			mocks.notifyClient.mock.calls[0].arguments[0].data.token,
+			otherId,
+		);
+		const messengerId = await messengerCreate(messengerType, sub, {
+			value: messengerValue,
+			digest: createSeasonedDigest(messengerValue),
+		});
+		await messengerVerifyToken(
+			messengerType,
+			sub,
+			mocks.notifyClient.mock.calls[1].arguments[0].data.token,
+			messengerId,
+		);
+
+		equal(await messengerExists(messengerType, "notfound"), undefined);
+		equal(await messengerLookup(messengerType, "notfound"), undefined);
+		equal(
+			(await messengerSelect(messengerType, sub, messengerId)).id,
+			messengerId,
+		);
+		deepEqual(
+			(await messengerList(messengerType, sub)).map(({ id }) => id),
+			[messengerId],
+		);
+	});
+
+	it("Will clear claims on the value verified, not another", async () => {
+		// the first row stored is an unrelated pending claim, so reading the
+		// verified messenger without its filter would clear the wrong value
+		const subUnrelated = "sub_222222";
+		const otherValue = "@other.00";
+		const unrelatedId = await messengerCreate(messengerType, subUnrelated, {
+			value: otherValue,
+			digest: createSeasonedDigest(otherValue),
+		});
+		const subOther = "sub_111111";
+		const otherId = await messengerCreate(messengerType, subOther, {
+			value: messengerValue,
+			digest: createSeasonedDigest(messengerValue),
+		});
+		const messengerId = await messengerCreate(messengerType, sub, {
+			value: messengerValue,
+			digest: createSeasonedDigest(messengerValue),
+		});
+		const { token } = mocks.notifyClient.mock.calls[2].arguments[0].data;
+		await messengerVerifyToken(messengerType, sub, token, messengerId);
+		ok(
+			await store.select(messengerGetOptions().table, {
+				sub: subUnrelated,
+				id: unrelatedId,
+			}),
+		);
+		ok(
+			!(await store.select(messengerGetOptions().table, {
+				sub: subOther,
+				id: otherId,
+			})),
+		);
+	});
+
+	it("Will read only what resolving and verifying need", async () => {
+		const selects = [];
+		const selectLists = [];
+		configure({
+			store: {
+				...store,
+				select: async (table, filters, fields) => {
+					selects.push({ filters, fields });
+					return await store.select(table, filters, fields);
+				},
+				selectList: async (table, filters, fields) => {
+					selectLists.push({ filters, fields });
+					return await store.selectList(table, filters, fields);
+				},
+			},
+		});
+		const digest = createSeasonedDigest(messengerValue);
+		const messengerId = await messengerCreate(messengerType, sub, {
+			value: messengerValue,
+			digest,
+		});
+		const { token } = mocks.notifyClient.mock.calls[0].arguments[0].data;
+		selects.length = 0;
+		selectLists.length = 0;
+		await messengerVerifyToken(messengerType, sub, token, messengerId);
+		deepEqual(selects, [
+			{ filters: { sub, id: messengerId }, fields: ["digest"] },
+		]);
+		deepEqual(selectLists.at(-1), {
+			filters: { type: messengerType, digest },
+			fields: ["id", "sub", "verify"],
+		});
+		selectLists.length = 0;
+		await messengerExists(messengerType, messengerValue);
+		deepEqual(selectLists, [
+			{
+				filters: { type: messengerType, digest },
+				fields: ["sub", "verify"],
+			},
+		]);
+	});
+
+	it("Will NOT verify a messenger that no longer exists", async () => {
+		const messengerId = await messengerCreate(messengerType, sub, {
+			value: messengerValue,
+			digest: createSeasonedDigest(messengerValue),
+		});
+		const { token } = mocks.notifyClient.mock.calls[0].arguments[0].data;
+		await store.remove(messengerGetOptions().table, { sub, id: messengerId });
+		await rejects(
+			() => messengerVerifyToken(messengerType, sub, token, messengerId),
+			"404 Not Found",
+			{ sub, sourceId: messengerId },
+		);
 	});
 
 	it("Can NOT create a messenger already verified by another account", async () => {
@@ -821,7 +1121,7 @@ const rejects = async (fn, message, cause) => {
 	throw new Error(`Expected ${message}`);
 };
 
-describe("messenger", { concurrency: 1 }, () => {
+describe("@1auth/messenger", { concurrency: 1 }, () => {
 	for (const storeKey of Object.keys(mockStores)) {
 		describe(`using store-${storeKey}`, () => {
 			tests(mockStores[storeKey]);

@@ -38,25 +38,37 @@ dbsc({
 
 ### Where the binding lives
 
-This package owns no table. The device key is a nullable `publicKey` column on the
+The binding owns no table. The device key is a nullable `publicKey` column on the
 `@1auth/session` row, so a bound session **is** a session — not a session plus a second
 record to keep in step. That means the session's own record ID is the DBSC
 `session_identifier`, and a refresh reads one row that already carries the key it has to
 verify against.
 
-`refresh` writes nothing at all. The row's ID **is** the `session_identifier`, so it is stable
-across refreshes by construction — the browser caches it and sends it back as
+`refresh` never writes the session row. The row's ID **is** the `session_identifier`, so it is
+stable across refreshes by construction — the browser caches it and sends it back as
 `Sec-Secure-Session-Id`, while only the bound cookie behind it turns over.
+
+The one thing a refresh does write is the challenge it spent, to the `challengeTable`
+(`dbsc_challenges`). A challenge is a signed timestamp, so without that record a captured proof
+could be replayed for as long as its challenge stays valid. The insert fails on a key that
+already exists, and that failure is the replay check, so two copies of one proof racing each
+other cannot both pass. A row is only useful until its challenge would have expired anyway,
+which is what its `expire` records. Create the table from `@1auth/session-dbsc/table/sql.js`
+or `@1auth/session-dbsc/table/dynamodb.js`.
 
 Two lifetimes, but only one of them is stored:
 
 | | Meaning | Where it lives | Ends at |
 |---|---|---|---|
-| `dbscCookieExpire` | Idle window, on `__Host-Http-dbsc` | The bound cookie, enforced by the browser | 15min, then the browser refreshes |
+| `dbscCookieExpire` | Proof-of-possession window, on `__Host-Http-dbsc` | The bound cookie, enforced by the browser | 5min, then the browser refreshes |
 | `session.expire` | Absolute cap on the login | The `sessions` row, and `__Host-Http-sid` | `create + session.expire`, and neither value ever moves |
 
-The database keeps no record of the short window, because there is nothing to keep: the
-cookie's expiry is what makes the browser refresh, and it is the browser that enforces it.
+The idle timeout is neither of these: it is `@1auth/session`'s `idleExpire` (30min by
+default), read from the row's `update` on every `lookup`. A refresh keeps the bound cookie
+alive but does not count as use; the next ordinary request does.
+
+The database keeps no record of the bound cookie's window, because there is nothing to keep:
+the cookie's expiry is what makes the browser refresh, and it is the browser that enforces it.
 That is why `dbscCookieExpire` is load bearing — set it to `session.expire` and the bound
 cookie never expires before the session does, so the browser never refreshes and the binding
 is never exercised.
@@ -105,14 +117,15 @@ Browser                          Your app                    session-dbsc
    │  Cookie: __Host-Http-sid       │                                    │
    │  Secure-Session-Response: <proof JWT, carries the public key>       │
    ├───────────────────────────────►│                                    │
-   │                                │  register(sub, proof, { aud })     │
+   │                                │  register(sid, proof, { aud })     │
    │                                ├───────────────────────────────────►│
    │                                │        verify proof, store         │
-   │                                │        publicKey on the row        │
+   │                                │        publicKey on the row, and   │
+   │                                │        rotate sid                  │
    │                                │◄───────────────────────────────────┤
    │                                │        { session, bound, config }  │
-   │  200  Set-Cookie: __Host-Http-sid=<sid>       (12h)                 │
-   │       Set-Cookie: __Host-Http-dbsc=<token>    (15min)               │
+   │  200  Set-Cookie: __Host-Http-sid=<new sid>   (12h)                 │
+   │       Set-Cookie: __Host-Http-dbsc=<token>    (5min)               │
    │       { session_identifier, refresh_url, credentials }              │
    │◄───────────────────────────────┤                                    │
    │                                │   publicKey set -- the bound       │
@@ -157,10 +170,10 @@ Browser                          Your app                    session-dbsc
    │                                ├───────────────────────────────────►│
    │                                │        selectBinding, check the    │
    │                                │        row's expire, verify proof  │
-   │                                │        against the stored key      │
-   │                                │        -- NO row is written        │
+   │                                │        against the stored key,     │
+   │                                │        spend the challenge         │
    │                                │◄───────────────────────────────────┤
-   │  200  Set-Cookie: __Host-Http-dbsc=<new token>   (15min)            │
+   │  200  Set-Cookie: __Host-Http-dbsc=<new token>   (5min)            │
    │◄───────────────────────────────┤                                    │
    │                                │                                    │
    │  the held request now proceeds, with both cookies                   │
@@ -209,7 +222,8 @@ res.setHeader('Secure-Session-Registration', registrationHeader())
 
 ```javascript
 const proof = req.headers['secure-session-response']
-const { session, bound, config } = await register(sub, proof, {
+const sid = req.cookies['__Host-Http-sid']
+const { session, bound, config } = await register(sid, proof, {
   aud: `https://${req.headers.host}${req.url}`,
   // compared byte for byte on every lookup -- keep volatile fields
   // like `ip` out of it, see @1auth/session
@@ -226,6 +240,13 @@ res.json(config)
 The bound cookie is issued **here**, not on the login response: it proves possession of a key
 that does not exist until this exchange registers it. Until then the session is unbound and
 `sid` alone is valid — the same path a browser without DBSC takes forever.
+
+Registration binds the key onto the session the request's `sid` names and rotates `sid` in
+the same write, so set the new `sid` cookie from `session.sid`. The `sid` the browser held
+before binding stops resolving at once. Without the rotation, a `sid` stolen before
+registration would keep working, unbound, until the row's `expire`. A `sid` that does not
+resolve, belongs to another device (`value`), or already has a key bound is refused with a 401.
+Refusing rebinding matters: otherwise a stolen `sid` could swap in the thief's key.
 
 ### Refresh endpoint
 
@@ -245,9 +266,14 @@ res.setHeader('Set-Cookie', dbscCookieHeader(bound))
 res.json(config)
 ```
 
-Only the bound cookie is reissued. `sid` keeps its value and its lifetime, and **no row is
-written** — a refresh is verify-proof, sign, `Set-Cookie`. That matters because Chromium
-blocks the in-flight request until this endpoint answers.
+Only the bound cookie is reissued. `sid` keeps its value and its lifetime, and the session row
+is **not written** — a refresh is verify-proof, one insert to spend the challenge, sign,
+`Set-Cookie`. That matters because Chromium blocks the in-flight request until this endpoint
+answers.
+
+`challengeHeader` echoes `sessionId`, which is the raw `Sec-Secure-Session-Id` request
+header, into a quoted structured field. It throws `404 Not Found` for anything that is not
+printable ASCII or contains `"` or `\`, instead of letting the value end the quotes.
 
 Both header builders take their name and attributes from the same options advertised to the
 browser in `config`, so the cookie you set and the cookie the browser was promised cannot
@@ -292,15 +318,16 @@ neither.
 |--------|------|---------|-------------|
 | `store` | `object` | **required** | Passed straight through to `@1auth/session`, along with anything else it owns — configure this package, not both |
 | `require` | `boolean` | `false` | Reject unbound sessions on `lookup`. An unbound row then only resolves for `challengeExpire` after creation — long enough to reach the registration endpoint, nothing more. Leave `false` while browsers without DBSC must be able to stay signed in |
-| `challengeExpire` | `number` | `300` (5min) | How long a challenge stays valid |
-| `registerPath` | `string` | `/auth/dbsc/register` | Registration endpoint |
+| `challengeExpire` | `number` | `60` (1min) | How long a challenge stays valid |
+| `challengeTable` | `string` | `dbsc_challenges` | Where spent refresh challenges are recorded, so a proof cannot be replayed |
+| `registerPath` | `string` | `/dbsc/register` | Registration endpoint |
 | `refreshPath` | `string` | `/dbsc/refresh` | Refresh endpoint |
 | `sidCookieName` | `string` | `__Host-Http-sid` | The session cookie |
 | `sidCookieAttributes` | `string` | `Path=/; Secure; HttpOnly; SameSite=Strict` | Attributes of the session cookie. No `Max-Age` — it comes from `session.expire` |
 | `dbscCookieName` | `string` | `__Host-Http-dbsc` | The bound cookie, the one DBSC watches and refreshes |
-| `dbscCookieExpire` | `number` | `900` (15min) | Bound cookie lifetime, and the token's own expiry |
+| `dbscCookieExpire` | `number` | `300` (5min) | Bound cookie lifetime, and the token's own expiry |
 | `dbscCookieAttributes` | `string` | `Path=/; Secure; HttpOnly; SameSite=Strict` | Attributes of the bound cookie. No `Max-Age` — it comes from `dbscCookieExpire`. `Strict` never leaves the site; drop to `Lax` if arriving from an external link must show logged-in immediately |
-| `scope` | `object` | `{ include_site: true }` | DBSC scope the cookie applies to |
+| `scope` | `object` | `{ include_site: false }` | DBSC scope the cookie applies to |
 
 ## API
 
@@ -310,17 +337,21 @@ Value for the `Secure-Session-Registration` response header, including a fresh c
 
 ### `challengeHeader(sessionId)`
 
-Value for the `Secure-Session-Challenge` response header, bound to one session.
+Value for the `Secure-Session-Challenge` response header, bound to one session. Throws
+`404 Not Found` when `sessionId` is not a non-empty string of printable ASCII without `"` or
+`\`.
 
 ### `challenge(sessionId)`
 
 The raw challenge string. Stateless: a signed timestamp, valid for `challengeExpire`.
 
-### `register(sub, proof, { aud, value, values })`
+### `register(sid, proof, { aud, value, values })`
 
-Verify a registration proof and open a session bound to the device key.
-Returns `{ id, session, config }`, where `id` is the session's record ID and doubles as the
-DBSC `session_identifier`.
+Resolve `sid` to a live, unbound session (compared against `value`, as `lookup` does), verify
+the registration proof, then bind the device key onto that row and rotate its `sid`.
+Returns `{ id, session, bound, config }`, where `id` is the session's record ID and doubles as
+the DBSC `session_identifier`, and `session.sid` is the new `sid` to set. The old `sid` stops
+resolving. Throws `401 Unauthorized` when `sid` does not resolve or is already bound.
 
 ### `refresh(sessionId, proof, { aud, value, values })`
 
@@ -328,8 +359,10 @@ Verify a refresh proof against the bound key and mint a replacement bound token 
 `session_identifier`. Returns `{ id, bound, config }` — no row is written, so `sid` keeps both
 its value and its lifetime.
 
-Rejects when the session is unknown, carries no device key, or is past the absolute cap. An
-expired *cookie* does not reject — that is the case refresh exists for.
+Rejects when the session is unknown, carries no device key, or is past `expire` (the absolute
+cap, or an earlier `expire(sub, id)`). An expired *cookie* does not reject — that is the case
+refresh exists for. A proof whose challenge was already spent throws `403 Forbidden`, which
+makes the browser fetch a fresh challenge.
 
 ### `sidCookieHeader(sid)` / `dbscCookieHeader(token)`
 
@@ -345,8 +378,7 @@ cookie is required, which is what makes registering retroactively lock out a `si
 beforehand.
 
 With `require: true` an unbound row only resolves for `challengeExpire` after creation. That
-window cannot be zero — the registration endpoint itself resolves `sub` from the unbound
-`sid`, so a session must survive long enough to bind a key, and the challenge issued at login
+window cannot be zero — `register` itself resolves the unbound `sid`, so a session must survive long enough to bind a key, and the challenge issued at login
 already dies on the same clock.
 
 ### `verifyProof(proof, { aud, sessionId, publicKey })`
@@ -361,9 +393,9 @@ want bound ones.
 
 ### `expire(sub, id)` / `remove(sub, id)`
 
-`expire` ends the current **cookie** only. It does not revoke the device: a valid proof can
-still refresh that session until the absolute cap. Use `remove(sub, id)` to revoke a device
-and force it to log in again.
+`expire` ends the session **and** its binding: `lookup` and `refresh` both refuse a row past
+its `expire`, so the device has to log in again. The row stays, so it still shows in
+`list(sub)`. `remove(sub, id)` deletes it outright.
 
 ### `terminate(sessionId)`
 
@@ -383,7 +415,13 @@ Response body telling the browser to stop maintaining the session.
   `kty`/`n`/`e` (RSA) are kept.
 - ES256 requires P-256; RS256 requires a modulus of at least 2048 bits.
 - Refresh challenges are bound to the session identifier, so a challenge issued for one
-  session cannot be replayed against another.
+  session cannot be replayed against another. Each is spent on first use (see
+  `challengeTable`), so a captured refresh proof cannot be replayed at all.
+- `aud` is checked when a proof carries it, but not required: Chromium's refresh proof sets
+  `jti` alone. The challenge already covers what `aud` would add, since it is signed, bound to
+  the session, and single-use.
+- Registration binds onto the session that requested it and rotates its `sid`, so a `sid`
+  stolen before binding stops working when the key is bound.
 - The bound cookie name is checked against its own prefix rules at config time, since a
   cookie the browser silently drops presents as a refresh loop rather than an error.
 

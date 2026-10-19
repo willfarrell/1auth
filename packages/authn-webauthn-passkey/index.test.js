@@ -22,6 +22,7 @@ import crypto, {
 // *** Setup Start *** //
 import * as notify from "@1auth/notify";
 import * as storeSQLite from "@1auth/store-sqlite";
+import { isoBase64URL, isoCBOR } from "@simplewebauthn/server/helpers";
 import * as mockNotify from "../notify/mock.js";
 import * as mockSQLite from "../store-sqlite/mock.js";
 import passkey, {
@@ -38,7 +39,7 @@ crypto({
 	digestChecksumSalt: randomChecksumSalt(),
 	digestChecksumPepper: randomChecksumPepper(),
 	secretArgon2TimeCost: 1,
-	secretArgon2MemoryCost: 2 ** 3,
+	secretArgon2MemoryCost: 3,
 	secretArgon2Parallelism: 1,
 });
 notify.default({
@@ -66,7 +67,7 @@ const webauthnOrigin = "http://localhost";
 let sub;
 // *** Setup End *** //
 
-describe("authn-webauthn-passkey", { concurrency: 1 }, () => {
+describe("@1auth/authn-webauthn-passkey", { concurrency: 1 }, () => {
 	test.before(async () => {
 		await mocks.storeAccount.create(mocks.storeClient);
 		await mocks.storeAuthn.create(mocks.storeClient);
@@ -145,6 +146,11 @@ describe("authn-webauthn-passkey", { concurrency: 1 }, () => {
 
 		const [token] = await store.selectList(authnGetOptions().table, { sub });
 		equal(token.type, "WebAuthnPassKey-token");
+		// standing in for a password, so `verify` insists on the UV flag
+		const value = JSON.parse(
+			symmetricDecrypt(token.value, { sub, encryptedKey: token.encryptionKey }),
+		);
+		equal(value.requireUserVerification, true);
 	});
 
 	it("Can create a registration on a remote device", async () => {
@@ -249,10 +255,29 @@ const registrationResponse = {
 	authenticatorAttachment: "platform",
 };
 
-// Same PassKey, reached over hybrid transport rather than on this device
+// A second PassKey, on a phone reached over hybrid transport. Its own credential
+// id, since one id can only be registered once. `fmt: none` signs nothing, so
+// swapping the id inside authData leaves the response verifiable.
+const remoteCredentialId = Buffer.alloc(20, 7).toString("base64url");
+const remoteAttestation = isoCBOR.decodeFirst(
+	isoBase64URL.toBuffer(registrationResponse.response.attestationObject),
+);
+const remoteAuthData = Buffer.from(remoteAttestation.get("authData"));
+// rpIdHash(32) flags(1) counter(4) aaguid(16) idLength(2)
+Buffer.from(remoteCredentialId, "base64url").copy(remoteAuthData, 55);
+remoteAttestation.set("authData", new Uint8Array(remoteAuthData));
 const registrationResponseRemote = {
 	...registrationResponse,
-	response: { ...registrationResponse.response, transports: ["hybrid"] },
+	id: remoteCredentialId,
+	rawId: remoteCredentialId,
+	response: {
+		...registrationResponse.response,
+		attestationObject: isoBase64URL.fromBuffer(
+			isoCBOR.encode(remoteAttestation),
+		),
+		authenticatorData: remoteAuthData.toString("base64url"),
+		transports: ["hybrid"],
+	},
 	authenticatorAttachment: "cross-platform",
 };
 

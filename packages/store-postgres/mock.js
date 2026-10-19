@@ -33,19 +33,18 @@ let ready;
 const maxRetries = 30;
 const waitForStart = async (attempt = 0) => {
 	if (ready) return;
+	// Skipping is a decision, so it holds even when the container is up
+	if (process.env.SKIP_POSTGRES) {
+		console.warn("SKIP_POSTGRES set, skipping PostgreSQL tests");
+		return;
+	}
 	try {
 		await storeClient.query("SELECT 1");
 		ready = 1;
 	} catch (error) {
 		if (attempt >= maxRetries) {
 			// Same trap as DynamoDB: a warning here means a green run that never
-			// touched PostgreSQL. Skipping has to be a decision, not a default.
-			if (process.env.SKIP_POSTGRES) {
-				console.warn(
-					"PostgreSQL not available, SKIP_POSTGRES set, skipping PostgreSQL tests",
-				);
-				return;
-			}
+			// touched PostgreSQL.
 			throw new Error(
 				"PostgreSQL not available on localhost:5432. Start it with `npm run test:postgres`, or set SKIP_POSTGRES=1 to skip these tests deliberately.",
 				{ cause: error },

@@ -20,6 +20,13 @@ brew install semgrep
 brew install trufflehog
 ```
 
+`.npmrc` sets `ignore-scripts=true`, so `npm install` does not run the `prepare` script that installs the git hooks. Install them once after cloning:
+
+```bash
+npm ci
+npx husky
+```
+
 ## 3. Implementation
 
 When necessary ensure changes follow secure design principles. See [SECURITY.md](/SECURITY.md)
@@ -40,11 +47,11 @@ We use `biome` with recommended configurations plus a few correctness additions.
 
 We use `node --test` with a minimum test coverage of:
 
-- lines: >=90%
-- branches: >=80%
-- functions: >=90%
+- lines: 100%
+- branches: 100%
+- functions: 100%
 
-Of course higher is always better. Bug fixes should always start with a failing unit test.
+Bug fixes should always start with a failing unit test.
 New features should have acceptance and rejection tests.
 
 ### SAST
@@ -62,13 +69,13 @@ before reaching this packages inputs.
 
 ### Performance benchmarks
 
-We use `tinybench` to ensure there are no performance regressions.
+We use the built-in `node:bench` (Node.js >= 26.9) to ensure there are no performance regressions.
 
 ## 5. Committing
 
 Ensure git commits meet the following FLOSS Best Practices:
 
-- Message follows [Conventional Commits](https://www.conventionalcommits.org/) pattern. This is automatically enforce using `@commitlint/cli`.
+- Message follows [Conventional Commits](https://www.conventionalcommits.org/) pattern. This is automatically enforced using `@commitlint/cli`, in the `commit-msg` git hook and on Pull-Requests.
 - Message includes sign off for [Developer Certificate of Origin (DCO)](https://developercertificate.org/) compliance. This is automatically enforced using GitHub Actions on Pull-Requests.
   a. `git config --global user.name "Your Name"` and `git config --global user.email username@example.org` setup with `--signoff` flag on `git commit`
   a. Or, `Signed-off-by: username <email address>` as the last line of a commit, when a change is made through GitHub

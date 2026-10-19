@@ -35,9 +35,11 @@ webauthn({
 | `userName` | `function` | `(account) => account.value ?? 'username'` | Display name shown in the authenticator prompt, resolved from the account row |
 | `notifyId` | `string` | `'authn-webauthn'` | Prefix for the notify template ids: `{notifyId}-create`, `{notifyId}-expire`, `{notifyId}-remove` |
 
-Registration and authentication are always verified with `requireUserVerification: true`.
-Set `userVerification: 'required'` so the browser actually performs user verification,
-otherwise the ceremony completes in the browser and then fails on verify.
+`verify` and `authenticate` require the user verified (UV) flag only when `userVerification`
+is `'required'`, so what the browser is asked for and what the server insists on always agree.
+With the default `'preferred'`, an authenticator that cannot verify the user still gets in.
+Set `'required'` when the credential stands in for a password; the PassKey and SecurityKey
+presets do.
 
 ## Authenticator types
 
@@ -164,6 +166,12 @@ Authenticator          Browser              Your app          authn-webauthn
      │                    │                    │ authenticate(user, │
      │                    │                    │              resp) │
      │                    │                    ├───────────────────►│
+     │                    │                    │   checked against  │
+     │                    │                    │   the credential as│
+     │                    │                    │   it is now: gone, │
+     │                    │                    │   expired or behind│
+     │                    │                    │   its counter is a │
+     │                    │                    │   401              │
      │                    │                    │   challenge is otp:│
      │                    │                    │   consumed. cleanup│
      │                    │                    │   writes the new   │
@@ -219,19 +227,23 @@ Start the WebAuthn registration process. Returns registration options.
 
 ### `verify(sub, response, {name}, notify)`
 
-Verify a WebAuthn registration response and store the credential.
+Verify a WebAuthn registration response and store the credential. A credential id can only be
+registered once, on any account (WebAuthn §7.1 step 22): a second registration throws
+`409 Conflict`. An expired or removed registration can be replaced.
 
-### `createChallenge(sub)`
+### `createChallenge(sub, {username})`
 
-Generate an authentication challenge for an existing credential.
+Generate an authentication challenge for an existing credential. An account with no
+credentials, and with `username` an unknown account, gets a decoy instead: the same shape,
+nothing stored, and no `id`. Use `count(sub)` to decide whether to offer WebAuthn at all.
 
 ### `expire(sub, id)`
 
-Expire a WebAuthn credential.
+Expire a WebAuthn credential, and remove its outstanding challenges.
 
 ### `remove(sub, id)`
 
-Delete a WebAuthn credential.
+Delete a WebAuthn credential, and remove its outstanding challenges.
 
 ## Post-quantum
 

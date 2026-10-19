@@ -21,6 +21,8 @@ description: Overview of 1auth's modular architecture, package responsibilities,
 - Digest computation
 - Random ID generation
 
+`@1auth/crypto-kms` is an optional key provider for `@1auth/crypto` that keeps the key-encryption key inside AWS KMS, so row keys are wrapped and unwrapped by KMS instead of by a secret held in process memory.
+
 ### Storage layer
 
 Store modules implement a common interface for database operations:
@@ -47,6 +49,7 @@ Notifications are decoupled from business logic. Events like "verification token
 - `@1auth/authn-webauthn` — WebAuthn/FIDO2 credential support
 - `@1auth/authn-recovery-codes` — Backup recovery codes
 - `@1auth/authn-access-token` — API access tokens (PATs)
+- `@1auth/authn-pow` — Proof-of-work anti-automation challenge for unauthenticated forms
 - `@1auth/messenger` — Messaging framework for contact verification
 - `@1auth/messenger-email-address` — Email address verification
 - `@1auth/session` — Session creation, signing, and management

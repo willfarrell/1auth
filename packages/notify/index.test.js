@@ -1,22 +1,23 @@
 // Copyright 2003 - 2026 will Farrell, and 1Auth contributors.
 // SPDX-License-Identifier: MIT
-import { deepEqual, equal, ok } from "node:assert/strict";
+import { deepEqual, equal } from "node:assert/strict";
 import { describe, it, mock } from "node:test";
 
 import notify, { trigger } from "./index.js";
 
-describe("notify", () => {
+describe("@1auth/notify", () => {
 	// FIRST, before any test configures a client: the shipped default is a no-op,
 	// so an app that forgets to wire notify gets silence rather than a crash
 	it("should not throw with the default client", async () => {
-		await trigger("template-1", "user-123");
-		ok(true);
+		equal(await trigger("template-1", "user-123"), undefined);
 	});
 
-	it("should configure with custom options", () => {
+	it("should keep the configured client when reconfigured without one", async () => {
 		const client = mock.fn();
 		notify({ client });
-		ok(true);
+		notify({});
+		await trigger("template-1", "user-123");
+		equal(client.mock.callCount(), 1);
 	});
 
 	it("should call client with correct params on trigger", async () => {

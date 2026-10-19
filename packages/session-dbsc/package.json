@@ -4,9 +4,8 @@
 	"description": "Device Bound Session Credentials (DBSC) for @1auth/session",
 	"type": "module",
 	"engines": {
-		"node": ">=24"
+		"node": ">=26"
 	},
-	"engineStrict": true,
 	"publishConfig": {
 		"access": "public"
 	},
@@ -16,10 +15,14 @@
 	"exports": {
 		".": {
 			"import": "./index.js"
+		},
+		"./table/*": {
+			"import": "./table/*"
 		}
 	},
 	"files": [
-		"index.js"
+		"index.js",
+		"table"
 	],
 	"scripts": {
 		"test": "npm run test:unit",

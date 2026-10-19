@@ -4,6 +4,7 @@ import {
 	equal,
 	ok,
 	strictEqual,
+	throws,
 } from "node:assert/strict";
 import { describe, it, test } from "node:test";
 import tests from "../store/index.test.js";
@@ -89,7 +90,7 @@ const withClient = async (result, fn) => {
 	}
 };
 
-describe("store-d1", () => {
+describe("@1auth/store-d1", () => {
 	tests(store, mocks);
 	describe("generated sql", () => {
 		it("Should select only sub in exists", async () => {
@@ -217,19 +218,15 @@ describe("store-d1", () => {
 			equal(where, "");
 			deepStrictEqual(parameters, []);
 		});
-		it("Should skip undefined filter values", async () => {
-			const { where, parameters } = makeSqlPartsFor("$", {
-				a: "a",
-				b: undefined,
-				c: "c",
+		it("Should reject undefined filter values", async () => {
+			throws(() => makeSqlPartsFor("$", { a: "a", b: undefined }), {
+				message: "@1auth/store-sql filter value is undefined",
 			});
-			equal(where, 'WHERE "a" = $1 AND "c" = $2');
-			deepStrictEqual(parameters, ["a", "c"]);
 		});
-		it("Should skip an empty array filter value", async () => {
-			const { where, parameters } = makeSqlPartsFor("$", { a: [] });
-			equal(where, "");
-			deepStrictEqual(parameters, []);
+		it("Should reject an empty array filter value", async () => {
+			throws(() => makeSqlPartsFor("$", { a: [] }), {
+				message: "@1auth/store-sql filter value is an empty array",
+			});
 		});
 		it("Should continue the index from values into filters", async () => {
 			const { update, where, parameters } = makeSqlPartsFor(
@@ -512,14 +509,10 @@ describe("store-d1", () => {
 			deepEqual(parameters, ["a", "b", "c", "d"]);
 		});
 
-		it("Should skip undefined filter values in {where}", async () => {
-			const { where, parameters } = store.makeSqlParts({
-				a: "a",
-				b: undefined,
-				c: "c",
+		it("Should reject undefined filter values in {where}", async () => {
+			throws(() => store.makeSqlParts({ a: "a", b: undefined }), {
+				message: "@1auth/store-sql filter value is undefined",
 			});
-			equal(where, 'WHERE "a" = ? AND "c" = ?');
-			deepEqual(parameters, ["a", "c"]);
 		});
 
 		it("Should return empty {where} when no filters", async () => {
@@ -545,10 +538,10 @@ describe("store-d1", () => {
 			deepEqual(parameters, ["x", 1]);
 		});
 
-		it("Should handle empty array filter", async () => {
-			const { where, parameters } = store.makeSqlParts({ id: [] });
-			equal(where, "");
-			deepEqual(parameters, []);
+		it("Should reject an empty array filter", async () => {
+			throws(() => store.makeSqlParts({ a: [] }), {
+				message: "@1auth/store-sql filter value is an empty array",
+			});
 		});
 
 		it("Should format {select} with single field", async () => {
@@ -904,19 +897,20 @@ describe("store-d1", () => {
 			strictEqual(result.length, 2);
 			await mockDatabaseTable.truncate(mockDatabase.storeClient, table);
 		});
-		it("Should return 0 from count with no matches", async () => {
-			const result = await store.count(table);
+		it("Should list no rows when nothing matches", async () => {
+			const result = (await store.selectList(table)).length;
 			strictEqual(result, 0);
 		});
-		it("Should return correct count with multiple rows", async () => {
+		it("Should list every matching row", async () => {
 			await store.insertList(table, [
 				{ id: 1, sub: "sub_cnt", value: "a" },
 				{ id: 2, sub: "sub_cnt", value: "b" },
 				{ id: 3, sub: "sub_other", value: "c" },
 			]);
-			const all = await store.count(table);
+			const all = (await store.selectList(table)).length;
 			strictEqual(all, 3);
-			const filtered = await store.count(table, { sub: "sub_cnt" });
+			const filtered = (await store.selectList(table, { sub: "sub_cnt" }))
+				.length;
 			strictEqual(filtered, 2);
 			await mockDatabaseTable.truncate(mockDatabase.storeClient, table);
 		});
@@ -934,19 +928,6 @@ describe("store-d1", () => {
 			store.default({ timeToLiveKey: "remove" });
 			await mockDatabaseTable.truncate(mockDatabase.storeClient, table);
 		});
-		it("Should return settled results from updateList", async () => {
-			await store.insertList(table, [
-				{ id: 1, sub: "sub_ul", value: "a" },
-				{ id: 2, sub: "sub_ul", value: "b" },
-			]);
-			const results = await store.updateList(table, [{ id: 1 }, { id: 2 }], {
-				value: "z",
-			});
-			strictEqual(results.length, 2);
-			strictEqual(results[0].status, "fulfilled");
-			strictEqual(results[1].status, "fulfilled");
-			await mockDatabaseTable.truncate(mockDatabase.storeClient, table);
-		});
 	});
 	describe("logging", () => {
 		it("Should work without logging enabled", async () => {
@@ -954,14 +935,13 @@ describe("store-d1", () => {
 			await store.insert(table, { id: 1, sub: "sub_nolog", value: "v" });
 			const ex = await store.exists(table, { id: 1 });
 			strictEqual(ex, "sub_nolog");
-			const cnt = await store.count(table, { id: 1 });
+			const cnt = (await store.selectList(table, { id: 1 })).length;
 			strictEqual(cnt, 1);
 			const row = await store.select(table, { id: 1 });
 			strictEqual(row.value, "v");
 			const list = await store.selectList(table, { id: 1 });
 			strictEqual(list.length, 1);
 			await store.update(table, { id: 1 }, { value: "w" });
-			await store.updateList(table, [{ id: 1 }], { value: "x" });
 			await store.remove(table, { id: 1 });
 			store.default({ log: (...args) => mocks.log(...args) });
 			await mockDatabaseTable.truncate(mockDatabase.storeClient, table);
@@ -1033,10 +1013,10 @@ describe("store-d1", () => {
 			const tmpTable = "test_table_ops";
 			await mockDatabaseTable.create(mockDatabase.storeClient, tmpTable);
 			await store.insert(tmpTable, { id: 1, sub: "s", value: "v" });
-			const before = await store.count(tmpTable);
+			const before = (await store.selectList(tmpTable)).length;
 			strictEqual(before, 1);
 			await mockDatabaseTable.truncate(mockDatabase.storeClient, tmpTable);
-			const after = await store.count(tmpTable);
+			const after = (await store.selectList(tmpTable)).length;
 			strictEqual(after, 0);
 			await mockDatabaseTable.drop(mockDatabase.storeClient, tmpTable);
 		});
@@ -1050,7 +1030,7 @@ describe("store-d1", () => {
 				value: "v",
 			});
 			await mockDatabaseTable.truncate(mockDatabase.storeClient);
-			const cnt = await store.count(mockDatabaseTable.name);
+			const cnt = (await store.selectList(mockDatabaseTable.name)).length;
 			strictEqual(cnt, 0);
 			await mockDatabaseTable.drop(mockDatabase.storeClient);
 			// Recreate for any subsequent tests

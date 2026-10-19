@@ -5,7 +5,7 @@
 <p>
   <a href="https://github.com/willfarrell/1auth/actions/workflows/test-unit.yml"><img src="https://github.com/willfarrell/1auth/actions/workflows/test-unit.yml/badge.svg" alt="GitHub Actions unit test status"></a>
   <a href="https://github.com/willfarrell/1auth/actions/workflows/test-dast.yml"><img src="https://github.com/willfarrell/1auth/actions/workflows/test-dast.yml/badge.svg" alt="GitHub Actions dast test status"></a>
-  <a href="https://github.com/willfarrell/1auth/actions/workflows/test-perf.yml"><img src="https://github.com/willfarrell/1auth/actions/workflows/test-perf.yml/badge.svg" alt="GitHub Actions perf test status"></a>
+  <a href="https://github.com/willfarrell/1auth/actions/workflows/test-bench.yml"><img src="https://github.com/willfarrell/1auth/actions/workflows/test-bench.yml/badge.svg" alt="GitHub Actions perf test status"></a>
   <a href="https://github.com/willfarrell/1auth/actions/workflows/test-sast.yml"><img src="https://github.com/willfarrell/1auth/actions/workflows/test-sast.yml/badge.svg" alt="GitHub Actions SAST test status"></a>
   <a href="https://github.com/willfarrell/1auth/actions/workflows/test-lint.yml"><img src="https://github.com/willfarrell/1auth/actions/workflows/test-lint.yml/badge.svg" alt="GitHub Actions lint test status"></a>
   <br/>
@@ -45,12 +45,16 @@ FIPS 140-3 Level 4 can be achieved using `aes-256-gcm`.
 ### Install
 
 ```bash
-npm i @1auth/store-dynamodb @1auth/notify-sqs @1auth/crypto @1auth/account-username @1auth/account @1auth/messenger @1auth/messenger-email-address @1auth/authn @1auth/authn-webauthn @1auth/authn-webauthn-passkey @1auth/authn-webauthn-securitykey @1auth/authn-recovery-codes @1auth/authn-access-token @1auth/session @1auth/session-dbsc
+npm i @1auth/store-dynamodb @1auth/notify-sqs @1auth/crypto @1auth/account-username @1auth/account @1auth/messenger @1auth/messenger-email-address @1auth/authn @1auth/authn-webauthn @1auth/authn-webauthn-passkey @1auth/authn-webauthn-securitykey @1auth/authn-recovery-codes @1auth/authn-access-token @1auth/authn-pow @1auth/crypto-kms @1auth/session @1auth/session-dbsc
 ```
 
 > `@1auth/authn-webauthn-passkey` and `@1auth/authn-webauthn-securitykey` are optional presets over `@1auth/authn-webauthn`, each a separately configured instance, so PassKeys and security keys can be offered as separate factors.
 
 > `@1auth/session-dbsc` is optional. [DBSC](https://www.w3.org/TR/dbsc/) only ships in Chromium, so it hardens sessions where it is available and is a no-op everywhere else — `@1auth/session` stays the fallback.
+
+> `@1auth/authn-pow` is optional. It adds a proof-of-work challenge to unauthenticated forms (sign up, sign in, recovery) as anti-automation without a CAPTCHA vendor.
+
+> `@1auth/crypto-kms` is optional. It keeps the key-encryption key inside AWS KMS instead of in process memory; install it with `@aws-sdk/client-kms`.
 
 ### Example
 

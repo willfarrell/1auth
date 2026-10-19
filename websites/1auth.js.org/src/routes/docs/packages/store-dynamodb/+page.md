@@ -34,19 +34,28 @@ store.default({
 | `client` | `DynamoDBClient` | auto-created | Custom DynamoDB client |
 | `timeToLiveExpireOffset` | `number` | `864000` | TTL offset in seconds |
 | `timeToLiveKey` | `string` | `"remove"` | DynamoDB TTL attribute name |
-| `randomId` | `object` | — | ID generation options |
+| `randomId` | `function` | — | Returns an `id` for `insert` when the values carry none |
 
 ## API
 
 Implements the [store interface](/docs/packages/store) using DynamoDB operations:
 
-- `exists` — `GetItem` with projection
-- `count` — `Query` with `Select: 'COUNT'`
+- `exists` — `GetItem` or `Query`
 - `select` — `GetItem` or `Query`
-- `selectList` — `Query`
-- `insert` — `PutItem`
-- `update` — `UpdateItem`
-- `remove` — `DeleteItem`
+- `selectList` — `Query`, following `LastEvaluatedKey` until every page is read
+- `insert` — `PutItem` with `attribute_not_exists(sub) and attribute_not_exists(id)`, so an existing key throws `ConditionalCheckFailedException`
+- `insertList` — `TransactWriteItems` of up to 100 conditional puts, so any existing key throws `TransactionCanceledException` and that transaction writes nothing. A list longer than 100 can still fail part-way, keeping the transactions already written.
+- `update` — `UpdateItem` with `attribute_exists` on the key, and every non-key filter as a condition. A row that doesn't exist or doesn't match is left alone, and nothing is created.
+- `remove` — `DeleteItem`, with non-key filters as a condition. Without the full key it runs a `Query` first, then deletes each match.
+- `removeList` — `BatchWriteItem` by `{sub, id: [...]}`. Any other filter, such as `type`, sends it down the `Query`-then-delete route instead, because `BatchWriteItem` takes no condition.
+
+`GetItem` only takes the key, so any other filter on `select` or `exists` is checked against the returned item. A mismatch returns `undefined`.
+
+An array filter becomes `IN (:k_0, :k_1, …)` in the `FilterExpression`. A filter value of `undefined` or `[]` throws. `update` and `remove` throw without a filter.
+
+A query needs an equality on a partition key. Filters that give none, such as `{ id: [1, 2] }` alone, throw `filters have no key to query on`.
+
+Batch writes (`removeList`) are sent 25 requests at a time. `UnprocessedItems` are retried 5 times with doubling backoff from 25ms. If any are still left, the call throws.
 
 ## IAM permissions
 
@@ -64,6 +73,8 @@ Implements the [store interface](/docs/packages/store) using DynamoDB operations
   "Resource": "arn:aws:dynamodb:*:*:table/1auth-*"
 }
 ```
+
+`insertList` uses `TransactWriteItems`, which IAM authorizes as the `PutItem` calls inside it. There's no separate action to grant.
 
 ## Post-quantum
 

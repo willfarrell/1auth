@@ -1,6 +1,8 @@
 import { deepEqual, equal, notEqual, ok } from "node:assert/strict";
 import { describe, it, test } from "node:test";
+import { setTimeout } from "node:timers/promises";
 import crypto, {
+	nowInSeconds,
 	randomChecksumPepper,
 	randomChecksumSalt,
 	symmetricRandomEncryptionKey,
@@ -25,6 +27,7 @@ import account, {
 	randomSubject as accountRandomSubject,
 	remove as accountRemove,
 	update as accountUpdate,
+	updateIdentifier as accountUpdateIdentifier,
 } from "./index.js";
 // import * as mockAccountDynamoDBTable from "./table/dynamodb.js";
 import * as mockAccountSQLTable from "./table/sql.js";
@@ -204,6 +207,34 @@ const tests = (config) => {
 			equal("id" in inserts[0], false);
 			configure();
 		});
+		it("Will NOT let values set the columns the package owns", async () => {
+			const sub = await accountCreate({
+				name: "mine",
+				sub: "sub_chosen",
+				id: "user_chosen",
+				encryptionKey: "chosen",
+				value: "admin",
+				digest: "chosen",
+				update: 1,
+				expire: 1,
+				remove: 1,
+			});
+			notEqual(sub, "sub_chosen");
+			const db = await store.select(accountGetOptions().table, { sub });
+			notEqual(db.id, "user_chosen");
+			notEqual(db.encryptionKey, "chosen");
+			equal(db.value, null);
+			equal(db.digest, null);
+			equal(db.update, db.create);
+			equal(db.expire, null);
+			equal(db.remove, null);
+			equal((await accountLookup(sub)).name, "mine");
+		});
+		it("Can import `create` when migrating", async () => {
+			const sub = await accountCreate({ create: 1 });
+			const db = await store.select(accountGetOptions().table, { sub });
+			equal(db.create, 1);
+		});
 	});
 
 	describe("store contract", () => {
@@ -237,6 +268,11 @@ const tests = (config) => {
 				);
 			}
 			equal(selects.length, 0);
+		});
+		it("Will read only what `exists` needs", async () => {
+			recording();
+			await accountExists(sub);
+			deepEqual(selects[0], { filters: { sub }, fields: ["sub", "expire"] });
 		});
 		it("Will read only the encryption key when updating", async () => {
 			recording();
@@ -287,6 +323,76 @@ const tests = (config) => {
 			const db = await store.select(accountGetOptions().table, { sub });
 			equal(db.unencrypted, user.unencrypted); // unencrypted
 		});
+		it("Will NOT let values set the columns the package owns", async () => {
+			const before = await store.select(accountGetOptions().table, { sub });
+			await accountUpdate(sub, {
+				name: "mine",
+				sub: subOther,
+				id: "user_chosen",
+				encryptionKey: "chosen",
+				value: "admin",
+				digest: "chosen",
+				create: 1,
+				expire: 1,
+				remove: 1,
+			});
+			const db = await store.select(accountGetOptions().table, { sub });
+			equal(db.id, before.id);
+			equal(db.encryptionKey, before.encryptionKey);
+			equal(db.value, null);
+			equal(db.digest, null);
+			equal(db.create, before.create);
+			equal(db.expire, null);
+			equal(db.remove, null);
+			equal((await accountLookup(sub)).name, "mine");
+			equal((await accountLookup(subOther)).name, "other");
+		});
+	});
+
+	describe("`updateIdentifier`", () => {
+		it("Can set the value and digest a sibling package looks the account up by", async () => {
+			await accountUpdateIdentifier(sub, { value: "name", digest: "digest" });
+			const db = await store.select(accountGetOptions().table, { sub });
+			equal(db.digest, "digest");
+			notEqual(db.value, "name"); // encrypted
+			equal((await accountLookup(sub)).value, "name");
+			ok(db.update);
+		});
+		it("Will NOT set anything else", async () => {
+			await accountUpdateIdentifier(sub, {
+				value: "name",
+				digest: "digest",
+				expire: 1,
+			});
+			const db = await store.select(accountGetOptions().table, { sub });
+			equal(db.expire, null);
+		});
+		it("Will NOT let two accounts hold the same digest", async () => {
+			// the table is the last line against two concurrent claims
+			await accountUpdateIdentifier(sub, { value: "name", digest: "digest" });
+			let error;
+			try {
+				await accountUpdateIdentifier(subOther, {
+					value: "name",
+					digest: "digest",
+				});
+			} catch (e) {
+				error = e;
+			}
+			ok(error);
+			equal(
+				(await store.select(accountGetOptions().table, { sub: subOther }))
+					.digest,
+				null,
+			);
+		});
+		it("Will throw without an account", async () => {
+			await rejects(
+				() => accountUpdateIdentifier("sub_111", { value: "v", digest: "d" }),
+				"404 Not Found",
+				{ sub: "sub_111" },
+			);
+		});
 	});
 
 	describe("`expire`", () => {
@@ -308,6 +414,53 @@ const tests = (config) => {
 				sub: subOther,
 			});
 			equal(other.expire, null);
+		});
+		it("Notifies `account-expire`", async () => {
+			await accountExpire(sub);
+			const calls = mocks.notifyClient.mock.calls;
+			equal(calls.length, 1);
+			equal(calls[0].arguments[0].id, "account-expire");
+			equal(calls[0].arguments[0].sub, sub);
+		});
+		it("Can expire without a notifier configured", async () => {
+			configure({ notify: undefined });
+			await accountExpire(sub);
+			const user = await store.select(accountGetOptions().table, { sub });
+			ok(user.expire);
+		});
+		it("Will NOT resolve an expired account", async () => {
+			await accountExpire(sub);
+			await rejects(() => accountLookup(sub), "404 Not Found", { sub });
+			equal(await accountExists(sub), undefined);
+			// the neighbour still resolves
+			equal((await accountLookup(subOther)).name, "other");
+			equal(await accountExists(subOther), subOther);
+		});
+		it("Will NOT resolve a removed account", async () => {
+			await accountRemove(sub);
+			await rejects(() => accountLookup(sub), "404 Not Found", { sub });
+			equal(await accountExists(sub), undefined);
+		});
+		it("Will resolve an account expiring in the future", async () => {
+			await store.update(
+				accountGetOptions().table,
+				{ sub },
+				{ expire: nowInSeconds() + 60 },
+			);
+			equal((await accountLookup(sub)).sub, sub);
+			equal(await accountExists(sub), sub);
+		});
+		it("Will NOT resolve an account expiring on the current second", async () => {
+			// expire() stamps the current second, so the tie has to count as expired
+			const ms = Date.now() % 1000;
+			if (ms > 700) await setTimeout(1000 - ms);
+			await store.update(
+				accountGetOptions().table,
+				{ sub },
+				{ expire: nowInSeconds() },
+			);
+			await rejects(() => accountLookup(sub), "404 Not Found", { sub });
+			equal(await accountExists(sub), undefined);
 		});
 	});
 
@@ -367,7 +520,7 @@ const tests = (config) => {
 		});
 	});
 };
-describe("account", () => {
+describe("@1auth/account", () => {
 	describe("config", () => {
 		it("Uses the package id and its own prefixes", () => {
 			const options = accountGetOptions();

@@ -70,12 +70,21 @@ export default (opt = {}) => {
 };
 export const getOptions = () => options;
 
-export const exists = async (type, value) => {
+// Unverified claims on a value can sit alongside its verified owner, and only
+// the owner may resolve: `store.select` is an unordered LIMIT 1.
+const selectVerified = async (type, value, fields) => {
 	const valueDigest = createSeasonedDigest(value);
-	return await options.store.exists(options.table, {
-		type,
-		digest: valueDigest,
-	});
+	const messengers = await options.store.selectList(
+		options.table,
+		{ type, digest: valueDigest },
+		fields,
+	);
+	return messengers.find((messenger) => messenger.verify);
+};
+
+export const exists = async (type, value) => {
+	const res = await selectVerified(type, value, ["sub", "verify"]);
+	return res?.sub;
 };
 
 export const count = async (type, sub) => {
@@ -101,12 +110,8 @@ export const count = async (type, sub) => {
 };
 
 export const lookup = async (type, value) => {
-	const valueDigest = createSeasonedDigest(value);
-	const res = await options.store.select(options.table, {
-		type,
-		digest: valueDigest,
-	});
-	if (!res?.verify) return;
+	const res = await selectVerified(type, value);
+	if (!res) return;
 	const { encryptionKey: encryptedKey, sub } = res;
 	res.encryptionKey = undefined;
 	const decryptedValues = symmetricDecryptFields(
@@ -158,20 +163,20 @@ export const select = async (type, sub, id) => {
 
 export const create = async (type, sub, values) => {
 	assertSub(sub);
-	const valueExists = await options.store.select(
+	const messengers = await options.store.selectList(
 		options.table,
-		{
-			digest: values.digest,
-		},
+		{ type, digest: values.digest },
 		["id", "sub", "verify"],
 	);
-	if (valueExists?.sub === sub) {
-		await createToken(type, sub, valueExists.id);
-		return valueExists.id;
+	const own = messengers.find((messenger) => messenger.sub === sub);
+	if (own) {
+		await createToken(type, sub, own.id);
+		return own.id;
 	}
-	// the `valueExists.sub === sub` case returned above, so reaching here with a
-	// verified row means the value belongs to a different account
-	if (valueExists?.verify) {
+	// Unverified claims by other accounts don't block this one; whichever
+	// account verifies first keeps the value (see `verifyToken`)
+	const valueExists = messengers.find((messenger) => messenger.verify);
+	if (valueExists) {
 		await options.notify.trigger(
 			`${options.notifyId}-${type}-exists`,
 			valueExists.sub,
@@ -253,11 +258,37 @@ export const verifyToken = async (type, sub, token, sourceId) => {
 		return messengers;
 	});
 	await authnVerify({ ...options.token, sourceId }, sub, token);
+	const messenger = await options.store.select(
+		options.table,
+		{ sub, id: sourceId },
+		["digest"],
+	);
+	if (!messenger) {
+		throw new Error("404 Not Found", { cause: { sub, sourceId } });
+	}
 	await options.store.update(
 		options.table,
 		{ sub, id: sourceId },
 		{ verify: nowInSeconds() },
 	);
+	// Verified ownership wins: drop other accounts' pending claims on the value,
+	// and their tokens, so none can be verified or resolved after this.
+	// ponytail: SQL rejects a second verified owner with a partial unique index;
+	// DynamoDB can't, so two owners verifying in the same instant both stand.
+	const claims = await options.store.selectList(
+		options.table,
+		{ type, digest: messenger.digest },
+		["id", "sub", "verify"],
+	);
+	for (const claim of claims) {
+		// this account's own row was verified just above
+		if (claim.verify) continue;
+		await authnGetOptions().store.remove(authnGetOptions().table, {
+			sub: claim.sub,
+			sourceId: claim.id,
+		});
+		await options.store.remove(options.table, { id: claim.id, sub: claim.sub });
+	}
 	if (messengers.length) {
 		await options.notify.trigger(
 			`${options.notifyId}-${type}-create`,

@@ -36,7 +36,7 @@ Everything `@1auth/authn-webauthn` accepts, over these defaults:
 | Option | Default | Why |
 |--------|---------|-----|
 | `residentKey` | `'discouraged'` | A security key holds a limited number of [discoverable credentials](https://fy.blackhats.net.au/blog/2023-02-02-how-hype-will-turn-your-security-key-into-junk/), and as a second factor it doesn't need one |
-| `userVerification` | `'required'` | Verification is enforced on verify either way; `'preferred'` lets an authenticator skip it and fail afterwards |
+| `userVerification` | `'required'` | Asked of the browser and enforced on verify. Overriding it to `'preferred'` lets an authenticator without user verification in |
 | `preferredAuthenticatorType` | `'securityKey'` | Sends `hints` and `authenticatorAttachment` so the browser prompts for a security key, and is enforced on verify — a synced PassKey is rejected with `401 Unauthorized` |
 | `id` | `'WebAuthnSecurityKey'` | Credentials are stored as `{id}-{type}`, so they never appear in `@1auth/authn-webauthn-passkey`'s `list`/`allowCredentials` |
 | `notifyId` | `'authn-webauthn-securitykey'` | Prefix for the notify template ids: `{notifyId}-create`, `{notifyId}-expire`, `{notifyId}-remove` |

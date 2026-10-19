@@ -13,11 +13,63 @@ env:
 permissions:
   contents: read
 
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
-  build:
-    name: Build
+  version:
+    name: Version changed
     if: ${{ github.event.pull_request.merged }}
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    permissions:
+      contents: read
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: block
+          disable-sudo: true
+          disable-telemetry: true
+          allowed-endpoints: >
+            api.github.com:443
+      # allowed-endpoints: >
+      #   api.github.com:443
+      - name: Compare version with base branch
+        id: compare
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+        run: |
+          set -euo pipefail
+          version() {
+            gh api -H 'Accept: application/vnd.github.raw' "repos/${REPO}/contents/package.json?ref=$1" | jq -er .version
+          }
+          base=$(version "$BASE_SHA")
+          head=$(version "$MERGE_SHA")
+          echo "base=${base} head=${head}"
+          echo "changed=$([ "$base" != "$head" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+    outputs:
+      changed: ${{ steps.compare.outputs.changed }}
+
+  test:
+    name: Tests (unit)
+    needs: version
+    if: ${{ needs.version.outputs.changed == 'true' }}
+    permissions:
+      contents: read
+    uses: ./.github/workflows/test-unit.yml # zizmor: ignore[self-repository] actionlint 1.7.12 rejects the `$/` form
+
+  build:
+    name: Build
+    needs: [version, test]
+    if: ${{ needs.version.outputs.changed == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     permissions:
       contents: read
@@ -25,7 +77,7 @@ jobs:
       attestations: write # actions/attest-build-provenance
     steps:
       - name: Harden runner
-        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
         with:
           egress-policy: block
           disable-sudo: true
@@ -40,38 +92,65 @@ jobs:
             rekor.sigstore.dev:443
             release-assets.githubusercontent.com:443
             tuf-repo-cdn.sigstore.dev:443
+      # allowed-endpoints: >
+      #   github.com:443
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # allowed-endpoints: >
+      #   api.github.com:443
+      #   nodejs.org:443
+      #   objects.githubusercontent.com:443
+      #   registry.npmjs.org:443
+      #   release-assets.githubusercontent.com:443
       - name: Setup Node.js ${{ env.NODE_VERSION }}
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: ${{ env.NODE_VERSION }}
           registry-url: https://registry.npmjs.org
           package-manager-cache: false # release artifacts must never touch the shared Actions cache
+      # allowed-endpoints: >
+      #   registry.npmjs.org:443
       - name: Set env
         run: |
           tag=$(npm pkg get version | xargs)
           echo "tag=${tag}" >> "$GITHUB_ENV"
           echo "prerelease=$([ "${tag##*-*}" ] && echo false || echo true)" >> "$GITHUB_ENV"
+      # allowed-endpoints: >
+      #   registry.npmjs.org:443
       - name: Install dependencies
         run: |
           npm ci --ignore-scripts
+      # allowed-endpoints: >
+      #   registry.npmjs.org:443
       - name: Verify dependency signatures
         run: |
           npm audit signatures
+      # allowed-endpoints: >
+      #   registry.npmjs.org:443
       - name: Build
         run: |
           npm run build --if-present
+      # allowed-endpoints: >
+      #   registry.npmjs.org:443
       - name: Pack
         id: pack
         run: |
+          set -euo pipefail
+          # Only publishable workspaces; skips the private website and .github workspaces
+          mapfile -t workspaces < <(npm query '.workspace:not([private])' | jq -er '.[] | "--workspace=\(.location)"')
+          packages=$(npm pack --json "${workspaces[@]}")
           {
             echo "packages<<EOF"
-            npm pack --workspaces --json
+            echo "$packages"
             echo EOF
           } >> "$GITHUB_OUTPUT"
+      # allowed-endpoints: >
+      #   api.github.com:443
+      #   fulcio.sigstore.dev:443
+      #   rekor.sigstore.dev:443
+      #   tuf-repo-cdn.sigstore.dev:443
       - name: Build Attestations
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
@@ -92,24 +171,27 @@ jobs:
     name: Release
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     permissions:
       contents: write # softprops/action-gh-release
     steps:
       - name: Harden runner
-        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
         with:
           egress-policy: block
           disable-sudo: true
           disable-telemetry: true
           allowed-endpoints: >
             api.github.com:443
-            github.com:443
             uploads.github.com:443
       - name: Download artifact
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # 8.0.1
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: ${{ needs.build.outputs.tag }}
+      # allowed-endpoints: >
+      #   api.github.com:443
+      #   uploads.github.com:443
       - name: Release
         # Replaces actions/create-release & actions/upload-release-asset (deprecated)
         uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2 # zizmor: ignore[superfluous-actions] prefer maintained action over inline `gh release` script
@@ -129,6 +211,7 @@ jobs:
     name: Publish
     needs: release
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     environment: npm-publish
 
@@ -138,19 +221,28 @@ jobs:
       attestations: read # gh attestation verify
     steps:
       - name: Harden runner
-        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
         with:
           egress-policy: block
           disable-sudo: true
           disable-telemetry: true
           allowed-endpoints: >
-            registry.npmjs.org:443
-            fulcio.sigstore.dev:443
-            rekor.sigstore.dev:443
-            tuf-repo-cdn.sigstore.dev:443
-            github.com:443
             api.github.com:443
+            fulcio.sigstore.dev:443
+            nodejs.org:443
+            objects.githubusercontent.com:443
+            registry.npmjs.org:443
+            rekor.sigstore.dev:443
+            release-assets.githubusercontent.com:443
             tmaproduction.blob.core.windows.net:443
+            tuf-repo-cdn.sigstore.dev:443
+            tuf-repo.github.com:443
+      # allowed-endpoints: >
+      #   api.github.com:443
+      #   nodejs.org:443
+      #   objects.githubusercontent.com:443
+      #   registry.npmjs.org:443
+      #   release-assets.githubusercontent.com:443
       - name: Setup Node.js ${{ env.NODE_VERSION }}
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -158,19 +250,52 @@ jobs:
           registry-url: https://registry.npmjs.org
           package-manager-cache: false # release artifacts must never touch the shared Actions cache
       - name: Download artifact
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # 8.0.1
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: ${{ needs.release.outputs.tag }}
+      # allowed-endpoints: >
+      #   api.github.com:443
+      #   tmaproduction.blob.core.windows.net:443
+      #   tuf-repo-cdn.sigstore.dev:443
+      #   tuf-repo.github.com:443
       - name: Verify build provenance attestation
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
         run: |
-          find . -name '*.tgz' -print -exec gh attestation verify {} --repo ${{ github.repository }} \;
+          set -euo pipefail
+          shopt -s globstar
+          tarballs=(**/*.tgz)
+          [ -f "${tarballs[0]}" ] || { echo "No tarballs found" >&2; exit 1; }
+          for tgz in "${tarballs[@]}"; do
+            echo "$tgz"
+            gh attestation verify "$tgz" --repo "$REPO"
+          done
+      # allowed-endpoints: >
+      #   api.github.com:443
+      #   fulcio.sigstore.dev:443
+      #   registry.npmjs.org:443
+      #   rekor.sigstore.dev:443
+      #   tuf-repo-cdn.sigstore.dev:443
       - name: npm stage publish (next)
         if: ${{ needs.release.outputs.prerelease == 'true' }}
         run: |
-          find . -name '*.tgz' -exec npm stage publish --tag next --provenance --access public --ignore-scripts {} \;
+          set -euo pipefail
+          shopt -s globstar
+          for tgz in **/*.tgz; do
+            npm stage publish --tag next --provenance --access public --ignore-scripts "$tgz"
+          done
+      # allowed-endpoints: >
+      #   api.github.com:443
+      #   fulcio.sigstore.dev:443
+      #   registry.npmjs.org:443
+      #   rekor.sigstore.dev:443
+      #   tuf-repo-cdn.sigstore.dev:443
       - name: npm stage publish (latest)
         if: ${{ needs.release.outputs.prerelease == 'false' }}
         run: |
-          find . -name '*.tgz' -exec npm stage publish --tag latest --provenance --access public --ignore-scripts {} \;
+          set -euo pipefail
+          shopt -s globstar
+          for tgz in **/*.tgz; do
+            npm stage publish --tag latest --provenance --access public --ignore-scripts "$tgz"
+          done

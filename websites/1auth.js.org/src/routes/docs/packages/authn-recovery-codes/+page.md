@@ -36,8 +36,9 @@ Every operation works on the whole set. There is no "add one more".
   create(sub)      ──►  N codes minted, all verified, all otp
                         returned once, in the clear, never again
 
-  authenticate()   ──►  one code matches, and is consumed on the way out
-                        the rest are untouched -- N-1 remain
+  authenticate()   ──►  one code matches, and is removed on the way out
+                        the rest are untouched -- N-1 remain. two parallel
+                        requests with one code: only one succeeds
 
   update(sub)      ──►  a fresh batch is minted FIRST, then the old batch
                         is removed. an interruption leaves the user with
@@ -61,6 +62,11 @@ Recovery code secret configuration.
 ### `authenticate(username, secret)`
 
 Verify a recovery code. The code is consumed (removed) after successful use.
+
+**Rate limiting is your job.** Failed attempts are not counted, so nothing stops an attacker
+from trying codes as fast as you accept requests. A code has 128 bits of entropy, but each try
+costs an Argon2 hash per remaining code, so limit attempts per account and per IP in your
+application or gateway.
 
 ### `count(sub)`
 

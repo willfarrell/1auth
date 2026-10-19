@@ -4,9 +4,8 @@
 	"description": "Core authentication module with multi-factor authentication support",
 	"type": "module",
 	"engines": {
-		"node": ">=24"
+		"node": ">=26"
 	},
-	"engineStrict": true,
 	"publishConfig": {
 		"access": "public"
 	},

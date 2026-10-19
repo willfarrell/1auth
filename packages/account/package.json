@@ -4,9 +4,8 @@
 	"description": "User account management with encrypted storage and lifecycle operations",
 	"type": "module",
 	"engines": {
-		"node": ">=24"
+		"node": ">=26"
 	},
-	"engineStrict": true,
 	"publishConfig": {
 		"access": "public"
 	},

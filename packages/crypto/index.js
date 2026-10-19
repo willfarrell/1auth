@@ -1,14 +1,13 @@
 // Copyright 2003 - 2026 will Farrell, and 1Auth contributors.
 // SPDX-License-Identifier: MIT
 import {
-	argon2Sync,
+	argon2 as argon2Callback,
 	createCipheriv,
 	createDecipheriv,
 	createHash,
 	createHmac,
 	generateKeyPair as generateKeyPairCallback,
 	randomBytes,
-	randomInt,
 	sign as signCallback,
 	timingSafeEqual,
 	verify as verifyCallback,
@@ -16,6 +15,7 @@ import {
 import { promisify } from "node:util";
 import { customAlphabet } from "nanoid";
 
+const argon2 = promisify(argon2Callback);
 const generateKeyPair = promisify(generateKeyPairCallback);
 const sign = promisify(signCallback);
 const verify = promisify(verifyCallback);
@@ -156,11 +156,7 @@ export const randomAlphaNumeric = (characterLength) => {
 };
 
 export const randomNumeric = (characterLength) => {
-	let value = "";
-	for (let i = characterLength; i--; ) {
-		value += randomInt(0, 10);
-	}
-	return value;
+	return randomCharacters(characterLength, charactersNumeric);
 };
 
 // *** configs *** //
@@ -191,13 +187,14 @@ export const randomChecksumPepper = () => {
 	return randomBytes(32); // 256 bits
 };
 
-export const createSaltedValue = (value, { checksumSalt } = {}) => {
+// Bytes, not strings: `value + salt` UTF-8 decoded the random salt, turning
+// every invalid sequence into U+FFFD and throwing its entropy away.
+const createSaltedValue = (value, { checksumSalt } = {}) => {
 	checksumSalt ??= options.digestChecksumSalt;
 	if (!checksumSalt) {
 		return value;
 	}
-	const newValue = value + checksumSalt;
-	return newValue;
+	return Buffer.concat([Buffer.from(value), Buffer.from(checksumSalt)]);
 };
 // HMAC keyed by the pepper (a blind index): deterministic so equal values
 // yield equal digests for lookups, one-way without the pepper. Rotating the
@@ -206,10 +203,7 @@ export const createSaltedValue = (value, { checksumSalt } = {}) => {
 // still silently gets whatever the module globals happen to hold. That is
 // what a key rotation needs: the new digest, computed before the new material
 // is live.
-export const createPepperedValue = (
-	value,
-	{ hashAlgorithm, checksumPepper } = {},
-) => {
+const createPepperedValue = (value, { hashAlgorithm, checksumPepper } = {}) => {
 	hashAlgorithm ??= options.digestChecksumHashAlgorithm;
 	checksumPepper ??= options.digestChecksumPepper;
 	if (!checksumPepper) {
@@ -347,7 +341,9 @@ export const decodeArgon2 = (str) => {
 	return argon2Options;
 };
 
-export const createArgon2 = (
+// Async so the hash runs on the libuv threadpool: argon2Sync blocked the event
+// loop for the full hash (~100ms at the defaults) per call.
+export const createArgon2 = async (
 	message,
 	{
 		algorithm,
@@ -369,7 +365,7 @@ export const createArgon2 = (
 	assertMemoryCost(memoryCost);
 
 	const nonce = randomBytes(nonceLength);
-	const hash = argon2Sync(algorithm, {
+	const hash = await argon2(algorithm, {
 		message,
 		nonce,
 		parallelism,
@@ -387,7 +383,7 @@ export const createArgon2 = (
 		hash,
 	});
 };
-export const verifyArgon2 = (derivedKey, message) => {
+export const verifyArgon2 = async (derivedKey, message) => {
 	const {
 		algorithm,
 		memoryCost,
@@ -398,10 +394,10 @@ export const verifyArgon2 = (derivedKey, message) => {
 		hashLength,
 	} = decodeArgon2(derivedKey);
 	// Params come off a stored string; a malformed `m=` would otherwise reach
-	// argon2Sync as Infinity. authn treats a throw here as "credential invalid".
+	// argon2 as Infinity. authn treats a throw here as "credential invalid".
 	assertMemoryCost(memoryCost);
 
-	const verifyHash = argon2Sync(algorithm, {
+	const verifyHash = await argon2(algorithm, {
 		message,
 		nonce,
 		parallelism,
@@ -431,7 +427,7 @@ export const symmetricRandomEncryptionKey = () => {
 	return randomBytes(32); // 256 bits
 };
 
-export const randomIV = () => {
+const randomIV = () => {
 	return randomBytes(ivLength); // 96 bits
 };
 
@@ -453,8 +449,6 @@ const encryptionKeyProviders = Object.create(null);
 export const registerEncryptionKeyProvider = (name, provider) => {
 	encryptionKeyProviders[name] = provider;
 };
-
-export const getEncryptionKeyProviders = () => encryptionKeyProviders;
 
 const parseEncryptedKey = (encryptedKey) => {
 	const separatorIndex = encryptedKey.indexOf(encryptionKeyProviderSeparator);
@@ -519,6 +513,10 @@ export const symmetricGenerateEncryptionKey = (sub, providerOptions = {}) => {
 	};
 };
 
+// Encrypting is never optional: a missing key used to return the plaintext,
+// which the caller then stored as if it were ciphertext.
+const missingEncryptionKey = "@1auth/crypto encryption key is missing";
+
 // sub add context to encryption
 export const symmetricEncryptFields = (
 	values,
@@ -534,7 +532,10 @@ export const symmetricEncryptFields = (
 			sub,
 		});
 	}
-	if (!encryptionKey) return values;
+	if (!fields.length) return values;
+	if (!encryptionKey) {
+		throw new Error(missingEncryptionKey, { cause: { sub, fields } });
+	}
 	const encryptedValues = structuredClone(values);
 	for (const key of fields) {
 		encryptedValues[key] &&= symmetricEncrypt(encryptedValues[key], {
@@ -556,7 +557,10 @@ export const symmetricEncrypt = (
 			sub,
 		});
 	}
-	if (!encryptionKey || !data) return data;
+	if (!data) return data;
+	if (!encryptionKey) {
+		throw new Error(missingEncryptionKey, { cause: { sub } });
+	}
 	// Stryker disable next-line StringLiteral: node's normalizeEncoding maps "" to
 	// utf8, so the two spellings are the same encoding to every Buffer API
 	decoding ??= "utf8";
@@ -679,11 +683,6 @@ export const symmetricDecrypt = (
 // *** Symmetric Signatures *** //
 export const symmetricRandomSignatureSecret = () => {
 	return randomBytes(32); // 256 bits
-};
-
-export const symmetricGenerateSignatureSecret = () => {
-	const signatureSecret = symmetricRandomSignatureSecret();
-	return { signatureSecret };
 };
 
 export const symmetricSignatureSign = (

@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: MIT
 import { verify as asymmetricVerify, createPublicKey } from "node:crypto";
 import {
-	assertSub,
+	assertId,
+	createSeasonedDigest,
 	nowInSeconds,
 	safeEqual,
 	symmetricSignatureSign,
@@ -35,6 +36,7 @@ const defaults = {
 	log: false,
 	require: false,
 	challengeExpire: 1 * 60,
+	challengeTable: "dbsc_challenges", // spent refresh challenges, see table/
 	registerPath: "/dbsc/register",
 	refreshPath: "/dbsc/refresh",
 	sidCookieName: "__Host-Http-sid",
@@ -69,20 +71,7 @@ const attributeSet = (attributes, name) =>
 
 // Everything else passed to default() belongs to @1auth/session, so an app
 // configures one module rather than wiring two together
-const ownKeys = new Set([
-	"id",
-	"log",
-	"require",
-	"challengeExpire",
-	"registerPath",
-	"refreshPath",
-	"sidCookieName",
-	"sidCookieAttributes",
-	"dbscCookieName",
-	"dbscCookieAttributes",
-	"dbscCookieExpire",
-	"scope",
-]);
+const ownKeys = new Set(Object.keys(defaults));
 
 const options = {};
 // Accumulated, because session.default() replaces rather than merges: forwarding
@@ -185,9 +174,18 @@ export const registrationHeader = ({ authorization } = {}) => {
 	return header;
 };
 
-// Response header that hands the browser a fresh challenge to cache
-export const challengeHeader = (sessionId) =>
-	`"${challenge(sessionId)}";id="${sessionId}"`;
+// Response header that hands the browser a fresh challenge to cache.
+// `sessionId` is the raw Sec-Secure-Session-Id request header, echoed into a
+// quoted structured field, so anything that could end the quotes is refused:
+// printable ASCII only, less `"` and `\`. No id this package issues has either.
+const headerSafeId = /^[ !#-[\]-~]+$/;
+export const challengeHeader = (sessionId) => {
+	assertId(sessionId);
+	if (!headerSafeId.test(sessionId)) {
+		throw new Error("404 Not Found", { cause: { id: sessionId } });
+	}
+	return `"${challenge(sessionId)}";id="${sessionId}"`;
+};
 
 // Response body of both the registration and refresh endpoints
 const sessionConfig = (sessionId) => ({
@@ -207,6 +205,7 @@ const dbscAttributes = () =>
 	`${options.dbscCookieAttributes}; Max-Age=${options.dbscCookieExpire}`;
 
 // The session cookie. Lives as long as the row, and is not the bound credential.
+// The row can still end sooner, on @1auth/session's `idleExpire`.
 export const sidCookieHeader = (sid) =>
 	`${options.sidCookieName}=${sid}; ${options.sidCookieAttributes}; Max-Age=${session.getOptions().expire}`;
 
@@ -250,8 +249,16 @@ export const verifyProof = async (
 	} catch {
 		throw unauthorized();
 	}
-	const algorithm = algorithms[header?.alg];
+	// Own string keys only: an object `alg` throws converting to a key, and a
+	// name like "toString" would find Object.prototype's
+	const algorithm =
+		typeof header?.alg === "string" && Object.hasOwn(algorithms, header.alg)
+			? algorithms[header.alg]
+			: undefined;
 	if (header?.typ !== "dbsc+jwt" || !algorithm) throw unauthorized();
+	// Checked when present, not required: Chromium's refresh proof carries `jti`
+	// alone. What `aud` would add, the challenge already covers -- it is signed,
+	// bound to this session, domain-tagged, and spent on first use.
 	if (payload?.aud !== undefined) {
 		if (typeof payload.aud !== "string" || !safeEqual(payload.aud, aud)) {
 			throw unauthorized();
@@ -339,34 +346,58 @@ export const select = async (sub, id) => await session.select(sub, id);
 export const list = async (sub) => await session.list(sub);
 
 /**
- * Bind a new device key, then open the first session on it
- * @param sub
+ * Bind a device key onto the session the browser already holds
+ * @param sid the `sidCookieName` cookie sent with the registration request
  * @param proof Secure-Session-Response header (DBSC proof JWT)
  * @param aud URL the proof was sent to
- * @param value {os, browser, ip, ...} passed to session create
+ * @param value {os, browser, ip, ...} compared as `lookup` does, then kept
  */
 export const register = async (
-	sub,
+	sid,
 	proof,
 	{ aud, value = {}, values = {} } = {},
 ) => {
-	// Fail before spending a signature verification on a request that cannot work
-	assertSub(sub);
+	// Fail before spending a signature verification on a request that cannot
+	// work. No bound cookie is passed, so a session that is already bound does
+	// not resolve: rebinding would let a stolen `sid` swap in the thief's key.
+	const found = await lookup(sid, undefined, value);
+	if (!found) {
+		throw new Error("401 Unauthorized", { cause: { aud } });
+	}
 	const { publicKey } = await verifyProof(proof, { aud });
-	// The session row IS the binding, so its id is the `session_identifier` the
-	// browser caches and sends back as Sec-Session-Id
-	const created = await session.create(sub, value, {
+	// Bound in place and the `sid` rotated, so a `sid` stolen before binding
+	// stops resolving now rather than at the row's `expire`. The row id is the
+	// `session_identifier` the browser caches and sends back as Sec-Session-Id.
+	const rotated = await session.rotate(found.sub, found.id, value, {
 		...values,
 		publicKey,
 	});
 	// The bound cookie is issued HERE, not on the login response: it proves
 	// possession of a key that does not exist until this exchange registers it.
 	return {
-		id: created.id,
-		session: created,
-		bound: boundToken(created.id),
-		config: sessionConfig(created.id),
+		id: rotated.id,
+		session: rotated,
+		bound: boundToken(rotated.id),
+		config: sessionConfig(rotated.id),
 	};
+};
+
+// Spends a refresh challenge. The insert failing on an existing key is the
+// replay check, and it is atomic, so two racing copies of one proof cannot both
+// pass. Kept until the challenge could no longer verify anyway.
+// Refresh only: a registration challenge names no session, so every browser
+// registering in the same second is handed the same one.
+const spendChallenge = async (sub, jti, cause) => {
+	try {
+		await session.getOptions().store.insert(options.challengeTable, {
+			sub,
+			id: createSeasonedDigest(jti),
+			expire: nowInSeconds() + options.challengeExpire,
+		});
+	} catch {
+		// 403, like any other unusable challenge: the browser fetches a fresh one
+		throw new Error("403 Forbidden", { cause });
+	}
 };
 
 /**
@@ -397,11 +428,12 @@ export const refresh = async (
 	if (binding.expire && binding.expire < nowInSeconds()) {
 		throw new Error("401 Unauthorized", { cause: { sessionId } });
 	}
-	await verifyProof(proof, {
+	const { payload } = await verifyProof(proof, {
 		aud,
 		sessionId,
 		publicKey: binding.publicKey,
 	});
+	await spendChallenge(binding.sub, payload.jti, { aud, sessionId });
 	// In place, so `sessionId` stays the identifier the browser already holds
 	return {
 		id: sessionId,
@@ -410,8 +442,9 @@ export const refresh = async (
 	};
 };
 
-// Ends the cookie, NOT the binding: a bound session can still be refreshed
-// until the absolute cap. Use `remove` to revoke a device.
+// Ends the session AND its binding: `lookup` and `refresh` both refuse a row
+// past `expire`. The row stays for the account's session list; `remove` deletes
+// it.
 export const expire = async (sub, id) => await session.expire(sub, id);
 
 export const remove = async (sub, id) => await session.remove(sub, id);

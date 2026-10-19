@@ -32,7 +32,8 @@ authn({
 | `notify` | `object` | **required** | Notification module |
 | `table` | `object` | — | Table schema definition |
 | `encryptedFields` | `string[]` | `["value"]` | Fields to encrypt |
-| `authenticationDuration` | `number` | `100` | Minimum auth duration (ms) for timing safety |
+| `authenticationDuration` | `number` | `250` | Minimum auth duration (ms) for timing safety. Must exceed the worst-case hash time (see below) |
+| `otpMaxAttempts` | `number` | `5` | Failed `verify` attempts before a one-time credential is removed |
 | `usernameExists` | `function[]` | `[]` | Username existence check callbacks |
 | `idGenerate` | `object` | — | ID generation config |
 | `randomId` | `object` | — | Random ID options (prefix: `authn_`) |
@@ -60,24 +61,29 @@ Caller                        @1auth/authn                        Store
   │                                │  usernameExists hooks          │
   │                                ├───────────────────────────────►│
   │                                │                                │
-  │                                │  no subject? wait out the      │
-  │                                │  timer, then 401               │
+  │                                │  no subject? verify a dummy,   │
+  │                                │  wait out the timer, then 401  │
   │                                │                                │
   │                                │  selectList({ sub, type })     │
+  │                                │  (+ digest, for access tokens) │
   │                                ├───────────────────────────────►│
   │                                │◄───────────────────────────────┤
   │                                │                                │
   │                       ┌────────┴────────────┐                   │
-  │                       │ for each credential │                   │
-  │                       │  skip if unverified │                   │
-  │                       │   and not otp       │                   │
-  │                       │  skip if expired    │                   │
-  │                       │  decrypt, decode,   │                   │
-  │                       │   config.verify()   │                   │
+  │                       │ skip if unverified  │                   │
+  │                       │  and not otp        │                   │
+  │                       │ skip if expired     │                   │
+  │                       │ none left? verify   │                   │
+  │                       │  a dummy            │                   │
+  │                       │ all at once: decrypt│                   │
+  │                       │  decode, verify()   │                   │
+  │                       │  (a throw = no      │                   │
+  │                       │  match)             │                   │
   │                       └────────┬────────────┘                   │
   │                                │                                │
   │                                │  match, and otp?               │
-  │                                │  expire it now -- one use      │
+  │                                │  remove it -- lost the race    │
+  │                                │  to another request? no match  │
   │                                │  match, not otp?               │
   │                                │  write lastused                │
   │                                ├───────────────────────────────►│
@@ -95,13 +101,28 @@ Caller                        @1auth/authn                        Store
 **Every path takes the same minimum time.** `authenticationDuration` is started before the
 username is even resolved and awaited on every exit, success or failure. Without it, "no such
 user" returns in a millisecond while "wrong password" takes as long as an Argon2 hash — and
-that difference is a user-enumeration oracle. It must exceed your worst-case hash time or it
-stops covering anything.
+that difference is a user-enumeration oracle.
 
-**A one-time credential is consumed on the way out.** For `otp` configs the match expires the
-row before `authenticate` returns, so a replay of the same secret finds it already spent. The
-`cause` on the 401 distinguishes `missing`, `expired` and `invalid` — for your logs only.
+**Every path does the same work.** An unknown username, or a user with nothing to check, still
+runs `config.verify()` once against a dummy value of the same credential type, so the CPU and
+threadpool cost matches a user with one credential. Candidates are verified concurrently:
+Argon2 runs on the libuv threadpool (off the event loop), so wall time grows with
+`ceil(candidates / UV_THREADPOOL_SIZE)` hashes, not with the candidate count. At the defaults
+(~100ms per hash, 4 threads) five recovery codes take about two hash times. Keep
+`authenticationDuration` above your worst case under load, or the difference shows.
+
+**A one-time credential is consumed on the way out.** For `otp` configs the match removes the
+row before `authenticate` returns, and only the request whose `remove` deleted it succeeds. Two
+parallel requests with the same recovery code or webauthn challenge get one success and one 401.
+The `cause` on the 401 distinguishes `missing`, `expired` and `invalid` — for your logs only.
 Never return it to the caller; that is the same oracle by another route.
+
+**One bad row does not fail the rest.** A credential that cannot be decrypted (a rotated key, a
+`kms1:` row) or decoded is logged and skipped like a wrong secret.
+
+**Rate limiting is your job.** `authenticate` has no attempt counter: a password, recovery code
+or access token can be guessed as fast as you accept requests. Limit attempts per account and
+per IP in your application (or at your gateway) in front of every `authenticate` call.
 
 ## API
 
@@ -133,7 +154,7 @@ Look up a subject by username using registered `usernameExists` callbacks.
 
 ### `authenticate(credentialOptions, username, secret)`
 
-Authenticate a user with timing-safe comparison. Uses `setTimeout` to ensure constant-time responses.
+Authenticate a user with timing-safe comparison. Uses `setTimeout` to ensure constant-time responses. Set `credentialOptions.digest` to check only the row with that digest (access tokens bind a username to its own secret this way).
 
 ### `verifySecret(credentialOptions, sub, id)`
 
@@ -141,7 +162,19 @@ Mark a credential as verified.
 
 ### `verify(credentialOptions, sub, input)`
 
-Verify a credential value.
+Verify a credential value. A matching one-time credential is removed, so it verifies once. A
+failed attempt on a one-time credential (including a `verify` that throws) increments its
+`attempts` column; at `otpMaxAttempts` the credential is removed and a new one must be issued.
+The counter is read then written, so requests racing on the same row can each get a guess
+before the count catches up; keep app-level rate limiting in front of it too.
+
+Existing SQL tables need the column (`packages/authn/table/sql.js` has it for new ones):
+
+```sql
+ALTER TABLE authentications ADD COLUMN "attempts" SMALLINT DEFAULT 0;
+```
+
+On DynamoDB add `attempts` to the `sub` index projection. Rows without it count from zero.
 
 ### `expire(credentialOptions, sub, id)`
 

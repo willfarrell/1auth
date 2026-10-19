@@ -4,9 +4,8 @@
 	"description": "Generic SQL storage implementation for any client exposing a query method",
 	"type": "module",
 	"engines": {
-		"node": ">=24"
+		"node": ">=26"
 	},
-	"engineStrict": true,
 	"publishConfig": {
 		"access": "public"
 	},

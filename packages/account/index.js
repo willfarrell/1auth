@@ -44,11 +44,43 @@ export default (opt = {}) => {
 };
 export const getOptions = () => options;
 
+// Columns this package (and account-username, through `updateIdentifier`)
+// owns. Callers commonly pass request bodies straight through, so these are
+// dropped rather than trusted. `create` stays settable on insert for imports.
+// `update` isn't listed: every write stamps it after the caller's values.
+const ownedKeys = [
+	"id",
+	"sub",
+	"encryptionKey",
+	"value",
+	"digest",
+	"create",
+	"expire",
+	"remove",
+];
+// Stryker disable next-line ArrayDeclaration: no owned key is named like the mutant's entry
+const withoutOwnedKeys = (values, allowed = []) => {
+	const params = { ...values };
+	for (const key of ownedKeys) {
+		if (!allowed.includes(key)) delete params[key];
+	}
+	return params;
+};
+
+// expire() and remove() stamp the current second, so the tie is expired
+const isExpired = (account) =>
+	!!account.expire && account.expire <= nowInSeconds();
+
 export const exists = async (sub) => {
 	if (!sub || typeof sub !== "string") {
 		throw new Error("404 Not Found", { cause: { sub } });
 	}
-	return await options.store.exists(options.table, { sub });
+	const account = await options.store.select(options.table, { sub }, [
+		"sub",
+		"expire",
+	]);
+	if (!account || isExpired(account)) return;
+	return account.sub;
 };
 
 export const lookup = async (sub) => {
@@ -56,7 +88,7 @@ export const lookup = async (sub) => {
 		throw new Error("404 Not Found", { cause: { sub } });
 	}
 	const account = await options.store.select(options.table, { sub });
-	if (!account) {
+	if (!account || isExpired(account)) {
 		throw new Error("404 Not Found", { cause: { sub } });
 	}
 	const { encryptionKey: encryptedKey } = account;
@@ -74,7 +106,7 @@ export const create = async (values = {}) => {
 
 	const { encryptionKey, encryptedKey } = symmetricGenerateEncryptionKey(sub);
 	const encryptedValues = symmetricEncryptFields(
-		values,
+		withoutOwnedKeys(values, ["create"]),
 		{ encryptionKey, sub },
 		options.encryptedFields,
 	);
@@ -97,6 +129,16 @@ export const create = async (values = {}) => {
 
 // for in the clear user metadata
 export const update = async (sub, values = {}) => {
+	await write(sub, withoutOwnedKeys(values));
+};
+
+// The username (or other lookup identifier) and its digest. Only for sibling
+// packages that have already checked the digest is free.
+export const updateIdentifier = async (sub, { value, digest }) => {
+	await write(sub, { value, digest });
+};
+
+const write = async (sub, values) => {
 	if (!sub || typeof sub !== "string") {
 		throw new Error("404 Not Found", { cause: { sub } });
 	}
@@ -132,6 +174,7 @@ export const expire = async (sub) => {
 		{ sub },
 		{ expire: nowInSeconds() },
 	);
+	await options.notify?.trigger("account-expire", sub);
 };
 
 export const remove = async (sub) => {

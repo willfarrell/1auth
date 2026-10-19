@@ -5,7 +5,7 @@
 <p>
   <a href="https://github.com/willfarrell/1auth/actions/workflows/test-unit.yml"><img src="https://github.com/willfarrell/1auth/actions/workflows/test-unit.yml/badge.svg" alt="GitHub Actions unit test status"></a>
   <a href="https://github.com/willfarrell/1auth/actions/workflows/test-dast.yml"><img src="https://github.com/willfarrell/1auth/actions/workflows/test-dast.yml/badge.svg" alt="GitHub Actions dast test status"></a>
-  <a href="https://github.com/willfarrell/1auth/actions/workflows/test-perf.yml"><img src="https://github.com/willfarrell/1auth/actions/workflows/test-perf.yml/badge.svg" alt="GitHub Actions perf test status"></a>
+  <a href="https://github.com/willfarrell/1auth/actions/workflows/test-bench.yml"><img src="https://github.com/willfarrell/1auth/actions/workflows/test-bench.yml/badge.svg" alt="GitHub Actions perf test status"></a>
   <a href="https://github.com/willfarrell/1auth/actions/workflows/test-sast.yml"><img src="https://github.com/willfarrell/1auth/actions/workflows/test-sast.yml/badge.svg" alt="GitHub Actions SAST test status"></a>
   <a href="https://github.com/willfarrell/1auth/actions/workflows/test-lint.yml"><img src="https://github.com/willfarrell/1auth/actions/workflows/test-lint.yml/badge.svg" alt="GitHub Actions lint test status"></a>
   <br/>
@@ -40,7 +40,7 @@ const sub = await subject(username) // undefined when nothing matches
 const { secret } = await createChallenge(sub, { username })
 ```
 
-With a `sub`, nothing changes. Without one, and only when `username` is passed, it returns a decoy: a real challenge over a single credential id derived from a seasoned checksum of the username. That id is stable for a username across probes, the way a real credential is, and cannot be recomputed without the pepper, so a decoy cannot be told from a real id offline. Its length is drawn from the seed across the lengths real authenticators emit, because one length shared by every decoy would identify them as a set.
+With a `sub` that has credentials, nothing changes. With a `sub` that has none, or without one when `username` is passed, it returns a decoy: a real challenge over a single credential id derived from a seasoned checksum of the username. That id is stable for a username across probes, the way a real credential is, and cannot be recomputed without the pepper, so a decoy cannot be told from a real id offline. Its length is drawn from the seed across the lengths real authenticators emit, because one length shared by every decoy would identify them as a set.
 
 Nothing is stored for a decoy, so the returned object carries no `id`. The assertion it answers fails as an ordinary bad credential.
 

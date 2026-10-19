@@ -124,15 +124,22 @@ export const create = async (client, table = name) => {
 								"verify",
 								"expire",
 								"lastused",
+								"attempts",
 							],
 						},
 					},
 					{
 						IndexName: "digest",
+						// type as the range key, as messenger's: store-dynamodb makes
+						// both key conditions on this index (access token authenticate)
 						KeySchema: [
 							{
 								AttributeName: "digest",
 								KeyType: "HASH",
+							},
+							{
+								AttributeName: "type",
+								KeyType: "RANGE",
 							},
 						],
 						Projection: {

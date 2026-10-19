@@ -2,12 +2,15 @@ import { deepEqual, equal, notEqual, ok, throws } from "node:assert/strict";
 import { describe, it, test } from "node:test";
 import account, {
 	create as accountCreate,
+	expire as accountExpire,
 	getOptions as accountGetOptions,
 	remove as accountRemove,
 } from "@1auth/account";
 // import * as mockAccountDynamoDBTable from "@1auth/account/table/dynamodb.js";
 import * as mockAccountSQLTable from "@1auth/account/table/sql.js";
 import crypto, {
+	createSeasonedDigest,
+	nowInSeconds,
 	randomChecksumPepper,
 	randomChecksumSalt,
 	symmetricRandomEncryptionKey,
@@ -166,6 +169,89 @@ const tests = (config) => {
 			ok(db.digest);
 			notEqual(db.digest, username);
 		});
+		it("Will store the sanitized username, the one it is keyed by", async () => {
+			// the stored value is what `recover` sends and apps display; the raw
+			// input can differ from the identity it claims (`Ádmin` is `admin`)
+			await accountUsernameCreate(sub, " ÜserNamé ");
+			const user = await accountUsernameLookup("username");
+			equal(user.value, "username");
+			const db = await store.select(accountGetOptions().table, { sub });
+			equal(db.digest, createSeasonedDigest("username"));
+		});
+		it("Will NOT let two concurrent claims both succeed", async () => {
+			const subOther = await accountCreate();
+			await accountUsernameCreate(subOther, username);
+			// the second claim passed its exists check before the first wrote
+			let raced = false;
+			configure({
+				store: {
+					...store,
+					exists: async (...args) => {
+						if (raced) return await store.exists(...args);
+						raced = true;
+					},
+				},
+			});
+			await rejects(
+				() => accountUsernameCreate(sub, username),
+				"409 Conflict",
+				{
+					username,
+					usernameSanitized: username,
+				},
+			);
+			configure();
+			equal(
+				(await store.select(accountGetOptions().table, { sub })).digest,
+				null,
+			);
+			equal(await accountUsernameExists(username), subOther);
+		});
+		it("Will reject a taken username before writing", async () => {
+			const subOther = await accountCreate();
+			await accountUsernameCreate(subOther, username);
+			mocks.log.mock.resetCalls();
+			await rejects(() => accountUsernameCreate(sub, username), "409 Conflict");
+			// DynamoDB has no unique index to fall back on, so the check has to hold
+			const methods = mocks.log.mock.calls.map((call) => call.arguments[0]);
+			ok(methods.some((method) => method.includes("exists(")));
+			ok(!methods.some((method) => method.includes("update(")));
+		});
+		it("Will read only what `exists` needs", async () => {
+			await accountUsernameCreate(sub, username);
+			const selects = [];
+			configure({
+				store: {
+					...store,
+					select: async (table, filters, fields) => {
+						selects.push({ filters, fields });
+						return await store.select(table, filters, fields);
+					},
+				},
+			});
+			await accountUsernameExists(username);
+			configure();
+			deepEqual(selects, [
+				{
+					filters: { digest: createSeasonedDigest(username) },
+					fields: ["sub", "expire"],
+				},
+			]);
+		});
+		it("Will pass on a write failure that is not a conflict", async () => {
+			configure({
+				store: {
+					...store,
+					exists: async () => undefined,
+				},
+			});
+			await rejects(
+				() => accountUsernameCreate("sub_111111", username),
+				"404 Not Found",
+				{ sub: "sub_111111" },
+			);
+			configure();
+		});
 	});
 
 	describe("`exists`", () => {
@@ -177,6 +263,39 @@ const tests = (config) => {
 		it("Can check is a username exists (not exists)", async () => {
 			const user = await accountUsernameExists("notfound");
 			equal(user, undefined);
+		});
+		it("Will return the sub holding the username", async () => {
+			await accountCreate();
+			await accountUsernameCreate(sub, username);
+			equal(await accountUsernameExists(username), sub);
+		});
+		it("Will NOT resolve the username of an expired account", async () => {
+			await accountUsernameCreate(sub, username);
+			await accountExpire(sub);
+			equal(await accountUsernameExists(username), undefined);
+			equal(await accountUsernameLookup(username), undefined);
+		});
+		it("Will NOT resolve the username of a removed account", async () => {
+			await accountUsernameCreate(sub, username);
+			await accountRemove(sub);
+			equal(await accountUsernameExists(username), undefined);
+			equal(await accountUsernameLookup(username), undefined);
+			// but the name stays held until the row is swept
+			const subOther = await accountCreate();
+			await rejects(
+				() => accountUsernameCreate(subOther, username),
+				"409 Conflict",
+			);
+		});
+		it("Will resolve the username of an account expiring in the future", async () => {
+			await accountUsernameCreate(sub, username);
+			await store.update(
+				accountGetOptions().table,
+				{ sub },
+				{ expire: nowInSeconds() + 60 },
+			);
+			equal(await accountUsernameExists(username), sub);
+			equal((await accountUsernameLookup(username)).sub, sub);
 		});
 	});
 
@@ -409,7 +528,7 @@ const tests = (config) => {
 		});
 	});
 };
-describe("account-username", () => {
+describe("@1auth/account-username", () => {
 	for (const storeKey of Object.keys(mockStores)) {
 		describe(`using store-${storeKey}`, () => {
 			tests(mockStores[storeKey]);

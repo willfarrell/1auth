@@ -103,12 +103,16 @@ export const sanitize = (value) => {
 	if (!value || typeof value !== "string") {
 		throw new Error("400 Bad Request", { cause: { value } });
 	}
-	let [username, domain] = value.split("@");
+	const parts = value.split("@");
+	let [username, domain] = parts;
 
-	// not a valid email
-	if (!domain) return value;
+	// not a valid email, left for `validate` to reject. Dropping a second `@`
+	// here would key `victim@x.com@evil.test` as `victim@x.com`.
+	if (parts.length !== 2 || !domain) return value;
 
 	// punycode/IDNA only applies to domains (RFC 5891), not local part (RFC 6531)
+	// ponytail: `+tag` is stripped for every domain, not only providers known to
+	// support subaddressing; there is no such list yet.
 	username = username.trimStart().split("+")[0].toLowerCase();
 	domain = toASCII(domain).trimEnd().toLowerCase();
 
@@ -125,15 +129,12 @@ export const sanitize = (value) => {
 const regexp =
 	/^[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*@(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i;
 export const validate = (value) => {
-	const [, domain] = value.split("@");
 	if (!regexp.test(value)) {
 		return "400 Bad Request";
 	}
-	if (
-		options.usernameBlacklist.filter(
-			(username) => `${username}@${domain}` === value,
-		).length
-	) {
+	// the pattern allows exactly one `@`
+	const [username] = value.split("@");
+	if (options.usernameBlacklist.includes(username)) {
 		return "409 Conflict";
 	}
 	return true;

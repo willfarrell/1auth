@@ -4,9 +4,8 @@
 	"description": "Messaging framework for sending notifications and verification codes",
 	"type": "module",
 	"engines": {
-		"node": ">=24"
+		"node": ">=26"
 	},
-	"engineStrict": true,
 	"publishConfig": {
 		"access": "public"
 	},

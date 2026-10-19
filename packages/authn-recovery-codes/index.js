@@ -6,6 +6,7 @@ import {
 	createList as authnCreateList,
 	getOptions as authnGetOptions,
 	list as authnList,
+	makeType as authnMakeType,
 	remove as authnRemove,
 	removeList as authnRemoveList,
 } from "@1auth/authn";
@@ -70,15 +71,19 @@ export const create = async (sub) => {
 	return secrets;
 };
 
-export const update = async (sub) => {
+const selectIds = async (sub) => {
 	assertSub(sub);
-	const existingSecrets = await options.store.selectList(options.table, {
-		sub,
-		type: `${options.secret.id}-${options.secret.type}`,
-	});
-	const secrets = await createSecrets(sub, options.count);
+	const rows = await options.store.selectList(
+		options.table,
+		{ sub, type: authnMakeType(options.secret) },
+		["id"],
+	);
+	return rows.map((item) => item.id);
+};
 
-	const id = existingSecrets.map((item) => item.id);
+export const update = async (sub) => {
+	const id = await selectIds(sub);
+	const secrets = await createSecrets(sub, options.count);
 	await authnRemoveList(options.secret, sub, id);
 
 	await options.notify.trigger(`${options.notifyId}-update`, sub);
@@ -89,14 +94,7 @@ export const remove = async (sub, id) => {
 	if (id) {
 		await authnRemove(options.secret, sub, id);
 	} else {
-		assertSub(sub);
-		const ids = await options.store
-			.selectList(options.table, {
-				sub,
-				type: `${options.secret.id}-${options.secret.type}`,
-			})
-			.then((res) => res.map((item) => item.id));
-		await authnRemoveList(options.secret, sub, ids);
+		await authnRemoveList(options.secret, sub, await selectIds(sub));
 	}
 
 	await options.notify.trigger(`${options.notifyId}-remove`, sub);

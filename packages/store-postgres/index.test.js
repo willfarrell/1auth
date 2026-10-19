@@ -1,4 +1,5 @@
 import { deepEqual, equal, ok, strictEqual } from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { describe, it, test } from "node:test";
 import tests from "../store/index.test.js";
 import * as store from "./index.js";
@@ -40,7 +41,27 @@ const truncateExtTable = async () =>
 const dropExtTable = async () =>
 	await mocks.storeClient.query(`DROP TABLE IF EXISTS ${extTable}`);
 
-describe("store-postgres", () => {
+describe("@1auth/store-postgres", () => {
+	describe("mock", () => {
+		// The mock connects at import, so each case needs a fresh process
+		const isReadyWith = (env) =>
+			execFileSync(
+				process.execPath,
+				[
+					"--input-type=module",
+					"-e",
+					`const m = await import(${JSON.stringify(new URL("./mock.js", import.meta.url).href)}); console.log(m.isReady()); await m.storeClient.after();`,
+				],
+				{ env: { ...process.env, ...env }, encoding: "utf8" },
+			).trim();
+		it("Should not be ready when SKIP_POSTGRES is set, even with the container up", () => {
+			equal(isReadyWith({ SKIP_POSTGRES: "1" }), "false");
+		});
+		it("Should be ready when the container is up", () => {
+			equal(isReadyWith({ SKIP_POSTGRES: "" }), "true");
+		});
+	});
+
 	describe("exports", () => {
 		it("Should expose getPlaceholder bound to the configured placeholder", () => {
 			equal(store.getPlaceholder(1), "$1");

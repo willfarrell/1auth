@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import tests from "../store/index.test.js";
 import * as store from "./index.js";
 import {
+	createSqlStore,
 	getPlaceholderFor,
 	log,
 	makeInsertList,
@@ -23,6 +24,24 @@ store.default({
 const mocks = { ...mockDatabase, id: "sql", table: mockDatabaseTable };
 
 const nowInSeconds = () => Math.floor(Date.now() / 1000);
+
+// Unlike try/catch, these fail when nothing is thrown
+const throwsError = (fn) => {
+	try {
+		fn();
+	} catch (e) {
+		return e;
+	}
+	throw new Error("Expected an error");
+};
+const rejectsError = async (fn) => {
+	try {
+		await fn();
+	} catch (e) {
+		return e;
+	}
+	throw new Error("Expected an error");
+};
 
 // Swap in a client that records the SQL it is handed and replays a canned
 // result, so the exact statement and the defensive reads around it are assertable.
@@ -45,7 +64,7 @@ const withClient = async (result, fn) => {
 	}
 };
 
-describe("store-sql", () => {
+describe("@1auth/store-sql", () => {
 	tests(store, mocks);
 	describe("generated sql", () => {
 		it("Should select only sub in exists", async () => {
@@ -89,6 +108,111 @@ describe("store-sql", () => {
 					.returned,
 				false,
 			);
+		});
+	});
+	describe("createSqlStore", () => {
+		it("Should keep options per store", async () => {
+			const seen = [];
+			const a = createSqlStore({ id: "a" });
+			const b = createSqlStore({ id: "b", placeholder: "$" });
+			a.default({
+				client: { query: async (sql) => seen.push(`a:${sql}`) && [] },
+			});
+			b.default({
+				client: { query: async (sql) => seen.push(`b:${sql}`) && [] },
+			});
+			await a.selectList("t", { id: 1 });
+			await b.selectList("t", { id: 1 });
+			deepStrictEqual(seen, [
+				'a:SELECT * FROM t WHERE "id" = ?',
+				'b:SELECT * FROM t WHERE "id" = $1',
+			]);
+			equal(a.getPlaceholder(2), "?");
+			equal(b.getPlaceholder(2), "$2");
+		});
+		it("Should hand the client to a custom query adapter", async () => {
+			const calls = [];
+			const client = {};
+			const s = createSqlStore({
+				id: "custom",
+				query: async (...args) => {
+					calls.push(args);
+					return [{ sub: "sub_000" }];
+				},
+			});
+			s.default({ client });
+			strictEqual(await s.exists("t", { id: 1 }), "sub_000");
+			strictEqual(calls[0][0], client);
+			deepStrictEqual(calls[0].slice(1), [
+				'SELECT "sub" FROM t WHERE "id" = ? LIMIT 1',
+				[1],
+			]);
+		});
+	});
+	describe("identifiers", () => {
+		const malicious = `name" = 'x', "encryptionKey`;
+		it("Should reject an unsafe key in values, filters and fields", async () => {
+			for (const [key, args] of [
+				[malicious, [{}, { [malicious]: "x" }]],
+				[malicious, [{ [malicious]: "x" }]],
+				[malicious, [{}, {}, [malicious]]],
+				["1a", [{ "1a": "x" }]],
+				["", [{ "": "x" }]],
+				["a-b", [{ "a-b": "x" }]],
+				["a\n", [{ "a\n": "x" }]],
+			]) {
+				const e = throwsError(() => makeSqlPartsFor("?", ...args));
+				equal(e.message, "@1auth/store-sql invalid identifier");
+				deepStrictEqual(e.cause, { key });
+			}
+		});
+		it("Should accept letters, digits and underscores", async () => {
+			equal(
+				makeSqlPartsFor("?", { _a1: 1, A_b: 2 }).where,
+				'WHERE "_a1" = ? AND "A_b" = ?',
+			);
+		});
+		it("Should refuse an injected update before querying", async () => {
+			const { seen } = await withClient([], () =>
+				rejectsError(() =>
+					store.update("test", { sub: "sub_000", id: 1 }, { [malicious]: 1 }),
+				),
+			);
+			deepStrictEqual(seen, []);
+		});
+	});
+	describe("filters", () => {
+		it("Should reject an undefined filter value", async () => {
+			const e = throwsError(() =>
+				makeSqlPartsFor("?", { a: "a", b: undefined }),
+			);
+			equal(e.message, "@1auth/store-sql filter value is undefined");
+			deepStrictEqual(e.cause, { key: "b" });
+		});
+		it("Should reject an empty array filter value", async () => {
+			const e = throwsError(() => makeSqlPartsFor("?", { a: [] }));
+			equal(e.message, "@1auth/store-sql filter value is an empty array");
+			deepStrictEqual(e.cause, { key: "a" });
+		});
+		it("Should refuse update and remove without a filter", async () => {
+			for (const fn of [
+				() => store.update("test", {}, { value: "x" }),
+				() => store.update("test", undefined, { value: "x" }),
+				() => store.remove("test", {}),
+				() => store.remove("test"),
+			]) {
+				const { seen, returned } = await withClient([], () => rejectsError(fn));
+				equal(
+					returned.message,
+					"@1auth/store-sql refusing to write without a filter",
+				);
+				deepStrictEqual(returned.cause, { table: "test" });
+				deepStrictEqual(seen, []);
+			}
+		});
+		it("Should still read a whole table without a filter", async () => {
+			const { seen } = await withClient([], () => store.selectList("test"));
+			equal(seen[0].sql, "SELECT * FROM test ");
 		});
 	});
 	describe("option defaults", () => {
@@ -210,20 +334,6 @@ describe("store-sql", () => {
 		});
 		it("Should return an empty {where} without filters", async () => {
 			const { where, parameters } = makeSqlPartsFor("?", {});
-			equal(where, "");
-			deepStrictEqual(parameters, []);
-		});
-		it("Should skip undefined filter values", async () => {
-			const { where, parameters } = makeSqlPartsFor("$", {
-				a: "a",
-				b: undefined,
-				c: "c",
-			});
-			equal(where, 'WHERE "a" = $1 AND "c" = $2');
-			deepStrictEqual(parameters, ["a", "c"]);
-		});
-		it("Should skip an empty array filter value", async () => {
-			const { where, parameters } = makeSqlPartsFor("$", { a: [] });
 			equal(where, "");
 			deepStrictEqual(parameters, []);
 		});

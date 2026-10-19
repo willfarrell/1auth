@@ -4,6 +4,7 @@ import {
 	equal,
 	ok,
 	strictEqual,
+	throws,
 } from "node:assert/strict";
 import { describe, it, test } from "node:test";
 import tests from "../store/index.test.js";
@@ -58,7 +59,7 @@ const withClient = async (result, fn) => {
 	}
 };
 
-describe("store-sqlite", () => {
+describe("@1auth/store-sqlite", () => {
 	tests(store, mocks);
 	describe("generated sql", () => {
 		it("Should select only sub in exists", async () => {
@@ -194,19 +195,15 @@ describe("store-sqlite", () => {
 			equal(where, "");
 			deepStrictEqual(parameters, []);
 		});
-		it("Should skip undefined filter values", async () => {
-			const { where, parameters } = makeSqlPartsFor("$", {
-				a: "a",
-				b: undefined,
-				c: "c",
+		it("Should reject undefined filter values", async () => {
+			throws(() => makeSqlPartsFor("$", { a: "a", b: undefined }), {
+				message: "@1auth/store-sql filter value is undefined",
 			});
-			equal(where, 'WHERE "a" = $1 AND "c" = $2');
-			deepStrictEqual(parameters, ["a", "c"]);
 		});
-		it("Should skip an empty array filter value", async () => {
-			const { where, parameters } = makeSqlPartsFor("$", { a: [] });
-			equal(where, "");
-			deepStrictEqual(parameters, []);
+		it("Should reject an empty array filter value", async () => {
+			throws(() => makeSqlPartsFor("$", { a: [] }), {
+				message: "@1auth/store-sql filter value is an empty array",
+			});
 		});
 		it("Should continue the index from values into filters", async () => {
 			const { update, where, parameters } = makeSqlPartsFor(
@@ -553,24 +550,16 @@ describe("store-sqlite", () => {
 			deepEqual(parameters, []);
 		});
 
-		it("Should skip undefined filter values", async () => {
-			store.default({ placeholder: "$" });
-			const { where, parameters } = store.makeSqlParts({
-				a: "a",
-				b: undefined,
-				c: "c",
+		it("Should reject undefined filter values", async () => {
+			throws(() => store.makeSqlParts({ a: "a", b: undefined }), {
+				message: "@1auth/store-sql filter value is undefined",
 			});
-			equal(where, 'WHERE "a" = $1 AND "c" = $2');
-			deepEqual(parameters, ["a", "c"]);
 		});
 
-		it("Should handle empty array filter value", async () => {
-			store.default({ placeholder: "$" });
-			const { where, parameters } = store.makeSqlParts({
-				a: [],
+		it("Should reject an empty array filter value", async () => {
+			throws(() => store.makeSqlParts({ a: [] }), {
+				message: "@1auth/store-sql filter value is an empty array",
 			});
-			equal(where, "");
-			deepEqual(parameters, []);
 		});
 	});
 
@@ -827,16 +816,16 @@ describe("store-sqlite", () => {
 			});
 		});
 
-		describe("count edge cases", () => {
-			it("Should count all rows with empty filters", async () => {
+		describe("row counts", () => {
+			it("Should list all rows with empty filters", async () => {
 				store.default({ placeholder: "?" });
 				await store.insert(table, { id: 1, sub: "sub_000", value: "a" });
 				await store.insert(table, { id: 2, sub: "sub_001", value: "b" });
-				const result = await store.count(table);
+				const result = (await store.selectList(table)).length;
 				equal(result, 2);
 			});
 
-			it("Should return correct filtered count", async () => {
+			it("Should list only the filtered rows", async () => {
 				store.default({ placeholder: "?" });
 				await store.insert(table, {
 					id: 1,
@@ -853,9 +842,10 @@ describe("store-sqlite", () => {
 					sub: "sub_001",
 					value: "c",
 				});
-				const all = await store.count(table);
+				const all = (await store.selectList(table)).length;
 				strictEqual(all, 3);
-				const filtered = await store.count(table, { sub: "sub_000" });
+				const filtered = (await store.selectList(table, { sub: "sub_000" }))
+					.length;
 				strictEqual(filtered, 2);
 			});
 		});
@@ -903,22 +893,6 @@ describe("store-sqlite", () => {
 			});
 		});
 
-		describe("updateList edge cases", () => {
-			it("Should return settled results from updateList", async () => {
-				store.default({ placeholder: "?" });
-				await store.insertList(table, [
-					{ id: 1, sub: "sub_000", value: "a" },
-					{ id: 2, sub: "sub_000", value: "b" },
-				]);
-				const results = await store.updateList(table, [{ id: 1 }, { id: 2 }], {
-					value: "z",
-				});
-				strictEqual(results.length, 2);
-				strictEqual(results[0].status, "fulfilled");
-				strictEqual(results[1].status, "fulfilled");
-			});
-		});
-
 		describe("timeToLiveKey edge cases", () => {
 			it("Should skip timeToLiveKey when falsy", async () => {
 				store.default({ placeholder: "?", timeToLiveKey: "" });
@@ -945,14 +919,13 @@ describe("store-sqlite", () => {
 				});
 				const ex = await store.exists(table, { id: 1 });
 				strictEqual(ex, "sub_000");
-				const cnt = await store.count(table, { id: 1 });
+				const cnt = (await store.selectList(table, { id: 1 })).length;
 				strictEqual(cnt, 1);
 				const row = await store.select(table, { id: 1 });
 				strictEqual(row.value, "v");
 				const list = await store.selectList(table, { id: 1 });
 				strictEqual(list.length, 1);
 				await store.update(table, { id: 1 }, { value: "w" });
-				await store.updateList(table, [{ id: 1 }], { value: "x" });
 				await store.remove(table, { id: 1 });
 				store.default({
 					log: (...args) => mocks.log(...args),
@@ -1055,10 +1028,10 @@ describe("store-sqlite", () => {
 			const tmpTable = "test_table_ops";
 			await mockDatabaseTable.create(mocks.storeClient, tmpTable);
 			await store.insert(tmpTable, { id: 1, sub: "s", value: "v" });
-			const before = await store.count(tmpTable);
+			const before = (await store.selectList(tmpTable)).length;
 			strictEqual(before, 1);
 			await mockDatabaseTable.truncate(mocks.storeClient, tmpTable);
-			const after = await store.count(tmpTable);
+			const after = (await store.selectList(tmpTable)).length;
 			strictEqual(after, 0);
 			await mockDatabaseTable.drop(mocks.storeClient, tmpTable);
 		});
@@ -1070,7 +1043,7 @@ describe("store-sqlite", () => {
 				value: "v",
 			});
 			await mockDatabaseTable.truncate(mocks.storeClient);
-			const cnt = await store.count(mockDatabaseTable.name);
+			const cnt = (await store.selectList(mockDatabaseTable.name)).length;
 			strictEqual(cnt, 0);
 			await mockDatabaseTable.drop(mocks.storeClient);
 			await mockDatabaseTable.create(mocks.storeClient);
