@@ -16,8 +16,7 @@ export const createSqlStore = ({
 }) => {
 	const options = {
 		id,
-		// Stryker disable next-line BooleanLiteral: overwritten by default() before observation
-		log: false,
+		log: undefined,
 		client: undefined, // passed to `query`
 		// number of seconds after expire before removal
 		// 10d chosen based on EFF DNT Policy
@@ -281,16 +280,13 @@ export const normalizeValues = (values) => {
 	values.expire &&= new Date(values.expire * 1000).toISOString();
 	values.remove &&= new Date(values.remove * 1000).toISOString();
 	for (const [key, v] of Object.entries(values)) {
-		// Stryker disable next-line ConditionalExpression,StringLiteral: dropping the
-		// string guard is an equivalent mutant -- strings then fall through to
-		// String(v), which returns them unchanged.
-		if (v !== null && typeof v !== "string" && typeof v !== "number") {
-			values[key] =
-				v === undefined
-					? null
-					: typeof v === "object"
-						? JSON.stringify(v)
-						: String(v);
+		if (v === undefined) {
+			values[key] = null;
+		} else if (v !== null && typeof v === "object") {
+			values[key] = JSON.stringify(v);
+		} else if (v !== null && typeof v !== "number") {
+			// strings come back unchanged
+			values[key] = String(v);
 		}
 	}
 };

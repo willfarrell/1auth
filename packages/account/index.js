@@ -58,11 +58,10 @@ const ownedKeys = [
 	"expire",
 	"remove",
 ];
-// Stryker disable next-line ArrayDeclaration: no owned key is named like the mutant's entry
-const withoutOwnedKeys = (values, allowed = []) => {
+const withoutOwnedKeys = (values, allowed) => {
 	const params = { ...values };
 	for (const key of ownedKeys) {
-		if (!allowed.includes(key)) delete params[key];
+		if (!allowed?.includes(key)) delete params[key];
 	}
 	return params;
 };
