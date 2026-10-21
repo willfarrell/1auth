@@ -34,7 +34,7 @@
 		"vite": "^8.3.0",
 		"vite-plugin-mkcert": "^2.0.0",
 		"vite-plugin-sri": "^0.0.2",
-		"wrangler": "^4.143.0"
+		"wrangler": "^4.147.0"
 	},
 	"imports": {
 		"#components/*": "./src/components/*",
