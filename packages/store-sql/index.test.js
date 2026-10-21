@@ -214,6 +214,13 @@ describe("@1auth/store-sql", () => {
 			const { seen } = await withClient([], () => store.selectList("test"));
 			equal(seen[0].sql, "SELECT * FROM test ");
 		});
+		it("Should parse every row selectList returns", async () => {
+			const { returned } = await withClient(
+				[{ otp: 1, create: "2024-01-01T00:00:00.000Z" }],
+				() => store.selectList("test"),
+			);
+			deepStrictEqual(returned, [{ otp: true, create: 1704067200 }]);
+		});
 	});
 	describe("option defaults", () => {
 		it("Should default timeToLiveExpireOffset to 10 days", async () => {

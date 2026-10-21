@@ -377,6 +377,8 @@ describe("@1auth/crypto", () => {
 				verifySecretHash(hash.replace("m=15", "m=32768"), "1auth"),
 				{
 					name: "RangeError",
+					message:
+						"memoryCost must be a log2 exponent between 3 and 31, received 32768",
 				},
 			);
 		});
@@ -822,6 +824,18 @@ describe("@1auth/crypto", () => {
 			const values = { value: "1auth", other: "kept" };
 			deepEqual(symmetricEncryptFields(values, { encryptionKey, sub }), values);
 			deepEqual(symmetricDecryptFields(values, { encryptionKey, sub }), values);
+		});
+		it("Should refuse to decrypt under a different sub", () => {
+			// the sub is bound as associated data, so the auth tag must not verify
+			const { encryptionKey } = symmetricGenerateEncryptionKey("sub_000000");
+			const encrypted = symmetricEncrypt("1auth", {
+				encryptionKey,
+				sub: "sub_000000",
+			});
+			throws(
+				() => symmetricDecrypt(encrypted, { encryptionKey, sub: "sub_000001" }),
+				{ message: "Unsupported state or unable to authenticate data" },
+			);
 		});
 		it("Should honour a non-default decoding and encoding", () => {
 			const sub = "sub_000000";
