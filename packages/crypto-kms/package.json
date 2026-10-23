@@ -1,6 +1,6 @@
 {
 	"name": "@1auth/crypto-kms",
-	"version": "0.0.0-rc.7",
+	"version": "0.0.0-rc.8",
 	"description": "AWS KMS encryption key provider, keeps the key-encryption key inside an isolated security module",
 	"type": "module",
 	"engines": {
@@ -53,7 +53,7 @@
 	},
 	"homepage": "https://github.com/willfarrell/1auth",
 	"dependencies": {
-		"@1auth/crypto": "0.0.0-rc.7"
+		"@1auth/crypto": "0.0.0-rc.8"
 	},
 	"peerDependencies": {
 		"@aws-sdk/client-kms": "^3.0.0"

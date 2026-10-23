@@ -1,6 +1,6 @@
 {
 	"name": "@1auth/store-d1",
-	"version": "0.0.0-rc.7",
+	"version": "0.0.0-rc.8",
 	"description": "Cloudflare D1 storage implementation for serverless SQLite persistence",
 	"type": "module",
 	"engines": {
@@ -56,6 +56,6 @@
 	},
 	"homepage": "https://github.com/willfarrell/1auth",
 	"dependencies": {
-		"@1auth/store-sql": "0.0.0-rc.7"
+		"@1auth/store-sql": "0.0.0-rc.8"
 	}
 }

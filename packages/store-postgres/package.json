@@ -1,6 +1,6 @@
 {
 	"name": "@1auth/store-postgres",
-	"version": "0.0.0-rc.7",
+	"version": "0.0.0-rc.8",
 	"description": "PostgreSQL storage implementation for relational database persistence",
 	"type": "module",
 	"engines": {
@@ -54,7 +54,7 @@
 	},
 	"homepage": "https://github.com/willfarrell/1auth",
 	"dependencies": {
-		"@1auth/store-sql": "0.0.0-rc.7"
+		"@1auth/store-sql": "0.0.0-rc.8"
 	},
 	"devDependencies": {
 		"pg": "8.23.1"
