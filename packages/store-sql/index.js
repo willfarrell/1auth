@@ -223,29 +223,25 @@ export const makeSqlPartsFor = (
 	return { select, insert, update, where, parameters };
 };
 
-// Single multi-row `("a", "b") VALUES (?,?),(?,?)` for drivers that batch in one statement
+// Single multi-row `("a", "b") VALUES (?,?),(?,?)` for drivers that batch in one statement.
+// Rows need not share keys (`withTimeToLive` adds `remove` only to rows with
+// `expire`) or their order, so every row gets every column, matched by name.
 export const makeInsertList = (placeholder, valuesList) => {
-	const insertValues = [];
-	let insertParameters = [];
-	for (let i = 0, l = valuesList.length; i < l; i++) {
-		const values = valuesList[i];
-		const { insert, parameters } = makeSqlPartsFor(
-			placeholder,
-			{},
-			values,
-			undefined, // no fields: `select` is unused here
-			i * Object.keys(values).length + 1,
-		);
-		if (i) {
-			insertValues.push(insert.split("VALUES")[1]); // (?)
-		} else {
-			insertValues.push(insert); // (name) VALUES (?)
-		}
-
-		insertParameters = insertParameters.concat(parameters);
-	}
-
-	return { insert: insertValues.join(","), parameters: insertParameters };
+	if (!valuesList.length) return { insert: "", parameters: [] };
+	const columns = [...new Set(valuesList.flatMap(Object.keys))];
+	const parameters = [];
+	let idx = 1;
+	const groups = valuesList.map((values) => {
+		const group = columns.map((column) => {
+			parameters.push(Object.hasOwn(values, column) ? values[column] : null);
+			return getPlaceholderFor(placeholder, idx++);
+		});
+		return `(${group.join(",")})`;
+	});
+	return {
+		insert: `(${columns.map(quote).join(", ")}) VALUES ${groups.join(", ")}`,
+		parameters,
+	};
 };
 
 export const withTimeToLive = (values, options) => {

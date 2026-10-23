@@ -281,8 +281,9 @@ export const verifyToken = async (type, sub, token, sourceId) => {
 		["id", "sub", "verify"],
 	);
 	for (const claim of claims) {
-		// this account's own row was verified just above
-		if (claim.verify) continue;
+		// this account's own row was verified just above, but a lagging index
+		// (DynamoDB GSI) can still return it without `verify`
+		if (claim.verify || claim.sub === sub) continue;
 		await authnGetOptions().store.remove(authnGetOptions().table, {
 			sub: claim.sub,
 			sourceId: claim.id,

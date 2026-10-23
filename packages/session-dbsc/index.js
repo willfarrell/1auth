@@ -5,6 +5,7 @@ import {
 	assertId,
 	createSeasonedDigest,
 	nowInSeconds,
+	randomAlphaNumeric,
 	safeEqual,
 	symmetricSignatureSign,
 	symmetricSignatureVerify,
@@ -136,8 +137,12 @@ const assertCookie = (nameKey, attributesKey) => {
 };
 export const getOptions = () => options;
 
+// The random part keeps two tokens issued in the same second apart: a spent
+// challenge handed out again would be refused on use
 const signedToken = (domain, sessionId) =>
-	symmetricSignatureSign(`${domain}:${nowInSeconds()}:${sessionId}`);
+	symmetricSignatureSign(
+		`${domain}:${nowInSeconds()}:${randomAlphaNumeric(16)}:${sessionId}`,
+	);
 
 const signedTokenVerify = (domain, value, sessionId, expire) => {
 	if (typeof value !== "string" || typeof sessionId !== "string") return false;
@@ -148,7 +153,9 @@ const signedTokenVerify = (domain, value, sessionId, expire) => {
 	const rest = data.substring(prefix.length);
 	const separator = rest.indexOf(":");
 	if (separator < 0) return false;
-	if (!safeEqual(rest.substring(separator + 1), sessionId)) return false;
+	const randomSeparator = rest.indexOf(":", separator + 1);
+	if (randomSeparator < 0) return false;
+	if (!safeEqual(rest.substring(randomSeparator + 1), sessionId)) return false;
 	const created = Number(rest.substring(0, separator));
 	const now = nowInSeconds();
 	return created <= now && now < created + expire;
@@ -249,6 +256,7 @@ export const verifyProof = async (
 	} catch {
 		throw unauthorized();
 	}
+	if (!payload || typeof payload !== "object") throw unauthorized();
 	// Own string keys only: an object `alg` throws converting to a key, and a
 	// name like "toString" would find Object.prototype's
 	const algorithm =
@@ -388,15 +396,21 @@ export const register = async (
 // Refresh only: a registration challenge names no session, so every browser
 // registering in the same second is handed the same one.
 const spendChallenge = async (sub, jti, cause) => {
+	const { store } = session.getOptions();
+	const spent = { sub, id: createSeasonedDigest(jti) };
 	try {
-		await session.getOptions().store.insert(options.challengeTable, {
-			sub,
-			id: createSeasonedDigest(jti),
+		await store.insert(options.challengeTable, {
+			...spent,
 			expire: nowInSeconds() + options.challengeExpire,
 		});
-	} catch {
-		// 403, like any other unusable challenge: the browser fetches a fresh one
-		throw new Error("403 Forbidden", { cause });
+	} catch (e) {
+		// 403, like any other unusable challenge: the browser fetches a fresh one.
+		// Only for a row that is already there: a missing table or an outage
+		// answered as 403 would loop the browser with nothing logged.
+		if (await store.exists(options.challengeTable, spent)) {
+			throw new Error("403 Forbidden", { cause });
+		}
+		throw e;
 	}
 };
 
@@ -425,7 +439,14 @@ export const refresh = async (
 	// moved by rotate(), so checking it here is the whole termination rule. The
 	// dead COOKIE is not this check: that is the browser's Max-Age, and it being
 	// dead is precisely why the browser is here.
-	if (binding.expire && binding.expire < nowInSeconds()) {
+	// Written as "not live", like `lookup`, so a row missing `expire` or `update`
+	// fails closed. A refresh is not use, so it never moves `update` itself.
+	const now = nowInSeconds();
+	const { idleExpire } = session.getOptions();
+	if (
+		!(now <= binding.expire) ||
+		(idleExpire && !(now <= binding.update + idleExpire))
+	) {
 		throw new Error("401 Unauthorized", { cause: { sessionId } });
 	}
 	const { payload } = await verifyProof(proof, {

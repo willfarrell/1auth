@@ -445,6 +445,15 @@ const tests = (config) => {
 				false,
 			);
 		});
+		it("Will reject a correctly signed payload with no random part", () => {
+			equal(
+				dbscBoundTokenVerify(
+					session.sign(`dbsc:${nowInSeconds()}:session_1`),
+					"session_1",
+				),
+				false,
+			);
+		});
 	});
 
 	describe("token domain separation", () => {
@@ -704,6 +713,18 @@ const tests = (config) => {
 					),
 				"401 Unauthorized",
 				{ aud: registerUrl, sessionId: "" },
+			);
+		});
+		it("Will refuse a refresh proof whose payload is not an object", async () => {
+			// with a session named, `payload.sub` is read outside the optional chain
+			await rejects(
+				() =>
+					dbscVerifyProof(
+						`${base64url({ typ: "dbsc+jwt", alg: "ES256" })}.${base64url(null)}.signature`,
+						{ aud: refreshUrl, sessionId: "session_1", publicKey: "{}" },
+					),
+				"401 Unauthorized",
+				{ aud: refreshUrl, sessionId: "session_1" },
 			);
 		});
 		// The key crosses the wire once, in the JOSE header at registration. A
@@ -1181,6 +1202,80 @@ const tests = (config) => {
 			);
 		});
 
+		it("Will throw once the session has gone idle, as `lookup` does", async () => {
+			const device = makeDevice();
+			const { id } = await register(makeProof(device), {
+				aud: registerUrl,
+			});
+			const { table, idleExpire } = session.getOptions();
+			await store.update(
+				table,
+				{ sub, id },
+				{ update: nowInSeconds() - idleExpire - 1 },
+			);
+			await rejects(
+				() =>
+					dbscRefresh(id, makeProof(device, { aud: refreshUrl, sub: id }), {
+						aud: refreshUrl,
+					}),
+				"401 Unauthorized",
+				{ sessionId: id },
+			);
+		});
+
+		it("Can refresh an idle session when the idle timeout is off", async () => {
+			const device = makeDevice();
+			const { id } = await register(makeProof(device), {
+				aud: registerUrl,
+			});
+			const sessionOptions = session.getOptions();
+			const { idleExpire } = sessionOptions;
+			await store.update(
+				sessionOptions.table,
+				{ sub, id },
+				{ update: nowInSeconds() - idleExpire - 1 },
+			);
+			sessionOptions.idleExpire = 0;
+			try {
+				const { id: refreshedId } = await dbscRefresh(
+					id,
+					makeProof(device, { aud: refreshUrl, sub: id }),
+					{ aud: refreshUrl },
+				);
+				equal(refreshedId, id);
+			} finally {
+				sessionOptions.idleExpire = idleExpire;
+			}
+		});
+
+		it("Will throw on a binding with no `expire`, as `lookup` does", async () => {
+			const device = makeDevice();
+			const { id } = await register(makeProof(device), {
+				aud: registerUrl,
+			});
+			// DynamoDB can't hold one (`expire` keys an index), so drop it on read
+			const sessionOptions = session.getOptions();
+			sessionOptions.store = {
+				...store,
+				select: async (...args) => {
+					const { expire, ...row } = await store.select(...args);
+					return row;
+				},
+			};
+			try {
+				await rejects(
+					() =>
+						dbscRefresh(id, makeProof(device, { aud: refreshUrl, sub: id }), {
+							aud: refreshUrl,
+						}),
+					"401 Unauthorized",
+					{ sessionId: id },
+				);
+			} finally {
+				sessionOptions.store = store;
+			}
+		});
+
 		it("Can refresh a binding expiring on the current second", async (t) => {
 			const device = makeDevice();
 			const { id } = await register(makeProof(device), {
@@ -1455,6 +1550,38 @@ const tests = (config) => {
 				equal(row.id, createSeasonedDigest(jti));
 				ok(row.expire >= before + challengeExpire);
 				ok(row.expire <= nowInSeconds() + challengeExpire);
+			});
+			it("Will not report a store failure as a replay", async () => {
+				// a missing table or an outage answered as 403 sends the browser
+				// round for a fresh challenge forever, with nothing logged
+				const { device, id } = await bind();
+				const error = new Error("connect ECONNREFUSED");
+				const sessionOptions = session.getOptions();
+				sessionOptions.store = {
+					...store,
+					insert: async () => {
+						throw error;
+					},
+				};
+				try {
+					await rejects(
+						() =>
+							dbscRefresh(id, makeProof(device, { aud: refreshUrl, sub: id }), {
+								aud: refreshUrl,
+							}),
+						error.message,
+					);
+				} finally {
+					sessionOptions.store = store;
+				}
+			});
+			it("Will hand out a different challenge each time, even within a second", () => {
+				// a spent challenge re-issued in the same second is refused on use
+				notEqual(dbscChallenge("session_1"), dbscChallenge("session_1"));
+				notEqual(
+					dbscChallengeHeader("session_1"),
+					dbscChallengeHeader("session_1"),
+				);
 			});
 			it("Will not spend the challenge on a proof that fails", async () => {
 				const { device, id } = await bind();
