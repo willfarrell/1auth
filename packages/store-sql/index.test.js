@@ -379,6 +379,26 @@ describe("@1auth/store-sql", () => {
 			const { insert } = makeInsertList("?", [{ a: "a" }, { a: "b" }]);
 			equal(insert, '("a") VALUES (?), (?)');
 		});
+		it("Should give every row every column, as NULL where it has none", async () => {
+			// `withTimeToLive` adds `remove` only to rows with `expire`
+			const { insert, parameters } = makeInsertList("$", [
+				{ id: 1, value: "a" },
+				{ id: 2, value: "b", expire: 100, remove: 200 },
+			]);
+			equal(
+				insert,
+				'("id", "value", "expire", "remove") VALUES ($1,$2,$3,$4), ($5,$6,$7,$8)',
+			);
+			deepStrictEqual(parameters, [1, "a", null, null, 2, "b", 100, 200]);
+		});
+		it("Should match values to columns by name, not position", async () => {
+			const { insert, parameters } = makeInsertList("?", [
+				{ a: "a", b: "b" },
+				{ b: "d", a: "c" },
+			]);
+			equal(insert, '("a", "b") VALUES (?,?), (?,?)');
+			deepStrictEqual(parameters, ["a", "b", "c", "d"]);
+		});
 		it("Should build nothing from an empty list", async () => {
 			const { insert, parameters } = makeInsertList("$", []);
 			equal(insert, "");

@@ -142,6 +142,19 @@ describe("@1auth/store-dynamodb", () => {
 				":sub_1": { S: "sub_001" },
 			});
 		});
+		it("Should keep a list item's placeholder apart from a key named like it", async () => {
+			// `id: [..]` is `:id_0, :id_1`, which is also what `id_0` would be
+			const result = store.makeQueryParams({ id: [1, 2], id_0: 9 });
+			equal(
+				result.KeyConditionExpression,
+				"#id IN (:id_0, :id_1) and #id_0 = :id_0_1",
+			);
+			deepEqual(result.ExpressionAttributeValues, {
+				":id_0": { N: "1" },
+				":id_1": { N: "2" },
+				":id_0_1": { N: "9" },
+			});
+		});
 	});
 
 	describe("integration", () => {
@@ -488,6 +501,47 @@ describe("@1auth/store-dynamodb", () => {
 					{ type: "t3" },
 				);
 				equal((await store.select(table, { sub: row.sub, id: 1 })).type, "t1");
+			});
+
+			it("Should set a list value as a list", async () => {
+				await store.insert(table, row);
+				await store.update(
+					table,
+					{ sub: row.sub, id: row.id },
+					{ value: ["a", "b"] },
+				);
+				deepEqual(
+					(await store.select(table, { sub: row.sub, id: row.id })).value,
+					["a", "b"],
+				);
+			});
+
+			it("Should leave an attribute set to undefined as it was", async () => {
+				await store.insert(table, row);
+				await store.update(
+					table,
+					{ sub: row.sub, id: row.id },
+					{ value: "b", type: undefined },
+				);
+				equal(lastSent().input.UpdateExpression, "SET #value = :value");
+				const updated = await store.select(table, { sub: row.sub, id: row.id });
+				equal(updated.value, "b");
+				equal(updated.type, "t1");
+			});
+
+			it("Should keep a set value apart from a condition named like it", async () => {
+				// the condition on `type` is `:if_type`, which is also what setting
+				// `if_type` would be
+				await store.insert(table, row);
+				await store.update(
+					table,
+					{ sub: row.sub, id: row.id, type: "t1" },
+					{ if_type: "y" },
+				);
+				equal(
+					(await store.select(table, { sub: row.sub, id: row.id })).if_type,
+					"y",
+				);
 			});
 
 			it("Should key an update on sub alone for a sub-keyed table", async () => {

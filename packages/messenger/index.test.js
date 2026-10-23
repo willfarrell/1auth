@@ -645,6 +645,33 @@ const tests = (config) => {
 		);
 	});
 
+	it("Will keep its own messenger when the digest index lags behind the verify", async () => {
+		// DynamoDB GSIs are eventually consistent: the claim query can return
+		// this account's row as it was before `verify` was written
+		const messengerId = await messengerCreate(messengerType, sub, {
+			value: messengerValue,
+			digest: createSeasonedDigest(messengerValue),
+		});
+		const { token } = mocks.notifyClient.mock.calls[0].arguments[0].data;
+		configure({
+			store: {
+				...store,
+				selectList: async (table, filters, fields) => {
+					const rows = await store.selectList(table, filters, fields);
+					if (!filters.digest) return rows;
+					return rows.map(({ verify, ...row }) => row);
+				},
+			},
+		});
+		try {
+			await messengerVerifyToken(messengerType, sub, token, messengerId);
+		} finally {
+			configure();
+		}
+		equal(await messengerExists(messengerType, messengerValue), sub);
+		equal((await messengerList(messengerType, sub)).length, 1);
+	});
+
 	it("Will only clear unverified claims on the same type and value", async () => {
 		const subOther = "sub_111111";
 		const otherValue = "@other.00";

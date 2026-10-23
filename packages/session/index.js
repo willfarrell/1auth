@@ -132,7 +132,8 @@ export const select = async (sub, id) => {
 // Deliberately projects a fixed, narrow field list: unlike `sid`, `id` travels
 // in a plaintext header, so this must never hand back `value`, `digest` or
 // `encryptionKey`.
-const bindingFields = ["id", "sub", "publicKey", "create", "expire"];
+// `update` so a refresh can hold the session to the same idle timeout as `lookup`
+const bindingFields = ["id", "sub", "publicKey", "create", "update", "expire"];
 export const selectBinding = async (id) => {
 	assertId(id);
 	return await options.store.select(options.table, { id }, bindingFields);

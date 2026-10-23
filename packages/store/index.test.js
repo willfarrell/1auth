@@ -205,6 +205,21 @@ const tests = (store, mocks) => {
 			});
 			ok(expire < result[mocks.table.timeToLiveKey]);
 		});
+		it("Should insert rows that do not share the same fields", async () => {
+			// only the row with `expire` gets a `timeToLiveKey`
+			const expire = nowInSeconds() + 86400;
+			await store.insertList(table, [
+				{ id: 1, sub: "sub_000", value: "a" },
+				{ id: 2, sub: "sub_000", expire, value: "b" },
+			]);
+			const first = await store.select(table, { sub: "sub_000", id: 1 });
+			const second = await store.select(table, { sub: "sub_000", id: 2 });
+			strictEqual(first.value, "a");
+			ok(!first.expire);
+			strictEqual(second.value, "b");
+			strictEqual(second.expire, expire);
+			ok(expire < second[mocks.table.timeToLiveKey]);
+		});
 	});
 	describe("remove", () => {
 		it("Should remove row in store using {id:''}", async () => {

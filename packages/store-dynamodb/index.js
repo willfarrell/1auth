@@ -11,7 +11,7 @@ import {
 	TransactWriteItemsCommand,
 	UpdateItemCommand,
 } from "@aws-sdk/client-dynamodb";
-import { marshall, unmarshall } from "@aws-sdk/util-dynamodb";
+import { convertToAttr, marshall, unmarshall } from "@aws-sdk/util-dynamodb";
 
 const marshallOptions = { removeUndefinedValues: true };
 
@@ -131,10 +131,22 @@ export const selectList = async (table, filters = {}, fields = []) => {
 	return await queryCommand(table, filters, fields);
 };
 
+// A command shares one set of value placeholders. `:${name}` is only the
+// readable default: a list item (`:id_0`), a condition (`:if_type`) and an
+// attribute literally named `id_0` or `if_type` can all want the same one.
+const placeholderFor = (taken, name) => {
+	let placeholder = `:${name}`;
+	for (let i = 1; taken.has(placeholder); i++) {
+		placeholder = `:${name}_${i}`;
+	}
+	taken.add(placeholder);
+	return placeholder;
+};
+
 // Shared by buildQueryCommand (splits key vs filter conditions) and
 // makeQueryParams (uses them all as one expression). `prefix` keeps the value
 // placeholders of an update's SET apart from those of its condition.
-const makeExpressions = (filters, prefix = "") => {
+const makeExpressions = (filters, prefix = "", taken = new Set()) => {
 	const expressionAttributeNames = {};
 	const expressionAttributeValues = {};
 	const conditions = new Map();
@@ -146,7 +158,7 @@ const makeExpressions = (filters, prefix = "") => {
 		expressionAttributeNames[`#${key}`] = key;
 		if (Array.isArray(value)) {
 			const placeholders = value.map((item, idx) => {
-				const placeholder = `:${prefix}${key}_${idx}`;
+				const placeholder = placeholderFor(taken, `${prefix}${key}_${idx}`);
 				expressionAttributeValues[placeholder] = marshall(
 					item,
 					marshallOptions,
@@ -156,11 +168,9 @@ const makeExpressions = (filters, prefix = "") => {
 			conditions.set(key, `#${key} IN (${placeholders.join(", ")})`);
 			continue;
 		}
-		expressionAttributeValues[`:${prefix}${key}`] = marshall(
-			value,
-			marshallOptions,
-		);
-		conditions.set(key, `#${key} = :${prefix}${key}`);
+		const placeholder = placeholderFor(taken, `${prefix}${key}`);
+		expressionAttributeValues[placeholder] = marshall(value, marshallOptions);
+		conditions.set(key, `#${key} = ${placeholder}`);
 	}
 	return { expressionAttributeNames, expressionAttributeValues, conditions };
 };
@@ -335,15 +345,34 @@ export const insertList = async (table, rows = []) => {
 };
 
 // Key plus the condition every other filter adds to a write on it
-const makeKeyedParams = (filters) => {
+const makeKeyedParams = (filters, taken) => {
 	const key = { sub: filters.sub, id: filters.id };
 	const { expressionAttributeNames, expressionAttributeValues, conditions } =
-		makeExpressions(nonKeyFilters(filters), "if_");
+		makeExpressions(nonKeyFilters(filters), "if_", taken);
 	return {
 		Key: marshall(key, marshallOptions),
 		ExpressionAttributeNames: expressionAttributeNames,
 		ExpressionAttributeValues: expressionAttributeValues,
 		conditions: [...conditions.values()],
+	};
+};
+
+// SET takes each value whole: a list is stored as a list, not read as IN
+const makeSet = (values, taken) => {
+	const names = {};
+	const placeholders = {};
+	const assignments = [];
+	for (const key in values) {
+		if (typeof values[key] === "undefined") continue;
+		const placeholder = placeholderFor(taken, key);
+		names[`#${key}`] = key;
+		placeholders[placeholder] = convertToAttr(values[key], marshallOptions);
+		assignments.push(`#${key} = ${placeholder}`);
+	}
+	return {
+		ExpressionAttributeNames: names,
+		ExpressionAttributeValues: placeholders,
+		UpdateExpression: `SET ${assignments.join(", ")}`,
 	};
 };
 
@@ -367,13 +396,14 @@ export const update = async (table, filters = {}, inputValues = {}) => {
 	if (filters.sub === undefined && filters.id === undefined) {
 		refuseUnfiltered(table);
 	}
+	const taken = new Set();
+	const set = makeSet(withTimeToLive(values), taken);
 	const {
 		Key,
 		ExpressionAttributeNames,
 		ExpressionAttributeValues,
 		conditions,
-	} = makeKeyedParams(filters);
-	const set = makeQueryParams(withTimeToLive(values));
+	} = makeKeyedParams(filters, taken);
 	const keyConditions = ["sub", "id"]
 		.filter((key) => filters[key] !== undefined)
 		.map((key) => {
@@ -484,13 +514,10 @@ export const removeList = async (table, filters = {}) => {
 export const makeQueryParams = (filters = {}) => {
 	const { expressionAttributeNames, expressionAttributeValues, conditions } =
 		makeExpressions(filters);
-	const updateExpression = [...conditions.keys()].map(
-		(key) => `#${key} = :${key}`,
-	);
 	return {
 		ExpressionAttributeNames: expressionAttributeNames,
 		ExpressionAttributeValues: expressionAttributeValues,
 		KeyConditionExpression: [...conditions.values()].join(" and "),
-		UpdateExpression: `SET ${updateExpression.join(", ")}`,
+		UpdateExpression: `SET ${[...conditions.values()].join(", ")}`,
 	};
 };

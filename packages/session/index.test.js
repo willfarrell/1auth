@@ -981,7 +981,7 @@ const tests = (config) => {
 			await sessionSelectBinding(id);
 			deepEqual(selects[0], {
 				filters: { id },
-				fields: ["id", "sub", "publicKey", "create", "expire"],
+				fields: ["id", "sub", "publicKey", "create", "update", "expire"],
 			});
 		});
 		it("Can with { id }, without a sub", async () => {
@@ -992,6 +992,7 @@ const tests = (config) => {
 			equal(binding.publicKey, publicKey);
 			ok(binding.create);
 			ok(binding.expire);
+			ok(binding.update);
 		});
 		// `id` travels in the plaintext Sec-Session-Id header, unlike `sid`
 		it("Can NOT leak `value`, `digest` or `encryptionKey`", async () => {
