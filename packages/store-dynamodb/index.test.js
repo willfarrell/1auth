@@ -754,13 +754,13 @@ describe("@1auth/store-dynamodb", () => {
 					.map((r) => r.id)
 					.sort((x, y) => x - y);
 
-			it("Should insert in transactions of 100, each put conditional", async () => {
+			it("Should insert up to 100 rows in one transaction, each put conditional", async () => {
 				sent.length = 0;
 				deepEqual(
-					await store.insertList(table, rowsOf(150)),
-					rowsOf(150).map((r) => r.id),
+					await store.insertList(table, rowsOf(100)),
+					rowsOf(100).map((r) => r.id),
 				);
-				deepEqual(sizesOf("TransactWriteItemsCommand"), [100, 50]);
+				deepEqual(sizesOf("TransactWriteItemsCommand"), [100]);
 				deepEqual(batchSizes(), []);
 				const put = sent[0].input.TransactItems[0].Put;
 				equal(put.TableName, table);
@@ -769,7 +769,27 @@ describe("@1auth/store-dynamodb", () => {
 					"attribute_not_exists(#sub) and attribute_not_exists(#id)",
 				);
 				deepEqual(put.ExpressionAttributeNames, { "#sub": "sub", "#id": "id" });
-				equal((await listed()).length, 150);
+				equal((await listed()).length, 100);
+			});
+
+			it("Should insert an empty list without a request", async () => {
+				sent.length = 0;
+				deepEqual(await store.insertList(table, []), []);
+				deepEqual(sent, []);
+			});
+
+			it("Should reject more than 100 rows, writing none of them", async () => {
+				sent.length = 0;
+				await rejects(
+					() => store.insertList(table, rowsOf(101)),
+					(e) =>
+						e.message ===
+							"@1auth/store-dynamodb insertList takes at most 100 rows" &&
+						e.cause.table === table &&
+						e.cause.count === 101,
+				);
+				deepEqual(sent, []);
+				deepEqual(await listed(), []);
 			});
 
 			it("Should reject a list holding an existing key, writing none of it", async () => {

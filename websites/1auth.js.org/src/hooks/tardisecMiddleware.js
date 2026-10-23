@@ -6,8 +6,7 @@ import tardisec from "../../tardisec.json" with { type: "json" };
 
 // Kit encodes a redirect differently for these two, so let its own handler build
 // those responses: a client-side navigation reads a `__data.json` redirect as JSON,
-// and a fetch-submitted form action reads an `x-sveltekit-action` one. Both are 200s
-// the browser never follows, so neither is a scan surface.
+// and a fetch-submitted form action reads an `x-sveltekit-action` one.
 const kitOwnsRedirect = (event) =>
 	event.url?.pathname?.endsWith("/__data.json") ||
 	event.request?.headers?.get("x-sveltekit-action") === "true";

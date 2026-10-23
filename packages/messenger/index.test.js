@@ -643,8 +643,6 @@ const tests = (config) => {
 	});
 
 	it("Will keep its own messenger when the digest index lags behind the verify", async () => {
-		// DynamoDB GSIs are eventually consistent: the claim query can return
-		// this account's row as it was before `verify` was written
 		const messengerId = await messengerCreate(messengerType, sub, {
 			value: messengerValue,
 			digest: createSeasonedDigest(messengerValue),

@@ -181,8 +181,8 @@ export const registrationHeader = ({ authorization } = {}) => {
 
 // `sessionId` is the raw Sec-Secure-Session-Id request header, echoed into a
 // quoted structured field, so anything that could end the quotes is refused:
-// printable ASCII only, less `"` and `\`. No id this package issues has either.
-const headerSafeId = /^[ !#-[\]-~]+$/;
+// printable ASCII only, less `"` and `\`.
+const headerSafeId = /^[\x20\x21\x23-\x5b\x5d-\x7e]+$/;
 export const challengeHeader = (sessionId) => {
 	assertId(sessionId);
 	if (!headerSafeId.test(sessionId)) {
@@ -258,9 +258,6 @@ export const verifyProof = async (
 			? algorithms[header.alg]
 			: undefined;
 	if (header?.typ !== "dbsc+jwt" || !algorithm) throw unauthorized();
-	// Checked when present, not required: Chromium's refresh proof carries `jti`
-	// alone. What `aud` would add, the challenge already covers -- it is signed,
-	// bound to this session, domain-tagged, and spent on first use.
 	if (payload?.aud !== undefined) {
 		if (typeof payload.aud !== "string" || !safeEqual(payload.aud, aud)) {
 			throw unauthorized();

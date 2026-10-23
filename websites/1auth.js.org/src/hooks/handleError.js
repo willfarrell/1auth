@@ -3,7 +3,7 @@
 
 const uuidNil = "00000000-0000-0000-0000-000000000000";
 export async function handleError({ kind, error, event }) {
-	// Kit 3 also passes expected `error()` throws here; v2 never did
+	// Kit 3 also passes expected `error()` throws here
 	if (kind === "app") return;
 	console.error(
 		`${JSON.stringify({

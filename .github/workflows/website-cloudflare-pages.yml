@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
-      contents: read # wrangler pages deploy authenticates with the Cloudflare API token only
+      contents: read
 
     steps:
       - name: Harden runner

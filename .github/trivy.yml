@@ -1,7 +1,5 @@
-# Trivy license policy: open source licenses pass, everything else fails.
-# Every Trivy license scan in this repo loads it (`--config` or trivy-action `trivy-config`).
 # Not auto-loaded (only ./trivy.yaml is), so vulnerability scans keep their own severity.
-# A license missing from every list is UNKNOWN and fails; add new open licenses below.
+# A license missing from every list is UNKNOWN and fails.
 # https://trivy.dev/latest/docs/scanner/license/
 # https://trivy.dev/latest/docs/references/configuration/config-file/
 scan:
@@ -13,7 +11,6 @@ severity:
   - CRITICAL
 exit-code: 1
 license:
-  # Not open source: proprietary, non-commercial, no-derivatives, source-available.
   forbidden:
     - BCL
     - BUSL-1.1
@@ -50,7 +47,6 @@ license:
     - CC-BY-ND-2.5
     - CC-BY-ND-3.0
     - CC-BY-ND-4.0
-  # Open, strong copyleft.
   restricted:
     - AGPL-1.0
     - AGPL-3.0
@@ -84,7 +80,6 @@ license:
     - RPL-1.1
     - RPL-1.5
     - Sleepycat
-  # Open, weak copyleft.
   reciprocal:
     - APSL-1.0
     - APSL-1.1
@@ -107,7 +102,6 @@ license:
     - OFL-1.0
     - OFL-1.1
     - Ruby
-  # Open, permissive with an attribution notice.
   notice:
     - AFL-1.1
     - AFL-1.2
@@ -187,9 +181,7 @@ license:
     # Trivy spellings of X11 and bzip2-1.0.6 from Alpine package metadata.
     - bzip-2-1.0.6
     - X-11
-  # Unused: notice and unencumbered cover every permissive license.
   permissive: []
-  # Open, public domain equivalent.
   unencumbered:
     - 0BSD
     - blessing

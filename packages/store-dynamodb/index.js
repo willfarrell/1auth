@@ -202,7 +202,6 @@ const buildQueryCommand = (table, filters = {}) => {
 		}
 	}
 
-	// DynamoDB can't Query without an equality on the partition key
 	if (!keyConditions.length) {
 		throw new Error("@1auth/store-dynamodb filters have no key to query on", {
 			cause: { table, filters },
@@ -236,8 +235,6 @@ const queryCommand = async (table, filters = {}, fields = []) => {
 			.join(", ");
 	}
 
-	// A page stops at 1MB, before any FilterExpression is applied, so a page can
-	// be empty and still not be the last one
 	const items = [];
 	let ExclusiveStartKey;
 	do {
@@ -316,18 +313,21 @@ export const insertList = async (table, rows = []) => {
 	if (options.log) {
 		options.log(`@1auth/store-${options.id} insertList(`, table, rows, ")");
 	}
+	// BatchWriteItem can't carry a condition, so an existing key would be
+	// silently overwritten. A transaction takes up to 100 conditional puts and
+	// writes all or none of them.
+	if (rows.length > 100) {
+		throw new Error("@1auth/store-dynamodb insertList takes at most 100 rows", {
+			cause: { table, count: rows.length },
+		});
+	}
+	if (!rows.length) return [];
 	const puts = rows.map((row) => ({
 		Put: makePut(table, withTimeToLive(structuredClone(row))),
 	}));
-	// BatchWriteItem can't carry a condition, so an existing key would be
-	// silently overwritten. A transaction takes up to 100 conditional puts and
-	// writes all or none of them; a list longer than that can still fail
-	// part-way, with the earlier transactions kept.
-	for (let i = 0, l = puts.length; i < l; i += 100) {
-		await options.client.send(
-			new TransactWriteItemsCommand({ TransactItems: puts.slice(i, i + 100) }),
-		);
-	}
+	await options.client.send(
+		new TransactWriteItemsCommand({ TransactItems: puts }),
+	);
 	return rows.map((row) => row.id);
 };
 

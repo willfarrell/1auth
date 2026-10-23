@@ -19,7 +19,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node-version: [24.x, 26.x] # engines: >=24.7 (crypto.argon2)
+        node-version: [24.x, 26.x]
 
     steps:
       - name: Harden runner
@@ -60,7 +60,6 @@ jobs:
         run: |
           npm run test:dynamodb &
           npm run test:postgres &
-          # `docker run` pulls before it listens; wait for both ports rather than racing them.
           for port in 8000 5432; do
             for _ in $(seq 1 60); do
               (exec 3<>/dev/tcp/127.0.0.1/"$port") 2>/dev/null && break

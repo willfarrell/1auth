@@ -17,8 +17,7 @@ export const timeToLiveKey = "remove";
 const keyAttributes = ["sub", "id"];
 
 // A table and its GSIs are created asynchronously. Querying one before it is
-// ACTIVE fails with ResourceNotFoundException, which is what made this suite
-// flaky by the tens of failures per run.
+// ACTIVE fails with ResourceNotFoundException.
 const ready = async (client, table) => {
 	await waitUntilTableExists({ client, maxWaitTime: 30 }, { TableName: table });
 	for (let i = 0; i < 100; i++) {
@@ -139,8 +138,7 @@ export const drop = async (client, table = name) => {
 			}),
 		);
 		// Deletion is asynchronous. Recreating before it finishes yields either
-		// ResourceInUseException or a table that vanishes mid-test, which is what
-		// made whole runs fail at once rather than a test here and there.
+		// ResourceInUseException or a table that vanishes mid-test.
 		await waitUntilTableNotExists(
 			{ client, maxWaitTime: 30 },
 			{ TableName: table },

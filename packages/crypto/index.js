@@ -339,8 +339,6 @@ export const decodeArgon2 = (str) => {
 	return argon2Options;
 };
 
-// Async so the hash runs on the libuv threadpool: argon2Sync blocked the event
-// loop for the full hash (~100ms at the defaults) per call.
 export const createArgon2 = async (
 	message,
 	{

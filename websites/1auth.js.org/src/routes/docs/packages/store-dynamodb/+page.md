@@ -44,7 +44,7 @@ Implements the [store interface](/docs/packages/store) using DynamoDB operations
 - `select` — `GetItem` or `Query`
 - `selectList` — `Query`, following `LastEvaluatedKey` until every page is read
 - `insert` — `PutItem` with `attribute_not_exists(sub) and attribute_not_exists(id)`, so an existing key throws `ConditionalCheckFailedException`
-- `insertList` — `TransactWriteItems` of up to 100 conditional puts, so any existing key throws `TransactionCanceledException` and that transaction writes nothing. A list longer than 100 can still fail part-way, keeping the transactions already written.
+- `insertList` — one `TransactWriteItems` of conditional puts, so any existing key throws `TransactionCanceledException` and nothing is written. DynamoDB caps a transaction at 100 items, so a longer list throws before writing anything.
 - `update` — `UpdateItem` with `attribute_exists` on the key, and every non-key filter as a condition. A row that doesn't exist or doesn't match is left alone, and nothing is created.
 - `remove` — `DeleteItem`, with non-key filters as a condition. Without the full key it runs a `Query` first, then deletes each match.
 - `removeList` — `BatchWriteItem` by `{sub, id: [...]}`. Any other filter, such as `type`, sends it down the `Query`-then-delete route instead, because `BatchWriteItem` takes no condition.
