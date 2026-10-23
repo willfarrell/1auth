@@ -30,8 +30,6 @@ export const create = async (client, table = name) => {
    );
    `;
 	await client.query(sql);
-	// One verified owner per value. Unverified claims may repeat until one is
-	// verified, which is what keeps a squatter from blocking the real owner.
 	return await client.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS ${table}_digest_ukey ON ${table} ("type", "digest") WHERE "verify" IS NOT NULL;
   `);

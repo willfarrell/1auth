@@ -56,7 +56,7 @@ const defaults = {
 	randomId: randomId(),
 	randomSessionId: randomSessionId(),
 	expire: 12 * 60 * 60,
-	idleExpire: 30 * 60, // seconds since last use, falsy turns the idle timeout off
+	idleExpire: 30 * 60,
 	limit: 10, // concurrent live sessions per sub, falsy turns the cap off
 	encryptedFields: ["value"],
 	encode: (value) => JSON.stringify(sortKeys(value ?? {})),
@@ -69,9 +69,6 @@ export default (opt = {}) => {
 };
 export const getOptions = () => options;
 
-// `lookup` rewrites `update` at most this often, so an active session costs one
-// write a minute rather than one per request.
-// ponytail: fixed at 60s, so an `idleExpire` under a minute can lapse mid-use.
 const idleUpdateInterval = 60;
 
 export const lookup = async (sid, value = {}) => {
@@ -82,8 +79,6 @@ export const lookup = async (sid, value = {}) => {
 	const session = await options.store.select(options.table, { digest });
 	if (session) {
 		const now = nowInSeconds();
-		// Written as "not live" rather than "expired" so a row missing `expire` or
-		// `update` fails closed: `now <= undefined` is false.
 		if (!(now <= session.expire)) {
 			return;
 		}
@@ -132,7 +127,6 @@ export const select = async (sub, id) => {
 // Deliberately projects a fixed, narrow field list: unlike `sid`, `id` travels
 // in a plaintext header, so this must never hand back `value`, `digest` or
 // `encryptionKey`.
-// `update` so a refresh can hold the session to the same idle timeout as `lookup`
 const bindingFields = ["id", "sub", "publicKey", "create", "update", "expire"];
 export const selectBinding = async (id) => {
 	assertId(id);
@@ -286,8 +280,6 @@ export const check = async (sub, value = {}) => {
 	const sessions = await options.store.selectList(options.table, { sub });
 	const now = nowInSeconds();
 	for (const session of sessions) {
-		// an expired session is no evidence the device is known, same boundary as
-		// `lookup`
 		if (!(now <= session.expire)) continue;
 		const decryptedValue = symmetricDecrypt(session.value, {
 			sub,

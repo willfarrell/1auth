@@ -187,8 +187,6 @@ export const randomChecksumPepper = () => {
 	return randomBytes(32); // 256 bits
 };
 
-// Bytes, not strings: `value + salt` UTF-8 decoded the random salt, turning
-// every invalid sequence into U+FFFD and throwing its entropy away.
 const createSaltedValue = (value, { checksumSalt } = {}) => {
 	checksumSalt ??= options.digestChecksumSalt;
 	if (!checksumSalt) {
@@ -341,8 +339,6 @@ export const decodeArgon2 = (str) => {
 	return argon2Options;
 };
 
-// Async so the hash runs on the libuv threadpool: argon2Sync blocked the event
-// loop for the full hash (~100ms at the defaults) per call.
 export const createArgon2 = async (
 	message,
 	{
@@ -393,8 +389,6 @@ export const verifyArgon2 = async (derivedKey, message) => {
 		hash,
 		hashLength,
 	} = decodeArgon2(derivedKey);
-	// Params come off a stored string; a malformed `m=` would otherwise reach
-	// argon2 as Infinity. authn treats a throw here as "credential invalid".
 	assertMemoryCost(memoryCost);
 
 	const verifyHash = await argon2(algorithm, {
@@ -412,9 +406,6 @@ export const createSecretHash = createArgon2;
 export const verifySecretHash = verifyArgon2;
 
 // *** Symmetric Encryption *** //
-// node's default for both supported AEAD ciphers, and since v26 the only tag
-// length a decipher accepts without an explicit authTagLength, so it is not
-// passed to createCipheriv/createDecipheriv.
 const authTagLength = 16;
 // 96 bits, the nonce size both supported AEAD ciphers take.
 const ivLength = 12;
@@ -512,8 +503,6 @@ export const symmetricGenerateEncryptionKey = (sub, providerOptions = {}) => {
 	};
 };
 
-// Encrypting is never optional: a missing key used to return the plaintext,
-// which the caller then stored as if it were ciphertext.
 const missingEncryptionKey = "@1auth/crypto encryption key is missing";
 
 // sub add context to encryption
@@ -565,7 +554,6 @@ export const symmetricEncrypt = (
 		iv,
 	);
 	cipher.setAAD(associatedData(sub));
-	// an undefined decoding reads a string as utf8
 	const encryptedData =
 		cipher.update(data, decoding, encoding) + cipher.final(encoding);
 	const authTag = cipher.getAuthTag();
@@ -662,7 +650,6 @@ export const symmetricDecrypt = (
 	decipher.setAAD(associatedData(sub));
 
 	decipher.setAuthTag(authTag);
-	// an undefined encoding writes utf8
 	return Buffer.concat([
 		decipher.update(encryptedData),
 		decipher.final(),
@@ -683,7 +670,6 @@ export const symmetricSignatureSign = (
 	const digest = createHmac(hashAlgorithm, signatureSecret)
 		.update(data)
 		.digest(options.symmetricSignatureEncoding);
-	// drop base64 padding; `=` only ever trails in a padded encoding
 	const signature = digest.replaceAll("=", "");
 
 	const signedData = `${data}.${signature}`;
@@ -696,8 +682,6 @@ export const symmetricSignatureVerify = (
 ) => {
 	if (typeof signedData !== "string") return false;
 	const lastIndexOf = signedData.lastIndexOf(".");
-	// Unsigned data (no `.`) fails the comparison below: every signed string
-	// contains a `.`, so none can equal it.
 	const data = signedData.substring(0, lastIndexOf);
 	const signedDataExpected = symmetricSignatureSign(data, {
 		hashAlgorithm,

@@ -35,7 +35,6 @@ export default (opt = {}) => {
 };
 export const getOptions = () => options;
 
-// must match @1auth/account: an expired account no longer resolves
 const isExpired = (item) => !!item.expire && item.expire <= nowInSeconds();
 
 export const exists = async (username) => {
@@ -78,24 +77,18 @@ export const create = async (sub, username) => {
 		});
 	}
 	const usernameDigest = createSeasonedDigest(usernameSanitized);
-	// Counts expired accounts too: their row holds the digest until it is swept
 	const usernameExists = () =>
 		options.store.exists(options.table, { digest: usernameDigest });
 	if (await usernameExists()) {
 		throw new Error("409 Conflict", { cause: { username, usernameSanitized } });
 	}
 
-	// Store the sanitized form: it is the identity the digest keys, so what is
-	// displayed and sent by `recover` can't differ from what it resolves as.
 	try {
 		await accountUpdateIdentifier(sub, {
 			value: usernameSanitized,
 			digest: usernameDigest,
 		});
 	} catch (e) {
-		// A concurrent claim won the unique index on the digest (SQL).
-		// ponytail: DynamoDB has no unique index and its digest GSI is eventually
-		// consistent, so two claims racing inside that window can both land there.
 		if (await usernameExists()) {
 			throw new Error("409 Conflict", {
 				cause: { username, usernameSanitized },

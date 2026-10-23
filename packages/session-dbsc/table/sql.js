@@ -1,8 +1,5 @@
 // Copyright 2003 - 2026 will Farrell, and 1Auth contributors.
 // SPDX-License-Identifier: MIT
-// Refresh challenges already spent, so a captured proof cannot be replayed while
-// its challenge is still inside `challengeExpire`. A row is only useful until
-// then, so `expire` is when it can go.
 export const name = "dbsc_challenges";
 export const timeToLiveKey = "remove";
 export const create = async (client, table = name) => {

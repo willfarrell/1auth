@@ -51,6 +51,6 @@
 	},
 	"homepage": "https://github.com/willfarrell/1auth",
 	"dependencies": {
-		"nanoid": "6.0.1"
+		"nanoid": "6.0.2"
 	}
 }

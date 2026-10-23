@@ -71,8 +71,6 @@ export default (opt = {}) => {
 };
 
 // authenticate(accessToken, accessToken)
-// The username names exactly one row, so only that row's secret is checked:
-// another token on the same account must not unlock it.
 export const authenticate = async (username, secret) => {
 	if (!username || typeof username !== "string") {
 		throw new Error("401 Unauthorized", { cause: { username } });
@@ -85,7 +83,6 @@ export const authenticate = async (username, secret) => {
 	);
 };
 
-// usernameExists hook: an expired token no longer names its account
 export const exists = async (username) => {
 	const authn = await lookup(username);
 	return authn?.sub;

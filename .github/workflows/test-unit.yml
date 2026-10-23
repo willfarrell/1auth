@@ -2,7 +2,7 @@ name: Tests (unit)
 
 on:
   pull_request:
-  workflow_call: # release.yml gates publishing on this
+  workflow_call:
 
 permissions:
   contents: read
@@ -19,7 +19,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node-version: [24.x, 26.x] # engines: >=24.7 (crypto.argon2)
+        node-version: [24.x, 26.x]
 
     steps:
       - name: Harden runner
@@ -40,45 +40,26 @@ jobs:
             registry-1.docker.io:443
             registry.npmjs.org:443
             release-assets.githubusercontent.com:443
-      # allowed-endpoints: >
-      #   github.com:443
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      # allowed-endpoints: >
-      #   api.github.com:443
-      #   nodejs.org:443
-      #   objects.githubusercontent.com:443
-      #   registry.npmjs.org:443
-      #   release-assets.githubusercontent.com:443
       - name: Setup Node.js ${{ matrix.node-version }}
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           cache: 'npm'
           node-version: ${{ matrix.node-version }}
           registry-url: https://registry.npmjs.org
-      # allowed-endpoints: >
-      #   registry.npmjs.org:443
       - name: Install dependencies
         run: |
           npm ci
-      # allowed-endpoints: >
-      #   registry.npmjs.org:443
       - name: Build
         run: |
           npm run build --if-present
-      # allowed-endpoints: >
-      #   auth.docker.io:443
-      #   production.cloudflare.docker.com:443
-      #   production.cloudfront.docker.com:443
-      #   registry-1.docker.io:443
-      #   registry.npmjs.org:443
       - name: Unit tests
         run: |
           npm run test:dynamodb &
           npm run test:postgres &
-          # `docker run` pulls before it listens; wait for both ports rather than racing them.
           for port in 8000 5432; do
             for _ in $(seq 1 60); do
               (exec 3<>/dev/tcp/127.0.0.1/"$port") 2>/dev/null && break

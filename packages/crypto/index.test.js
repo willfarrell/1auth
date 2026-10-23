@@ -173,15 +173,12 @@ describe("@1auth/crypto", () => {
 			for (const checksumSalt of ["", false, 0]) {
 				equal(createSaltedDigest("1auth", { checksumSalt }), unsalted);
 			}
-			// and with a salt the value is extended by its bytes
 			equal(
 				createSaltedDigest("1auth", { checksumSalt: Buffer.from("S") }),
 				createDigest("1authS"),
 			);
 		});
 		it("createSaltedDigest keeps every byte of a binary salt", async () => {
-			// 0xfe and 0xff are both invalid UTF-8; decoding the salt as a string
-			// turned each into U+FFFD, so distinct salts collided
 			notEqual(
 				createSaltedDigest("1auth", { checksumSalt: Buffer.from([0xfe]) }),
 				createSaltedDigest("1auth", { checksumSalt: Buffer.from([0xff]) }),
@@ -221,8 +218,6 @@ describe("@1auth/crypto", () => {
 			let digest = createSeasonedDigest("1auth", {
 				hashAlgorithm: "sha3-256",
 			});
-			// KAT: sha3-256(HMAC-sha3-256(pepper, value || salt bytes)), computed from
-			// raw node:crypto primitives
 			equal(digest, "sha3-256:a5ddjDcCPGltHPIqakIy6n2zdBjox9YZJgTmxQRd5D8=");
 			digest = createSeasonedDigest("1auth", {
 				hashAlgorithm: "sha3-256",
@@ -354,8 +349,6 @@ describe("@1auth/crypto", () => {
 		});
 
 		it("createSecretHash() and verifySecretHash() hash off the event loop", async () => {
-			// argon2 runs on the threadpool: a timer queued now fires before the
-			// hash settles. argon2Sync held the loop, so it could not.
 			const hash = await createSecretHash("1auth");
 			for (const run of [
 				() => createSecretHash("1auth"),
@@ -475,14 +468,11 @@ describe("@1auth/crypto", () => {
 			const encryptionKey = "";
 
 			const value = "1auth";
-			// never hand plaintext back as if it were ciphertext
 			throws(() => symmetricEncrypt(value, { encryptionKey, sub }), {
 				message: "@1auth/crypto encryption key is missing",
 				cause: { sub },
 			});
-			// nothing to encrypt needs no key
 			equal(symmetricEncrypt("", { encryptionKey, sub }), "");
-			// decrypt still passes unencrypted data through
 			const decryptedValue = symmetricDecrypt(value, {
 				encryptionKey,
 				sub,
@@ -519,14 +509,11 @@ describe("@1auth/crypto", () => {
 			const encryptedKey = "";
 
 			const value = "1auth";
-			// never hand plaintext back as if it were ciphertext
 			throws(() => symmetricEncrypt(value, { encryptedKey, sub }), {
 				message: "@1auth/crypto encryption key is missing",
 				cause: { sub },
 			});
-			// nothing to encrypt needs no key
 			equal(symmetricEncrypt("", { encryptedKey, sub }), "");
-			// decrypt still passes unencrypted data through
 			const decryptedValue = symmetricDecrypt(value, {
 				encryptedKey,
 				sub,
@@ -594,9 +581,7 @@ describe("@1auth/crypto", () => {
 			const emptyNamed = symmetricRandomEncryptionKey();
 			registerEncryptionKeyProvider("", { decrypt: () => emptyNamed });
 			try {
-				// no separator: a legacy key, never the provider named ""
 				deepEqual(symmetricDecryptKey(payload, { sub }), encryptionKey);
-				// a leading separator does name "", and is read by it
 				deepEqual(
 					symmetricDecryptKey(`${encryptionKeyProviderSeparator}${payload}`, {
 						sub,
@@ -672,9 +657,6 @@ describe("@1auth/crypto", () => {
 				}),
 				decrypt: () => rowKey,
 			});
-			// an own key, which is the point: on a plain object this assignment
-			// would have set the prototype and stored nothing, and the generate
-			// below would throw "Unknown encryptionKeyProvider"
 
 			const { encryptedKey } = symmetricGenerateEncryptionKey(sub, {
 				encryptionKeyProvider: "__proto__",
@@ -808,7 +790,6 @@ describe("@1auth/crypto", () => {
 					cause: { sub: "sub_0", fields: ["value"] },
 				},
 			);
-			// nothing named, nothing to encrypt: no key needed, same object back
 			equal(symmetricEncryptFields(values, {}), values);
 			equal(symmetricEncryptFields(values, {}, []), values);
 		});
@@ -826,7 +807,6 @@ describe("@1auth/crypto", () => {
 			deepEqual(symmetricDecryptFields(values, { encryptionKey, sub }), values);
 		});
 		it("Should refuse to decrypt under a different sub", () => {
-			// the sub is bound as associated data, so the auth tag must not verify
 			const { encryptionKey } = symmetricGenerateEncryptionKey("sub_000000");
 			const encrypted = symmetricEncrypt("1auth", {
 				encryptionKey,

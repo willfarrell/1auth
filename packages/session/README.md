@@ -61,7 +61,7 @@ session({
 })
 ```
 
-`expire` is still the absolute cap, whatever the activity. A row with no `expire` or no `update` never resolves.
+`expire` is still the absolute cap, whatever the activity. A row with no `update` or no `expire` never resolves.
 
 On DynamoDB the `digest` index has to project `update`; `table/dynamodb.js` does.
 

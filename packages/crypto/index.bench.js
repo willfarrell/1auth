@@ -17,7 +17,6 @@ import crypto, {
 	symmetricSignatureSign,
 	symmetricSignatureVerify,
 	verifySecretHash,
-	// safeEqual
 } from "../crypto/index.js";
 
 crypto({
@@ -32,7 +31,7 @@ const value = "1auth";
 const hash = await createSecretHash(value);
 const hashFastest = await createSecretHash(value, {
 	timeCost: 1,
-	memoryCost: 3, // log2: 2^3 = 8 KiB, the argon2 minimum
+	memoryCost: 3,
 	parallelism: 1,
 });
 const hashTimeCost2 = await createSecretHash(value, { timeCost: 6 });
@@ -42,7 +41,6 @@ const { encryptionKey } = symmetricGenerateEncryptionKey(sub);
 const encryptedValue = symmetricEncrypt(value, { sub, encryptionKey });
 const signedValue = symmetricSignatureSign(value);
 
-// argon2 (SecretHash) calls take tens of ms each, so they use a small batch.
 suite("@1auth/crypto", () => {
 	bench("randomAlphaNumeric", { warmup: 100, samples: 30 }, (b) => {
 		const ops = 10_000;
@@ -138,7 +136,7 @@ suite("@1auth/crypto", () => {
 		for (let i = 0; i < ops; i++) {
 			await createSecretHash(value, {
 				timeCost: 1,
-				memoryCost: 3, // log2: 2^3 = 8 KiB, the argon2 minimum
+				memoryCost: 3,
 				parallelism: 1,
 			});
 		}

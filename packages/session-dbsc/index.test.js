@@ -256,8 +256,6 @@ const tests = (config) => {
 		mocks.storeClient.after?.();
 	});
 
-	// Registration binds the session the browser already holds, so each one here
-	// starts from a fresh, unbound login on the same device
 	const register = async (proof, options = {}) => {
 		const { sid } = await session.create(sub, options.value ?? {});
 		return await dbscRegister(sid, proof, options);
@@ -484,7 +482,6 @@ const tests = (config) => {
 		it("Can name the session the challenge is bound to", () => {
 			match(dbscChallengeHeader("session_1"), /^"[^"]+";id="session_1"$/);
 		});
-		// `sessionId` is the raw Sec-Secure-Session-Id request header
 		it("Will throw rather than echo an id that breaks out of the quotes", () => {
 			for (const id of [
 				undefined,
@@ -716,7 +713,6 @@ const tests = (config) => {
 			);
 		});
 		it("Will refuse a refresh proof whose payload is not an object", async () => {
-			// with a session named, `payload.sub` is read outside the optional chain
 			await rejects(
 				() =>
 					dbscVerifyProof(
@@ -809,9 +805,6 @@ const tests = (config) => {
 			);
 		});
 
-		// Found by index.fuzz.js: `alg` indexes the algorithm table, so anything
-		// that is not a plain string key either threw a TypeError out of the key
-		// conversion or matched something inherited from Object.prototype
 		it("Will refuse an `alg` that is not one of its own names", async () => {
 			const payload = base64url({ jti: dbscChallenge("") });
 			for (const alg of [
@@ -886,7 +879,6 @@ const tests = (config) => {
 			);
 		});
 
-		// Rebinding would hand a stolen `sid` a key of the thief's choosing
 		it("Will throw for a session that is already bound", async () => {
 			const { session: opened } = await register(makeProof(makeDevice()), {
 				aud: registerUrl,
@@ -920,7 +912,6 @@ const tests = (config) => {
 			}
 		});
 
-		// A sid stolen before binding must not outlive the binding
 		it("Will retire the pre-binding sid, binding the same row", async () => {
 			const currentDevice = { os: "MacOS" };
 			const { id, sid } = await session.create(sub, currentDevice);
@@ -1253,7 +1244,6 @@ const tests = (config) => {
 			const { id } = await register(makeProof(device), {
 				aud: registerUrl,
 			});
-			// DynamoDB can't hold one (`expire` keys an index), so drop it on read
 			const sessionOptions = session.getOptions();
 			sessionOptions.store = {
 				...store,
@@ -1415,12 +1405,10 @@ const tests = (config) => {
 		// on how long a login may last no matter how often it refreshes
 		it("Will throw once past the absolute session cap", async (t) => {
 			const device = makeDevice();
-			// Registration binds the login's own row, so the cap it inherits is the
-			// one @1auth/session set when that login was created
 			const { id, session: opened } = await register(makeProof(device), {
 				aud: registerUrl,
 			});
-			equal(opened.expire, undefined); // rotate does not touch it
+			equal(opened.expire, undefined);
 			const { expire } = await dbscSelect(sub, id);
 			t.mock.timers.enable({ apis: ["Date"], now: (expire + 1) * 1000 });
 			try {
@@ -1449,7 +1437,6 @@ const tests = (config) => {
 		});
 
 		it("Will throw once the session is expired", async () => {
-			// `expire` ends the binding too, not just the cookie
 			const device = makeDevice();
 			const { id } = await register(makeProof(device), {
 				aud: registerUrl,
@@ -1520,8 +1507,6 @@ const tests = (config) => {
 			it("Will record the challenge until it could no longer verify", async () => {
 				const { device, id } = await bind();
 				const jti = dbscChallenge(id);
-				// Watch the write: the table is insert-only, so no store needs a way
-				// to read it back
 				const sessionOptions = session.getOptions();
 				const inserts = [];
 				sessionOptions.store = {
@@ -1552,8 +1537,6 @@ const tests = (config) => {
 				ok(row.expire <= nowInSeconds() + challengeExpire);
 			});
 			it("Will not report a store failure as a replay", async () => {
-				// a missing table or an outage answered as 403 sends the browser
-				// round for a fresh challenge forever, with nothing logged
 				const { device, id } = await bind();
 				const error = new Error("connect ECONNREFUSED");
 				const sessionOptions = session.getOptions();
@@ -1576,7 +1559,6 @@ const tests = (config) => {
 				}
 			});
 			it("Will hand out a different challenge each time, even within a second", () => {
-				// a spent challenge re-issued in the same second is refused on use
 				notEqual(dbscChallenge("session_1"), dbscChallenge("session_1"));
 				notEqual(
 					dbscChallengeHeader("session_1"),
@@ -1601,8 +1583,6 @@ const tests = (config) => {
 				equal(refreshed, id);
 			});
 			it("Will not spend a registration challenge", async () => {
-				// registration challenges name no session, so every browser that
-				// registers in the same second is handed the same one
 				const jti = dbscChallenge("");
 				await register(makeProof(makeDevice(), { jti }), { aud: registerUrl });
 				ok(
@@ -1658,8 +1638,6 @@ const tests = (config) => {
 			ok(await dbscLookup(sid, undefined));
 		});
 		it("Can leave another unbound session untouched by a registration", async () => {
-			// only the session that registered is bound; a second login elsewhere is
-			// its own row and keeps working
 			const currentDevice = { os: "MacOS" };
 			const { sid } = await session.create(sub, currentDevice);
 			await register(makeProof(makeDevice()), { aud: registerUrl });

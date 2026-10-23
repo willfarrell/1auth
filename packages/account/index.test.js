@@ -354,7 +354,7 @@ const tests = (config) => {
 			await accountUpdateIdentifier(sub, { value: "name", digest: "digest" });
 			const db = await store.select(accountGetOptions().table, { sub });
 			equal(db.digest, "digest");
-			notEqual(db.value, "name"); // encrypted
+			notEqual(db.value, "name");
 			equal((await accountLookup(sub)).value, "name");
 			ok(db.update);
 		});
@@ -368,7 +368,6 @@ const tests = (config) => {
 			equal(db.expire, null);
 		});
 		it("Will NOT let two accounts hold the same digest", async () => {
-			// the table is the last line against two concurrent claims
 			await accountUpdateIdentifier(sub, { value: "name", digest: "digest" });
 			let error;
 			try {
@@ -432,7 +431,6 @@ const tests = (config) => {
 			await accountExpire(sub);
 			await rejects(() => accountLookup(sub), "404 Not Found", { sub });
 			equal(await accountExists(sub), undefined);
-			// the neighbour still resolves
 			equal((await accountLookup(subOther)).name, "other");
 			equal(await accountExists(subOther), subOther);
 		});
@@ -451,7 +449,6 @@ const tests = (config) => {
 			equal(await accountExists(sub), sub);
 		});
 		it("Will NOT resolve an account expiring on the current second", async () => {
-			// expire() stamps the current second, so the tie has to count as expired
 			const ms = Date.now() % 1000;
 			if (ms > 700) await setTimeout(1000 - ms);
 			await store.update(

@@ -44,10 +44,6 @@ export default (opt = {}) => {
 };
 export const getOptions = () => options;
 
-// Columns this package (and account-username, through `updateIdentifier`)
-// owns. Callers commonly pass request bodies straight through, so these are
-// dropped rather than trusted. `create` stays settable on insert for imports.
-// `update` isn't listed: every write stamps it after the caller's values.
 const ownedKeys = [
 	"id",
 	"sub",
@@ -66,7 +62,6 @@ const withoutOwnedKeys = (values, allowed) => {
 	return params;
 };
 
-// expire() and remove() stamp the current second, so the tie is expired
 const isExpired = (account) =>
 	!!account.expire && account.expire <= nowInSeconds();
 
@@ -131,8 +126,6 @@ export const update = async (sub, values = {}) => {
 	await write(sub, withoutOwnedKeys(values));
 };
 
-// The username (or other lookup identifier) and its digest. Only for sibling
-// packages that have already checked the digest is free.
 export const updateIdentifier = async (sub, { value, digest }) => {
 	await write(sub, { value, digest });
 };

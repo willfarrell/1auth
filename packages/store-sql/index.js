@@ -1,14 +1,6 @@
 // Copyright 2003 - 2026 will Farrell, and 1Auth contributors.
 // SPDX-License-Identifier: MIT
 
-// Generic SQL store, usable on its own against any client exposing
-//   query(sql, parameters) -> rows[]
-// The dialect-specific backends (@1auth/store-postgres, @1auth/store-sqlite,
-// @1auth/store-d1) are each a `createSqlStore` with their own `id`,
-// `placeholder`, and `query` adapter for their client's shape.
-
-// Each call owns its options, so two dialects loaded side by side never share
-// a client or a placeholder.
 export const createSqlStore = ({
 	id,
 	placeholder = "?",
@@ -17,8 +9,7 @@ export const createSqlStore = ({
 	const options = {
 		id,
 		log: undefined,
-		client: undefined, // passed to `query`
-		// number of seconds after expire before removal
+		client: undefined,
 		// 10d chosen based on EFF DNT Policy
 		timeToLiveExpireOffset: 10 * 24 * 60 * 60,
 		timeToLiveKey: "remove",
@@ -49,7 +40,6 @@ export const createSqlStore = ({
 		const sql = `SELECT ${select} FROM ${table} ${where} LIMIT 1`;
 		const res = await run(sql, parameters);
 		const row = res?.[0];
-		// Workaround because an expire filter doesn't exist yet
 		parseValues(row);
 		return row;
 	};
@@ -59,7 +49,6 @@ export const createSqlStore = ({
 		const { select, where, parameters } = makeSqlParts(filters, {}, fields);
 		const sql = `SELECT ${select} FROM ${table} ${where}`;
 		const rows = await run(sql, parameters);
-		// Workaround because an expire filter doesn't exist yet
 		return rows.map((row) => {
 			parseValues(row);
 			return row;
@@ -114,7 +103,6 @@ export const createSqlStore = ({
 		update,
 		remove,
 		removeList: remove,
-		// export for testing
 		getPlaceholder,
 		makeSqlParts,
 	};
@@ -136,8 +124,6 @@ export const {
 } = store;
 
 // --- builders -------------------------------------------------------------
-// The `*For` variants take the placeholder explicitly; `createSqlStore` binds
-// them to its own options as `getPlaceholder` / `makeSqlParts`.
 
 export const log = (options, method, ...args) => {
 	if (options.log) {
@@ -145,8 +131,6 @@ export const log = (options, method, ...args) => {
 	}
 };
 
-// Keys are interpolated as "${key}", so anything beyond a plain identifier
-// could close the quote and inject SQL.
 const identifierPattern = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const quote = (key) => {
 	if (!identifierPattern.test(key)) {
@@ -155,7 +139,6 @@ const quote = (key) => {
 	return `"${key}"`;
 };
 
-// An empty WHERE on a write touches every row
 const assertWhere = (table, where) => {
 	if (!where) {
 		throw new Error("@1auth/store-sql refusing to write without a filter", {
@@ -195,7 +178,6 @@ export const makeSqlPartsFor = (
 	let where = Object.keys(filters)
 		.map((key) => {
 			const value = filters[key];
-			// Dropping the condition would widen the match, up to every row
 			if (typeof value === "undefined") {
 				throw new Error("@1auth/store-sql filter value is undefined", {
 					cause: { key },
@@ -223,9 +205,6 @@ export const makeSqlPartsFor = (
 	return { select, insert, update, where, parameters };
 };
 
-// Single multi-row `("a", "b") VALUES (?,?),(?,?)` for drivers that batch in one statement.
-// Rows need not share keys (`withTimeToLive` adds `remove` only to rows with
-// `expire`) or their order, so every row gets every column, matched by name.
 export const makeInsertList = (placeholder, valuesList) => {
 	if (!valuesList.length) return { insert: "", parameters: [] };
 	const columns = [...new Set(valuesList.flatMap(Object.keys))];
@@ -281,7 +260,6 @@ export const normalizeValues = (values) => {
 		} else if (v !== null && typeof v === "object") {
 			values[key] = JSON.stringify(v);
 		} else if (v !== null && typeof v !== "number") {
-			// strings come back unchanged
 			values[key] = String(v);
 		}
 	}

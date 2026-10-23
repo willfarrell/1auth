@@ -29,7 +29,7 @@ const defaults = {
 	idGenerate: true,
 	randomId: randomId(),
 	authenticationDuration: 250, // minimum duration authentication should take (ms), must exceed worst-case secret hash time
-	otpMaxAttempts: 5, // failed `verify` attempts before a one-time credential is removed
+	otpMaxAttempts: 5,
 	usernameExists: [], // hooks to allow what to be used as a username
 	encryptedFields: ["value"],
 };
@@ -185,9 +185,6 @@ export const subject = async (username) => {
 	});
 };
 
-// A value of the credential's own type to verify against when there is nothing
-// real to check, so an unknown username costs what a known one does. Made once
-// per type; a type that cannot make one (webauthn challenges) skips it.
 const dummyValues = new Map();
 const dummyVerify = async (credentialOptions, secret, credentialParams) => {
 	const type = makeType(credentialOptions);
@@ -201,9 +198,7 @@ const dummyVerify = async (credentialOptions, secret, credentialParams) => {
 	try {
 		const value = await credentialOptions.decode(await dummyValues.get(type));
 		await credentialOptions.verify(secret, value, {}, credentialParams);
-	} catch (_e) {
-		// the result is thrown away either way
-	}
+	} catch (_e) {}
 };
 
 const decryptCredential = async (credentialOptions, sub, credential) => {
@@ -233,7 +228,6 @@ export const authenticate = async (
 	}
 	const type = makeType(credentialOptions);
 	const filters = { sub, type };
-	// binds a username to its one row (access tokens), not every row of the type
 	if (credentialOptions.digest) {
 		filters.digest = credentialOptions.digest;
 	}
@@ -268,8 +262,6 @@ export const authenticate = async (
 		await dummyVerify(credentialOptions, secret, credentialParams);
 	}
 
-	// Hash every candidate at once: argon2 runs on the threadpool, so wall time
-	// grows with ceil(candidates / UV_THREADPOOL_SIZE), not with candidates.
 	const results = await Promise.all(
 		candidates.map(async (credential) => {
 			try {
@@ -301,8 +293,6 @@ export const authenticate = async (
 		const { credential, value, values } = result;
 		const { id, otp } = credential;
 		if (otp) {
-			// remove reports whether this request deleted the row; a concurrent
-			// request that got there first leaves nothing, and must not win
 			const consumed = await remove(credentialOptions, sub, id);
 			if (!consumed) {
 				continue;
@@ -383,8 +373,6 @@ export const verify = async (credentialOptions, sub, input) => {
 			);
 			valid = await credentialOptions.verify(input, value, values);
 		} catch (e) {
-			// a throw leaves `valid` falsy: every earlier pass either failed or
-			// reset it, since a success breaks out of the loop
 			if (options.log) {
 				options.log(e);
 			}
@@ -398,7 +386,6 @@ export const verify = async (credentialOptions, sub, input) => {
 		if (otp) {
 			const consumed = await remove(credentialOptions, sub, id);
 			if (!consumed) {
-				// Already consumed by a concurrent request
 				valid = undefined;
 				continue;
 			}
@@ -422,11 +409,6 @@ export const verify = async (credentialOptions, sub, input) => {
 	return { ...credential, ...valid };
 };
 
-// A 6 digit code falls to guessing without a limit, so a one-time credential
-// is removed once it has failed `otpMaxAttempts` times.
-// ponytail: read-then-write, so requests racing on the same row can each see
-// the same count and get a few more guesses than the limit. Closing that needs
-// an atomic increment in every store.
 const failedAttempt = async (credentialOptions, sub, { id, attempts }) => {
 	attempts = (attempts ?? 0) + 1;
 	if (attempts >= options.otpMaxAttempts) {

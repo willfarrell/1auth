@@ -8,11 +8,9 @@ import notifySqs, { getOptions, trigger } from "./index.js";
 
 describe("@1auth/notify-sqs", () => {
 	it("should create an SQS client when configured, not at import", () => {
-		// importing must not need AWS config or credentials
 		equal(getOptions().client, undefined);
 		notifySqs();
 		ok(getOptions().client instanceof SQSClient);
-		// a client passed in is used as-is
 		const mockClient = { send: mock.fn() };
 		notifySqs({ client: mockClient });
 		equal(getOptions().client, mockClient);
@@ -135,7 +133,6 @@ describe("@1auth/notify-sqs", () => {
 			data: ["token", "expire"],
 			options: { messengers: [{ id: "messenger_1" }] },
 		});
-		// the queue itself still gets the data
 		equal(
 			JSON.parse(mockSend.mock.calls[0].arguments[0].input.MessageBody).data
 				.token,

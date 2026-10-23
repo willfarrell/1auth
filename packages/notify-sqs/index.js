@@ -16,7 +16,6 @@ const options = {};
 
 export default (opt = {}) => {
 	Object.assign(options, defaults, opt);
-	// created here, not at import, so importing needs no AWS config
 	options.client ??= new SQSClient();
 };
 export const getOptions = () => options;
@@ -31,7 +30,6 @@ export const trigger = async (id, sub, data = {}, notifyOptions = {}) => {
 		MessageBody: JSON.stringify({ id, sub, data, options: notifyOptions }),
 	};
 	if (options.log) {
-		// data carries one-time codes, only its keys are logged
 		options.log("@1auth/notify-sqs SendMessageCommand", {
 			QueueUrl: options.queueUrl,
 			id,

@@ -206,7 +206,6 @@ const tests = (store, mocks) => {
 			ok(expire < result[mocks.table.timeToLiveKey]);
 		});
 		it("Should insert rows that do not share the same fields", async () => {
-			// only the row with `expire` gets a `timeToLiveKey`
 			const expire = nowInSeconds() + 86400;
 			await store.insertList(table, [
 				{ id: 1, sub: "sub_000", value: "a" },
@@ -247,7 +246,6 @@ const tests = (store, mocks) => {
 	});
 	describe("contract", () => {
 		it("Should not expose count or updateList", async () => {
-			// nothing called them; each was one more surface to keep in step
 			strictEqual(store.count, undefined);
 			strictEqual(store.updateList, undefined);
 		});

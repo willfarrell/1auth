@@ -36,8 +36,6 @@ configure();
 
 export default configure;
 
-// Dropping a condition would widen the match, so a filter the caller could not
-// fill in is refused rather than skipped.
 const assertFilters = (filters) => {
 	for (const key in filters) {
 		const value = filters[key];
@@ -131,9 +129,6 @@ export const selectList = async (table, filters = {}, fields = []) => {
 	return await queryCommand(table, filters, fields);
 };
 
-// A command shares one set of value placeholders. `:${name}` is only the
-// readable default: a list item (`:id_0`), a condition (`:if_type`) and an
-// attribute literally named `id_0` or `if_type` can all want the same one.
 const placeholderFor = (taken, name) => {
 	let placeholder = `:${name}`;
 	for (let i = 1; taken.has(placeholder); i++) {
@@ -143,9 +138,6 @@ const placeholderFor = (taken, name) => {
 	return placeholder;
 };
 
-// Shared by buildQueryCommand (splits key vs filter conditions) and
-// makeQueryParams (uses them all as one expression). `prefix` keeps the value
-// placeholders of an update's SET apart from those of its condition.
 const makeExpressions = (filters, prefix = "", taken = new Set()) => {
 	const expressionAttributeNames = {};
 	const expressionAttributeValues = {};
@@ -185,9 +177,7 @@ const indexKeyAttributes = {
 };
 
 const getIndexName = (filters) => {
-	// must be length of >=3
 	if (filters.digest) return "digest";
-	// a list of ids can only be filtered, and a table's own key can't be
 	if (filters.sub && (!filters.id || Array.isArray(filters.id))) return "sub";
 	if (filters.id && !filters.sub) return "key";
 };
@@ -212,7 +202,6 @@ const buildQueryCommand = (table, filters = {}) => {
 		}
 	}
 
-	// DynamoDB can't Query without an equality on the partition key
 	if (!keyConditions.length) {
 		throw new Error("@1auth/store-dynamodb filters have no key to query on", {
 			cause: { table, filters },
@@ -272,8 +261,6 @@ const withTimeToLive = (values) => {
 	return values;
 };
 
-// Both, whatever the key schema: every row written here carries an id, and a
-// row without a sub would slip past a check on sub alone
 const makePut = (table, values) => ({
 	TableName: table,
 	Item: marshall(values, marshallOptions),
@@ -300,7 +287,6 @@ export const insert = async (table, inputValues = {}) => {
 	return values.id;
 };
 
-// ponytail: 5 retries with 25ms doubling backoff (~0.8s) before giving up on a batch
 const batchWriteRetries = 5;
 const batchWriteDelay = 25;
 // BatchWriteItem takes at most 25 requests, and may hand any of them back
@@ -344,7 +330,6 @@ export const insertList = async (table, rows = []) => {
 	return rows.map((row) => row.id);
 };
 
-// Key plus the condition every other filter adds to a write on it
 const makeKeyedParams = (filters, taken) => {
 	const key = { sub: filters.sub, id: filters.id };
 	const { expressionAttributeNames, expressionAttributeValues, conditions } =
@@ -357,7 +342,6 @@ const makeKeyedParams = (filters, taken) => {
 	};
 };
 
-// SET takes each value whole: a list is stored as a list, not read as IN
 const makeSet = (values, taken) => {
 	const names = {};
 	const placeholders = {};
@@ -378,8 +362,6 @@ const makeSet = (values, taken) => {
 
 const isConditionFailure = (e) => e.name === "ConditionalCheckFailedException";
 
-// Matches the SQL stores: an update that matches no row changes nothing,
-// rather than creating one
 export const update = async (table, filters = {}, inputValues = {}) => {
 	const values = structuredClone(inputValues);
 	if (options.log) {
@@ -392,7 +374,6 @@ export const update = async (table, filters = {}, inputValues = {}) => {
 		);
 	}
 	assertFilters(filters);
-	// an update addresses one row by its key
 	if (filters.sub === undefined && filters.id === undefined) {
 		refuseUnfiltered(table);
 	}
@@ -431,8 +412,6 @@ export const update = async (table, filters = {}, inputValues = {}) => {
 	}
 };
 
-// Without the full key there is no single row to delete. Query to find
-// matching items, then delete each by primary key.
 const removeMatching = async (table, filters) => {
 	const items = await queryCommand(table, filters);
 	let deleted = false;
@@ -463,7 +442,6 @@ export const remove = async (table, filters = {}) => {
 		ExpressionAttributeValues,
 		conditions,
 	} = makeKeyedParams(filters);
-	// {sub, id} or, for a table keyed on sub alone, {sub}
 	const keyed =
 		!Array.isArray(filters.sub) &&
 		!Array.isArray(filters.id) &&
@@ -491,7 +469,6 @@ export const remove = async (table, filters = {}) => {
 	}
 };
 
-// {sub, id: [...]}, plus any other filters
 export const removeList = async (table, filters = {}) => {
 	if (options.log) {
 		options.log(`@1auth/store-${options.id} removeList(`, table, filters, ")");

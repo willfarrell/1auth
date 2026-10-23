@@ -170,8 +170,6 @@ const tests = (config) => {
 			notEqual(db.digest, username);
 		});
 		it("Will store the sanitized username, the one it is keyed by", async () => {
-			// the stored value is what `recover` sends and apps display; the raw
-			// input can differ from the identity it claims (`Ádmin` is `admin`)
 			await accountUsernameCreate(sub, " ÜserNamé ");
 			const user = await accountUsernameLookup("username");
 			equal(user.value, "username");
@@ -181,7 +179,6 @@ const tests = (config) => {
 		it("Will NOT let two concurrent claims both succeed", async () => {
 			const subOther = await accountCreate();
 			await accountUsernameCreate(subOther, username);
-			// the second claim passed its exists check before the first wrote
 			let raced = false;
 			configure({
 				store: {
@@ -212,7 +209,6 @@ const tests = (config) => {
 			await accountUsernameCreate(subOther, username);
 			mocks.log.mock.resetCalls();
 			await rejects(() => accountUsernameCreate(sub, username), "409 Conflict");
-			// DynamoDB has no unique index to fall back on, so the check has to hold
 			const methods = mocks.log.mock.calls.map((call) => call.arguments[0]);
 			ok(methods.some((method) => method.includes("exists(")));
 			ok(!methods.some((method) => method.includes("update(")));
@@ -280,7 +276,6 @@ const tests = (config) => {
 			await accountRemove(sub);
 			equal(await accountUsernameExists(username), undefined);
 			equal(await accountUsernameLookup(username), undefined);
-			// but the name stays held until the row is swept
 			const subOther = await accountCreate();
 			await rejects(
 				() => accountUsernameCreate(subOther, username),

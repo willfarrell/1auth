@@ -177,9 +177,6 @@ export const createInstance = () => {
 		expire = 10 * 60,
 		encode = (value) => JSON.stringify(value),
 		decode = (value) => JSON.parse(value),
-		// Checked against the credential as it is now, not a copy taken when the
-		// challenge was issued: a revoked credential, or one whose counter has
-		// since moved on, must not answer a challenge minted before either.
 		verify = async (
 			response,
 			value,
@@ -300,10 +297,6 @@ export const createInstance = () => {
 
 	const verify = async (sub, response, { name = null } = {}, notify = true) => {
 		const value = await verifyToken(sub, response);
-		// WebAuthn §7.1 step 22: one credential id, one registration, on any
-		// account. An expired (revoked) registration can be replaced.
-		// ponytail: check-then-insert, two concurrent registrations of the same
-		// authenticator can both pass. Needs a unique index on `digest` to close.
 		const digest = createSeasonedDigest(value.credential.id);
 		const now = nowInSeconds();
 		const registrations = await options.store.selectList(
@@ -431,7 +424,6 @@ export const createInstance = () => {
 			if (options.log) {
 				options.log("@1auth/authn-webauthn allowCredentials is empty");
 			}
-			// An account with nothing registered answers like one that doesn't exist
 			return await decoyChallenge(username ?? sub);
 		}
 
@@ -463,8 +455,6 @@ export const createInstance = () => {
 		return { id, secret };
 	};
 
-	// `verify` already refuses a challenge whose credential is gone, this just
-	// stops the rows waiting out their ttl
 	const removeChallenges = async (sub, sourceId) => {
 		const challenges = await authnList(options.challenge, sub, { sourceId }, [
 			"id",

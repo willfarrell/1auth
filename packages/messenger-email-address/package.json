@@ -53,6 +53,6 @@
 	"dependencies": {
 		"@1auth/crypto": "0.0.0-rc.7",
 		"@1auth/messenger": "0.0.0-rc.7",
-		"tr46": "6.0.0"
+		"tr46": "7.0.0"
 	}
 }

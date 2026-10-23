@@ -10,7 +10,6 @@ import crypto, {
 import fc from "fast-check";
 import dbsc, { challenge, verifyProof } from "./index.js";
 
-// *** Setup Start *** //
 crypto({
 	symmetricEncryptionKey: symmetricRandomEncryptionKey(),
 	symmetricSignatureSecret: symmetricRandomSignatureSecret(),
@@ -20,9 +19,7 @@ crypto({
 	secretArgon2MemoryCost: 3,
 	secretArgon2Parallelism: 1,
 });
-// verifyProof reads no store, so none is wired
 dbsc();
-// *** Setup End *** //
 
 const aud = "https://example.com/auth/dbsc/refresh";
 const sessionId = "session_fuzz";
@@ -38,9 +35,6 @@ const publicKey = JSON.stringify({
 const base64url = (value) =>
 	Buffer.from(JSON.stringify(value) ?? "").toString("base64url");
 
-// None of these inputs carries a valid signature, so every one must be refused,
-// and refused with one of the two statuses a DBSC endpoint answers with. A
-// TypeError or a crash out of JSON/JWK parsing is a bug.
 const mustReject = async (input, params) => {
 	try {
 		await verifyProof(input, params);
@@ -60,8 +54,6 @@ const options = {
 	examples: [],
 };
 
-// Anything that could sit in a JOSE header: the claims a proof uses, filled
-// with values of any type, plus whatever else
 const header = fc.record(
 	{
 		typ: fc.oneof(fc.constant("dbsc+jwt"), fc.anything()),
@@ -146,7 +138,6 @@ test("fuzz verifyProof w/ stored publicKey", async () => {
 
 test("fuzz verifyProof w/ params", async () => {
 	await fc.assert(
-		// the caller's own arguments, so an object, but any values in it
 		fc.asyncProperty(
 			fc.record(
 				{
@@ -165,8 +156,6 @@ test("fuzz verifyProof w/ params", async () => {
 	);
 });
 
-// The harness itself: a proof that IS signed by the device gets through, so the
-// properties above are not passing on a verifier that refuses everything
 test("fuzz harness accepts a genuine proof", async () => {
 	const encodedHeader = base64url({ typ: "dbsc+jwt", alg: "ES256" });
 	const encodedPayload = base64url({ jti: challenge(sessionId) });

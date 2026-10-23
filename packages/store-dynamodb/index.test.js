@@ -43,7 +43,6 @@ describe("@1auth/store-dynamodb", () => {
 	tests(store, mocks);
 
 	describe("mock", () => {
-		// The mock connects at import, so each case needs a fresh process
 		const isReadyWith = (env) =>
 			execFileSync(
 				process.execPath,
@@ -143,7 +142,6 @@ describe("@1auth/store-dynamodb", () => {
 			});
 		});
 		it("Should keep a list item's placeholder apart from a key named like it", async () => {
-			// `id: [..]` is `:id_0, :id_1`, which is also what `id_0` would be
 			const result = store.makeQueryParams({ id: [1, 2], id_0: 9 });
 			equal(
 				result.KeyConditionExpression,
@@ -494,7 +492,6 @@ describe("@1auth/store-dynamodb", () => {
 				});
 				equal((await store.select(table, { sub: row.sub, id: 1 })).value, "b");
 
-				// a filter on the attribute being set keeps both values apart
 				await store.update(
 					table,
 					{ sub: row.sub, id: row.id, type: "t2" },
@@ -530,8 +527,6 @@ describe("@1auth/store-dynamodb", () => {
 			});
 
 			it("Should keep a set value apart from a condition named like it", async () => {
-				// the condition on `type` is `:if_type`, which is also what setting
-				// `if_type` would be
 				await store.insert(table, row);
 				await store.update(
 					table,
@@ -545,7 +540,6 @@ describe("@1auth/store-dynamodb", () => {
 			});
 
 			it("Should key an update on sub alone for a sub-keyed table", async () => {
-				// accounts are keyed on sub only; the missing id is not a condition
 				await rejects(() =>
 					store.update(table, { sub: row.sub }, { value: "b" }),
 				);
@@ -597,7 +591,6 @@ describe("@1auth/store-dynamodb", () => {
 			});
 
 			it("Should delete by sub alone for a sub-keyed table", async () => {
-				// accounts are keyed on sub only; this table is not, so DynamoDB refuses
 				sent.length = 0;
 				await rejects(() => store.remove(table, { sub: row.sub }));
 				deepEqual(sentNames(), ["DeleteItemCommand"]);
@@ -628,7 +621,6 @@ describe("@1auth/store-dynamodb", () => {
 					undefined,
 				);
 				deepEqual(sentNames(), ["GetItemCommand", "GetItemCommand"]);
-				// the filter is fetched to be checked, then left out of the result
 				deepEqual(
 					await store.select(table, { sub: row.sub, id: 1, type: "t1" }, [
 						"value",
@@ -702,7 +694,6 @@ describe("@1auth/store-dynamodb", () => {
 		});
 
 		describe("pagination", () => {
-			// One item per page, so every read has to follow LastEvaluatedKey
 			const paged = () =>
 				configure({
 					client: {
@@ -815,7 +806,6 @@ describe("@1auth/store-dynamodb", () => {
 
 			it("Should retry unprocessed items", async () => {
 				await store.insertList(table, rowsOf(3));
-				// the first attempt of each chunk leaves its last item behind
 				configure({
 					client: {
 						send: async (command) => {

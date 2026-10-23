@@ -7,13 +7,11 @@ import {
 	KMSClient,
 } from "@aws-sdk/client-kms";
 
-// Drop-in for @1auth/crypto: one import site for apps that use both. Local
-// exports (getOptions, the default configure) shadow crypto's.
 export * from "@1auth/crypto";
 
 const defaults = {
-	client: undefined, // new KMSClient(), made in configure only when not passed
-	keyId: undefined, // alias/... or a key ARN, SYMMETRIC_DEFAULT
+	client: undefined,
+	keyId: undefined,
 	keySpec: "AES_256",
 	encoding: "base64",
 	name: "kms1",
@@ -21,7 +19,6 @@ const defaults = {
 };
 const options = {};
 
-// KMS rejects an empty context value, so an absent `sub` omits the key
 const encryptionContext = (sub) => (sub ? { sub } : undefined);
 
 const prefix = (encryptedKey) => `${options.name}:${encryptedKey}`;
@@ -71,8 +68,6 @@ export const decryptEncryptionKey = async (encryptedKey, sub) => {
 	return Buffer.from(Plaintext);
 };
 
-// Registered but unusable: @1auth/crypto's key functions are synchronous, so
-// this makes a `kms1:` row report a missing await instead of a bad signature
 const asynchronous = (call) => () => {
 	throw new Error(
 		`@1auth/crypto-kms is asynchronous, use ${call} and pass the resulting encryptionKey`,

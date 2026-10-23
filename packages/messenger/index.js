@@ -70,8 +70,6 @@ export default (opt = {}) => {
 };
 export const getOptions = () => options;
 
-// Unverified claims on a value can sit alongside its verified owner, and only
-// the owner may resolve: `store.select` is an unordered LIMIT 1.
 const selectVerified = async (type, value, fields) => {
 	const valueDigest = createSeasonedDigest(value);
 	const messengers = await options.store.selectList(
@@ -173,8 +171,6 @@ export const create = async (type, sub, values) => {
 		await createToken(type, sub, own.id);
 		return own.id;
 	}
-	// Unverified claims by other accounts don't block this one; whichever
-	// account verifies first keeps the value (see `verifyToken`)
 	const valueExists = messengers.find((messenger) => messenger.verify);
 	if (valueExists) {
 		await options.notify.trigger(
@@ -271,10 +267,6 @@ export const verifyToken = async (type, sub, token, sourceId) => {
 		{ sub, id: sourceId },
 		{ verify: nowInSeconds() },
 	);
-	// Verified ownership wins: drop other accounts' pending claims on the value,
-	// and their tokens, so none can be verified or resolved after this.
-	// ponytail: SQL rejects a second verified owner with a partial unique index;
-	// DynamoDB can't, so two owners verifying in the same instant both stand.
 	const claims = await options.store.selectList(
 		options.table,
 		{ type, digest: messenger.digest },

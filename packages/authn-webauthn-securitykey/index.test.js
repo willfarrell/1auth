@@ -157,7 +157,6 @@ describe("@1auth/authn-webauthn-securitykey", { concurrency: 1 }, () => {
 
 		equal(await securityKeyCount(sub), 1);
 		ok((await securityKeyCreateChallenge(sub)).secret);
-		// the preset asks for UV, so the assertion has to carry it
 		const [challenge] = await store.selectList(authnGetOptions().table, {
 			sub,
 			type: "WebAuthnSecurityKey-challenge",
