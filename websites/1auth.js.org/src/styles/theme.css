@@ -1,4 +1,3 @@
-/* ponytail: `ds extract` can't see the runtime-only .ds-keyshortcut <kbd>, so import it by hand */
 @import "@willfarrell-ds/vanilla/components/ds-keyshortcut.css";
 
 :root {

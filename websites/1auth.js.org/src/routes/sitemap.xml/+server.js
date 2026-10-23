@@ -9,7 +9,6 @@ export const GET = async ({ url }) => {
 			(path) =>
 				path.replace("/src/routes", "").replace(/\/\+page\.\w+$/, "") || "/",
 		)
-		// /search needs a query
 		.filter((path) => path !== "/search")
 		.sort();
 

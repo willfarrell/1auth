@@ -43,7 +43,6 @@ const dropExtTable = async () =>
 
 describe("@1auth/store-postgres", () => {
 	describe("mock", () => {
-		// The mock connects at import, so each case needs a fresh process
 		const isReadyWith = (env) =>
 			execFileSync(
 				process.execPath,

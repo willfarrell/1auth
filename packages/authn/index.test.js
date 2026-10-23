@@ -583,7 +583,6 @@ describe("@1auth/authn", () => {
 			const config = plain({ otp: true });
 			const { id } = await authnCreate(config, sub, { value: "a" });
 			equal(await authnAuthenticate(config, username, "a"), sub);
-			// consumed: removed, so it cannot be replayed
 			equal(await authnSelect(config, sub, id), undefined);
 			equal(await authnCount(config, sub), 0);
 			await rejects(() => authnAuthenticate(config, username, "a"), {
@@ -645,7 +644,6 @@ describe("@1auth/authn", () => {
 				},
 			});
 			equal(await authnAuthenticate(config, username, "a"), sub);
-			// and a lone bad row is invalid, still behind the timing floor
 			await rejects(() => authnAuthenticate(config, username, "bad"), {
 				cause: { type: "invalid" },
 			});
@@ -669,10 +667,7 @@ describe("@1auth/authn", () => {
 			equal(maxInFlight, 3);
 		});
 		it("Will do a dummy verify for an unknown username or no candidates", async () => {
-			// an unknown user must cost what a user with a credential costs, or
-			// the response time enumerates usernames
 			const calls = { create: 0, encode: 0, verify: 0 };
-			// its own type: the dummy is cached per type across the whole suite
 			const counted = (params = {}) =>
 				plain({
 					type: "dummy",
@@ -702,9 +697,7 @@ describe("@1auth/authn", () => {
 				values: {},
 				params,
 			});
-			// the dummy value is made once per credential type, then reused
 			await rejects(() => authnAuthenticate(counted(), "nobody", "a"));
-			// a known user with nothing to check pays the same
 			await rejects(() => authnAuthenticate(counted(), username, "a"), {
 				cause: { type: "missing" },
 			});
@@ -712,12 +705,10 @@ describe("@1auth/authn", () => {
 				{ create: calls.create, encode: calls.encode, verify: calls.verify },
 				{ create: 1, encode: 1, verify: 3 },
 			);
-			// a user with a candidate is not charged a dummy on top
 			await authnCreate(counted(), sub, { value: "b", verify: 1 });
 			calls.verify = 0;
 			await rejects(() => authnAuthenticate(counted(), username, "a"));
 			equal(calls.verify, 1);
-			// a credential type that cannot make a dummy still answers 401
 			const broken = plain({
 				type: "broken",
 				encode: () => {
@@ -729,8 +720,6 @@ describe("@1auth/authn", () => {
 			});
 		});
 		it("Can narrow candidates to one digest", async () => {
-			// an access token's username names exactly one row: another token's
-			// secret on the same account must not authenticate it
 			await authnCreate(plain(), sub, { value: "a", verify: 1, digest: "d_a" });
 			await authnCreate(plain(), sub, { value: "b", verify: 1, digest: "d_b" });
 			await rejects(
@@ -888,7 +877,6 @@ describe("@1auth/authn", () => {
 				});
 				equal((await authnSelect(config, sub, id)).attempts, i);
 			}
-			// the fifth failure removes it, so even the right code is now missing
 			await rejects(() => authnVerify(config, sub, "wrong"));
 			equal(await authnSelect(config, sub, id), undefined);
 			await rejects(() => authnVerify(config, sub, "a"), {
@@ -901,7 +889,6 @@ describe("@1auth/authn", () => {
 			await authnCreate(config, sub, { value: "a" });
 			await rejects(() => authnVerify(config, sub, "wrong"));
 			ok(await authnVerify(config, sub, "a"));
-			// a throwing verify is a failed attempt too
 			const { id } = await authnCreate(config, sub, { value: "b" });
 			const throwing = plain({
 				otp: true,
@@ -915,7 +902,6 @@ describe("@1auth/authn", () => {
 			equal(await authnSelect(config, sub, id), undefined);
 		});
 		it("Will count from zero on a row with no attempts stored", async () => {
-			// dynamodb rows, and sql rows from before the column existed
 			const config = plain({ otp: true });
 			const { id } = await authnCreate(config, sub, { value: "a" });
 			await storeSQLite.update(table, { sub, id }, { attempts: null });

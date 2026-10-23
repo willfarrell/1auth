@@ -275,7 +275,6 @@ const tests = (config) => {
 		count = await recoveryCodesCount(sub);
 		equal(count, 4);
 
-		// attempt limits are for `verify`; authenticate never counts on a code
 		ok(!authnDB.attempts, "no attempts counted on a recovery code");
 	});
 	it("A failed authenticate does not burn other codes and surfaces no attempts count", async () => {
@@ -303,7 +302,6 @@ const tests = (config) => {
 		equal(secrets.length, 5);
 		await recoveryCodesAuthenticate(username, secrets[0].value);
 
-		// a used code is removed, not kept around expired
 		let authnDB = await store.selectList(authnGetOptions().table, { sub });
 		equal(authnDB.length, 4);
 

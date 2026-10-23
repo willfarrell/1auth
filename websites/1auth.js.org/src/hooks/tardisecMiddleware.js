@@ -1,5 +1,4 @@
 // TODO convert into adapter
-// import * as env from '$app/env/private';
 // import { redirect } from "@utils/sveltekit.js";
 //import { recommendHttpHeader } from "@utils/recommend.js";
 import { isRedirect } from "@sveltejs/kit";
@@ -16,10 +15,6 @@ const kitOwnsRedirect = (event) =>
 const tardisecMiddleware = async ({ event, resolve }) => {
 	// const { url, params, cookies } = event;
 
-	// redirect() throws, and a throw unwinds past every hook wrapping the thrower
-	// straight to Kit's own handler, so the 3xx shipped with none of these headers and
-	// every scan of `/` graded the redirect rather than the page it points at. Move this
-	// hook first in the sequence() if another hook is ever added that redirects.
 	let response;
 	try {
 		response = await resolve(event);

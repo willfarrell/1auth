@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: MIT
 import { createSqlStore } from "@1auth/store-sql";
 
-// Cloudflare D1 storage. D1 binds prepared statements rather than exposing
-// `query(sql, parameters)`, so the adapter reads `.all()` into rows[].
 const store = createSqlStore({
 	id: "d1",
 	query: (client, sql, parameters) =>

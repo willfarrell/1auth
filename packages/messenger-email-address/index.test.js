@@ -632,9 +632,6 @@ const tests = (config) => {
 		equal(emailAddressSanitize("nodomain"), "nodomain");
 	});
 	it("Can NOT sanitize: a second `@` away", () => {
-		// `victim@x.com@evil.test` used to sanitize to `victim@x.com`, so it
-		// validated and was keyed as the victim while the raw value was stored
-		// and delivered to
 		equal(
 			emailAddressSanitize("victim@x.com@evil.test"),
 			"victim@x.com@evil.test",

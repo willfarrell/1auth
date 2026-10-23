@@ -37,7 +37,7 @@ const defaults = {
 	log: false,
 	require: false,
 	challengeExpire: 1 * 60,
-	challengeTable: "dbsc_challenges", // spent refresh challenges, see table/
+	challengeTable: "dbsc_challenges",
 	registerPath: "/dbsc/register",
 	refreshPath: "/dbsc/refresh",
 	sidCookieName: "__Host-Http-sid",
@@ -137,8 +137,6 @@ const assertCookie = (nameKey, attributesKey) => {
 };
 export const getOptions = () => options;
 
-// The random part keeps two tokens issued in the same second apart: a spent
-// challenge handed out again would be refused on use
 const signedToken = (domain, sessionId) =>
 	symmetricSignatureSign(
 		`${domain}:${nowInSeconds()}:${randomAlphaNumeric(16)}:${sessionId}`,
@@ -181,7 +179,6 @@ export const registrationHeader = ({ authorization } = {}) => {
 	return header;
 };
 
-// Response header that hands the browser a fresh challenge to cache.
 // `sessionId` is the raw Sec-Secure-Session-Id request header, echoed into a
 // quoted structured field, so anything that could end the quotes is refused:
 // printable ASCII only, less `"` and `\`. No id this package issues has either.
@@ -212,7 +209,6 @@ const dbscAttributes = () =>
 	`${options.dbscCookieAttributes}; Max-Age=${options.dbscCookieExpire}`;
 
 // The session cookie. Lives as long as the row, and is not the bound credential.
-// The row can still end sooner, on @1auth/session's `idleExpire`.
 export const sidCookieHeader = (sid) =>
 	`${options.sidCookieName}=${sid}; ${options.sidCookieAttributes}; Max-Age=${session.getOptions().expire}`;
 
@@ -257,8 +253,6 @@ export const verifyProof = async (
 		throw unauthorized();
 	}
 	if (!payload || typeof payload !== "object") throw unauthorized();
-	// Own string keys only: an object `alg` throws converting to a key, and a
-	// name like "toString" would find Object.prototype's
 	const algorithm =
 		typeof header?.alg === "string" && Object.hasOwn(algorithms, header.alg)
 			? algorithms[header.alg]
@@ -365,17 +359,11 @@ export const register = async (
 	proof,
 	{ aud, value = {}, values = {} } = {},
 ) => {
-	// Fail before spending a signature verification on a request that cannot
-	// work. No bound cookie is passed, so a session that is already bound does
-	// not resolve: rebinding would let a stolen `sid` swap in the thief's key.
 	const found = await lookup(sid, undefined, value);
 	if (!found) {
 		throw new Error("401 Unauthorized", { cause: { aud } });
 	}
 	const { publicKey } = await verifyProof(proof, { aud });
-	// Bound in place and the `sid` rotated, so a `sid` stolen before binding
-	// stops resolving now rather than at the row's `expire`. The row id is the
-	// `session_identifier` the browser caches and sends back as Sec-Session-Id.
 	const rotated = await session.rotate(found.sub, found.id, value, {
 		...values,
 		publicKey,
@@ -390,11 +378,6 @@ export const register = async (
 	};
 };
 
-// Spends a refresh challenge. The insert failing on an existing key is the
-// replay check, and it is atomic, so two racing copies of one proof cannot both
-// pass. Kept until the challenge could no longer verify anyway.
-// Refresh only: a registration challenge names no session, so every browser
-// registering in the same second is handed the same one.
 const spendChallenge = async (sub, jti, cause) => {
 	const { store } = session.getOptions();
 	const spent = { sub, id: createSeasonedDigest(jti) };
@@ -404,9 +387,6 @@ const spendChallenge = async (sub, jti, cause) => {
 			expire: nowInSeconds() + options.challengeExpire,
 		});
 	} catch (e) {
-		// 403, like any other unusable challenge: the browser fetches a fresh one.
-		// Only for a row that is already there: a missing table or an outage
-		// answered as 403 would loop the browser with nothing logged.
 		if (await store.exists(options.challengeTable, spent)) {
 			throw new Error("403 Forbidden", { cause });
 		}
@@ -439,8 +419,6 @@ export const refresh = async (
 	// moved by rotate(), so checking it here is the whole termination rule. The
 	// dead COOKIE is not this check: that is the browser's Max-Age, and it being
 	// dead is precisely why the browser is here.
-	// Written as "not live", like `lookup`, so a row missing `expire` or `update`
-	// fails closed. A refresh is not use, so it never moves `update` itself.
 	const now = nowInSeconds();
 	const { idleExpire } = session.getOptions();
 	if (
@@ -463,9 +441,6 @@ export const refresh = async (
 	};
 };
 
-// Ends the session AND its binding: `lookup` and `refresh` both refuse a row
-// past `expire`. The row stays for the account's session list; `remove` deletes
-// it.
 export const expire = async (sub, id) => await session.expire(sub, id);
 
 export const remove = async (sub, id) => await session.remove(sub, id);

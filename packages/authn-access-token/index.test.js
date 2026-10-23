@@ -379,7 +379,6 @@ const tests = (config) => {
 			"401 Unauthorized",
 			{ type: "invalid" },
 		);
-		// not even once A has expired: its username still names only A
 		await accessTokenExpire(sub, tokenA.id);
 		await rejects(
 			() => accessTokenAuthenticate(tokenA.username, tokenB.secret),

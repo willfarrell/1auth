@@ -595,8 +595,6 @@ const tests = (config) => {
 		equal(messengerDB?.id, messengerId);
 		ok(messengerDB.verify);
 
-		// verified ownership wins: the other account's unverified claim, and the
-		// token that would have verified it, are gone
 		ok(
 			!(await store.select(messengerGetOptions().table, {
 				sub: subOther,
@@ -618,7 +616,6 @@ const tests = (config) => {
 	});
 
 	it("Will leave another account's unverified claim alone until one is verified", async () => {
-		// claiming an address someone is still verifying must not cancel theirs
 		const messengerId = await messengerCreate(messengerType, sub, {
 			value: messengerValue,
 			digest: createSeasonedDigest(messengerValue),
@@ -646,8 +643,6 @@ const tests = (config) => {
 	});
 
 	it("Will keep its own messenger when the digest index lags behind the verify", async () => {
-		// DynamoDB GSIs are eventually consistent: the claim query can return
-		// this account's row as it was before `verify` was written
 		const messengerId = await messengerCreate(messengerType, sub, {
 			value: messengerValue,
 			digest: createSeasonedDigest(messengerValue),
@@ -703,8 +698,6 @@ const tests = (config) => {
 	});
 
 	it("Will resolve the verified owner when an unverified claim is also stored", async () => {
-		// rows an older version left behind, or a DynamoDB race: the unverified
-		// claim is stored first, so it is the one an unordered LIMIT 1 finds
 		const subOther = "sub_111111";
 		await messengerCreate(messengerType, subOther, {
 			value: messengerValue,
@@ -765,8 +758,6 @@ const tests = (config) => {
 	});
 
 	it("Will burn a token after too many wrong guesses", async () => {
-		// the limit lives in @1auth/authn `verify`; a messenger token is otp, so
-		// it is subject to it
 		const messengerId = await messengerCreate(messengerType, sub, {
 			value: messengerValue,
 			digest: createSeasonedDigest(messengerValue),
@@ -787,8 +778,6 @@ const tests = (config) => {
 	});
 
 	it("Will only resolve, list and select the messenger asked for", async () => {
-		// another account's verified messenger is stored first, where a filter
-		// that went missing would find it
 		const subOther = "sub_111111";
 		const otherValue = "@other.00";
 		const otherId = await messengerCreate(messengerType, subOther, {
@@ -825,8 +814,6 @@ const tests = (config) => {
 	});
 
 	it("Will clear claims on the value verified, not another", async () => {
-		// the first row stored is an unrelated pending claim, so reading the
-		// verified messenger without its filter would clear the wrong value
 		const subUnrelated = "sub_222222";
 		const otherValue = "@other.00";
 		const unrelatedId = await messengerCreate(messengerType, subUnrelated, {

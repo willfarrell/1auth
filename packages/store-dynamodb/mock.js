@@ -18,7 +18,6 @@ let ready;
 const maxRetries = 30;
 const waitForStart = async (attempt = 0) => {
 	if (ready) return;
-	// Skipping is a decision, so it holds even when the container is up
 	if (process.env.SKIP_DYNAMODB) {
 		console.warn("SKIP_DYNAMODB set, skipping DynamoDB tests");
 		return;
@@ -28,9 +27,6 @@ const waitForStart = async (attempt = 0) => {
 		ready = 1;
 	} catch (error) {
 		if (attempt >= maxRetries) {
-			// Warning and continuing silently dropped 225 tests from a full run
-			// while it still reported green, so a missing container has to be
-			// loud.
 			throw new Error(
 				"DynamoDB local not available on http://localhost:8000. Start it with `npm run test:dynamodb`, or set SKIP_DYNAMODB=1 to skip these tests deliberately.",
 				{ cause: error },

@@ -18,7 +18,6 @@ export default defineConfig({
 			adapter: adapter({}),
 			appDir: "_",
 			csp: tardisec["svelte.config.js"]["Content-Security-Policy"],
-			// Also the CSRF trusted origin and prerender url.origin
 			paths: {
 				origin: `https://${domain}`,
 			},

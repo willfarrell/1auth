@@ -146,7 +146,6 @@ describe("@1auth/authn-webauthn-passkey", { concurrency: 1 }, () => {
 
 		const [token] = await store.selectList(authnGetOptions().table, { sub });
 		equal(token.type, "WebAuthnPassKey-token");
-		// standing in for a password, so `verify` insists on the UV flag
 		const value = JSON.parse(
 			symmetricDecrypt(token.value, { sub, encryptedKey: token.encryptionKey }),
 		);
@@ -255,15 +254,11 @@ const registrationResponse = {
 	authenticatorAttachment: "platform",
 };
 
-// A second PassKey, on a phone reached over hybrid transport. Its own credential
-// id, since one id can only be registered once. `fmt: none` signs nothing, so
-// swapping the id inside authData leaves the response verifiable.
 const remoteCredentialId = Buffer.alloc(20, 7).toString("base64url");
 const remoteAttestation = isoCBOR.decodeFirst(
 	isoBase64URL.toBuffer(registrationResponse.response.attestationObject),
 );
 const remoteAuthData = Buffer.from(remoteAttestation.get("authData"));
-// rpIdHash(32) flags(1) counter(4) aaguid(16) idLength(2)
 Buffer.from(remoteCredentialId, "base64url").copy(remoteAuthData, 55);
 remoteAttestation.set("authData", new Uint8Array(remoteAuthData));
 const registrationResponseRemote = {

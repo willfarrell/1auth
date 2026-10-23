@@ -36,7 +36,6 @@ crypto(secrets);
 
 const keyId = "arn:aws:kms:ca-central-1:111122223333:key/test";
 
-// wraps real key material and, like KMS, enforces the encryption context
 const fakeKms = () => {
 	const vault = new Map();
 	let counter = 0;
@@ -78,13 +77,11 @@ describe("@1auth/crypto-kms", () => {
 		const client = fakeKms();
 		cryptoKms({ client, keyId });
 		equal(getOptions().client, client);
-		// a fresh client per configure, not one built at import and shared
 		cryptoKms({ keyId });
 		const first = getOptions().client;
 		ok(first instanceof KMSClient);
 		cryptoKms({ keyId });
 		notEqual(getOptions().client, first);
-		// and passing one again replaces the default
 		cryptoKms({ client, keyId });
 		equal(getOptions().client, client);
 	});
@@ -206,8 +203,6 @@ describe("@1auth/crypto-kms", () => {
 		const send = mock.fn(async () => ({ Plaintext: new Uint8Array(32) }));
 		cryptoKms({ client: { send }, keyId });
 
-		// same Decrypt as a row key, just without a sub: the pepper belongs to
-		// no subject and has to be byte-identical on every boot
 		const pepper = await decryptEncryptionKey(
 			`kms1:${Buffer.from([5]).toString("base64")}`,
 		);
@@ -253,8 +248,6 @@ describe("@1auth/crypto-kms", () => {
 	describe("registration", () => {
 		it("Should register under its name so the prefix is recognised", async () => {
 			cryptoKms({ client: fakeKms(), keyId });
-			// an unregistered name would fall back to the in-process provider
-			// rather than naming the async entry point
 			throws(
 				() =>
 					symmetricGenerateEncryptionKey("sub_1", {
@@ -295,10 +288,8 @@ describe("@1auth/crypto-kms", () => {
 			const core = await import("@1auth/crypto");
 			const kms = await import("./index.js");
 			for (const name of Object.keys(core)) {
-				if (name === "default") continue; // each package keeps its own configure
+				if (name === "default") continue;
 				if (name === "getOptions") {
-					// name collision: the local option bag wins, crypto's stays behind
-					// its own import
 					notEqual(kms[name], core[name], name);
 					continue;
 				}

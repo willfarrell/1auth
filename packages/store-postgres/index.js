@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MIT
 import { createSqlStore } from "@1auth/store-sql";
 
-// PostgreSQL storage: @1auth/store-sql with `$1`-numbered placeholders.
 const store = createSqlStore({ id: "postgres", placeholder: "$" });
 export default store.default;
 export const {

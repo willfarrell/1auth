@@ -1,9 +1,7 @@
 import visit from "unist-util-visit";
 
 /**
- * Rehype plugin to add a copy button to code blocks via ds-codeblock-actions.
  * mdsvex highlights fences before rehype runs, so they arrive as raw html.
- * The `language-*` class on `<pre>` is unused (the `<code>` keeps its own).
  */
 export function rehypeCopyPre() {
 	return (tree) => {

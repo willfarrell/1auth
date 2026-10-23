@@ -12,16 +12,10 @@ import {
 	waitUntilTableNotExists,
 } from "@aws-sdk/client-dynamodb";
 
-// Refresh challenges already spent, so a captured proof cannot be replayed while
-// its challenge is still inside `challengeExpire`. Insert-only: nothing reads a
-// row back, the conditional insert failing IS the replay check.
 export const name = "dbsc_challenges";
 export const timeToLiveKey = "remove";
 const keyAttributes = ["sub", "id"];
 
-// A table and its GSIs are created asynchronously. Querying one before it is
-// ACTIVE fails with ResourceNotFoundException, which is what made this suite
-// flaky by the tens of failures per run.
 const ready = async (client, table) => {
 	await waitUntilTableExists({ client, maxWaitTime: 30 }, { TableName: table });
 	for (let i = 0; i < 100; i++) {
@@ -42,9 +36,6 @@ const ready = async (client, table) => {
 		}
 		await setTimeout(50);
 	}
-	// Carry the last status out: a bare timeout here tells you nothing, and the
-	// failures this waiter exists to prevent are intermittent enough that a
-	// recurrence has to explain itself the first time it happens.
 	const { Table } = await client.send(
 		new DescribeTableCommand({ TableName: table }),
 	);
@@ -60,8 +51,6 @@ const ready = async (client, table) => {
 };
 
 export const create = async (client, table = name) => {
-	// The container is persistent and keeps leftover tables from killed runs. A
-	// stale schema fails an entire run at once, so start from a clean slate.
 	await drop(client, table);
 	try {
 		await client.send(
@@ -77,8 +66,6 @@ export const create = async (client, table = name) => {
 						AttributeType: "S",
 					},
 				],
-				// Partitioned on `sub` like every other table, which is what the
-				// store's conditional insert checks for
 				KeySchema: [
 					{
 						AttributeName: "sub",
@@ -110,8 +97,6 @@ export const create = async (client, table = name) => {
 	);
 };
 
-// Delete the rows, never the table. Dropping and recreating a table plus its
-// GSIs on every afterEach is what made this suite unusable.
 export const truncate = async (client, table = name) => {
 	let ExclusiveStartKey;
 	do {
@@ -128,7 +113,6 @@ export const truncate = async (client, table = name) => {
 				ExclusiveStartKey,
 			}),
 		);
-		// Scan returns keys already marshalled, which is what DeleteRequest wants
 		for (let i = 0; i < res.Items.length; i += 25) {
 			await client.send(
 				new BatchWriteItemCommand({
@@ -151,9 +135,6 @@ export const drop = async (client, table = name) => {
 				TableName: table,
 			}),
 		);
-		// Deletion is asynchronous. Recreating before it finishes yields either
-		// ResourceInUseException or a table that vanishes mid-test, which is what
-		// made whole runs fail at once rather than a test here and there.
 		await waitUntilTableNotExists(
 			{ client, maxWaitTime: 30 },
 			{ TableName: table },

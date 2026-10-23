@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MIT
 import { createSqlStore } from "@1auth/store-sql";
 
-// SQLite storage: @1auth/store-sql with `?` placeholders.
 const store = createSqlStore({ id: "sqlite" });
 export default store.default;
 export const {

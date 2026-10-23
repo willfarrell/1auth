@@ -25,7 +25,6 @@ const mocks = { ...mockDatabase, id: "sql", table: mockDatabaseTable };
 
 const nowInSeconds = () => Math.floor(Date.now() / 1000);
 
-// Unlike try/catch, these fail when nothing is thrown
 const throwsError = (fn) => {
 	try {
 		fn();
@@ -380,7 +379,6 @@ describe("@1auth/store-sql", () => {
 			equal(insert, '("a") VALUES (?), (?)');
 		});
 		it("Should give every row every column, as NULL where it has none", async () => {
-			// `withTimeToLive` adds `remove` only to rows with `expire`
 			const { insert, parameters } = makeInsertList("$", [
 				{ id: 1, value: "a" },
 				{ id: 2, value: "b", expire: 100, remove: 200 },

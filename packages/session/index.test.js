@@ -426,7 +426,6 @@ const tests = (config) => {
 		});
 
 		it("Can NOT lookup a session with no `expire`", async () => {
-			// a row missing its deadline is broken, not immortal
 			const currentDevice = { os: "MacOS" };
 			const { id, sid } = await sessionCreate(sub, currentDevice);
 			const real = await store.select(sessionGetOptions().table, { sub, id });
@@ -439,8 +438,6 @@ const tests = (config) => {
 		});
 
 		describe("idle timeout", () => {
-			// `update` is the last time the session was used. Record it, then move
-			// the clock rather than the row, so every store reads the same seconds.
 			const idle = async (t, seconds) => {
 				const currentDevice = { os: "MacOS" };
 				const created = await sessionCreate(sub, currentDevice);
@@ -524,7 +521,6 @@ const tests = (config) => {
 				]);
 				const row = await store.select(sessionGetOptions().table, { sub, id });
 				equal(row.update, now);
-				// and the neighbour is left alone
 				const other = await store.select(sessionGetOptions().table, {
 					sub: subOther,
 					id: otherSession.id,
@@ -881,7 +877,6 @@ const tests = (config) => {
 			equal(mocks.notifyClient.mock.calls.length, 1);
 		});
 		it("Will not match against an expired session", async () => {
-			// a device that only ever held a dead session is new again
 			const { id } = await sessionCreate(sub, { os: "MacOS" });
 			await sessionExpire(sub, id);
 			await sessionCheck(sub, { os: "MacOS" });
@@ -1100,7 +1095,6 @@ const tests = (config) => {
 		const { sid } = await sessionCreate(sub, currentDevice);
 		const cookie = sessionSign(sid);
 		equal(sessionVerify(cookie), sid);
-		// a cookie edited client side, in either half, is refused
 		const [value, signature] = [
 			cookie.slice(0, cookie.lastIndexOf(".")),
 			cookie.slice(cookie.lastIndexOf(".") + 1),

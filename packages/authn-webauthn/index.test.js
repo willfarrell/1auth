@@ -264,8 +264,6 @@ const tests = (config) => {
 		});
 
 		it("Is a sha256 of path, query and sorted fields, in base64url", () => {
-			// Pinned rather than left to the crypto defaults, which an app can change
-			// between the page that mints a challenge and the post that answers it
 			equal(
 				makeRequestHash({ url, body: new URLSearchParams("b=2&a=1") }),
 				createHash("sha256")
@@ -275,7 +273,6 @@ const tests = (config) => {
 		});
 
 		it("Names the form field it skips", () => {
-			// the client posts the assertion under this name, so it is API
 			equal(formInputName, "webauthnCredential");
 		});
 	});
@@ -339,8 +336,6 @@ const tests = (config) => {
 				await store.selectList(authnGetOptions().table, { sub })
 			).filter((row) => row.type === "WebAuthn-challenge");
 			equal(rows.length, 4);
-			// Ages out of step with insertion order, so only sorting on `create`
-			// finds the oldest
 			const now = nowInSeconds();
 			const ages = [20, 40, 10, 30];
 			for (let i = 0; i < rows.length; i++) {
@@ -462,9 +457,6 @@ const tests = (config) => {
 				equal(e.cause.type, "missing");
 			}
 		});
-		// A challenge minted before the credential was revoked must not outlive it.
-		// These bypass `webauthnExpire`/`webauthnRemove` (which also sweep the
-		// challenges) to prove `verify` itself looks at the credential as it is now.
 		const challengeFor = async () => {
 			const { id } = await registered();
 			await webauthnCreateChallenge(sub);
@@ -497,8 +489,6 @@ const tests = (config) => {
 			);
 		});
 		it("Will throw when the credential counter moved on since the challenge", async () => {
-			// A cloned authenticator: the real one has since signed with counter 5,
-			// and the challenge row's copy of the credential must not stand in for it
 			const id = await challengeFor();
 			const row = await store.select(authnGetOptions().table, { sub, id });
 			const value = webauthnSecret().decode(
@@ -516,8 +506,6 @@ const tests = (config) => {
 				unauthorized,
 			);
 		});
-		// Scheduled to expire is not expired, and `expire` is the last live second.
-		// Run in the front half of a second so "now" does not tick over mid-test.
 		for (const [name, offset] of [
 			["later", 60],
 			["this second", 0],
@@ -644,7 +632,6 @@ const tests = (config) => {
 		const challenge = authnDB[1];
 		equal(challenge.type, "WebAuthn-challenge");
 		equal(challenge.otp, true);
-		// No copy of the credential: `verify` reads the live one through `sourceId`
 		equal(challenge.value.length, 353);
 		ok(challenge.expire);
 
@@ -657,7 +644,6 @@ const tests = (config) => {
 		);
 		equal(userSub, sub);
 
-		// the challenge is spent, the credential is not
 		authnDB = await store.selectList(authnGetOptions().table, { sub });
 		authnDB = authnDB.filter((item) => !item.expire);
 		deepEqual(
@@ -860,8 +846,6 @@ const tests = (config) => {
 		}
 	});
 	it("Will report an empty credential list, with or without a logger", async () => {
-		// a fresh account has no registered secret, so there is nothing to allow,
-		// and nothing stored: the decoy stands in
 		const { id, secret } = await webauthnCreateChallenge(sub);
 		equal(id, undefined);
 		equal(secret.allowCredentials.length, 1);
@@ -920,7 +904,6 @@ const tests = (config) => {
 		const count = await webauthnCount(sub);
 		equal(count, 2);
 	});
-	// WebAuthn §7.1 step 22: a credential id belongs to one registration
 	describe("a credential id already registered", () => {
 		const conflict = (e) => {
 			equal(e.message, "409 Conflict");
@@ -966,7 +949,6 @@ const tests = (config) => {
 				const { id } = await registered();
 				await revoke(sub, id);
 				ok(await registered());
-				// ...and the live one it left behind still blocks a third
 				await rejects(registered(), conflict);
 			});
 		}
@@ -990,7 +972,6 @@ const tests = (config) => {
 			it(`Will drop its outstanding challenges on ${name}`, async () => {
 				const { id, otherId } = await twoCredentialsWithChallenges();
 				await revoke(sub, id);
-				// the other credential's challenge is left alone
 				deepEqual(
 					(await liveChallenges()).map((row) => row.sourceId),
 					[otherId],
@@ -1080,8 +1061,6 @@ const tests = (config) => {
 			equal(real.challenge.length, decoy.challenge.length);
 		});
 
-		// A known username with nothing registered is the same probe as an
-		// unknown one, and has to get the same answer.
 		it("Can NOT tell an account without credentials from an unknown one", async () => {
 			const known = await webauthnCreateChallenge(sub, { username });
 			await accountRemove(sub);
@@ -1189,8 +1168,6 @@ const tests = (config) => {
 			});
 		});
 
-		// What the ceremony asks the browser for and what `verify` insists on have
-		// to agree: "preferred" means an authenticator without UV still gets in.
 		const storedValue = async (type) => {
 			const [row] = await store.selectList(authnGetOptions().table, {
 				sub,
@@ -1558,8 +1535,6 @@ const tests = (config) => {
 	});
 
 	describe("what each refusal reports", () => {
-		// `authn.verify` turns any credential error into 401, so these go at the
-		// credential configs directly for the reason behind it
 		const refused = async (response, value, cause) => {
 			try {
 				await webauthnToken().verify(response, value);
@@ -1589,8 +1564,6 @@ const tests = (config) => {
 			);
 		};
 
-		// A hardware bound key reported over the matching attachment, so only the
-		// device type check can be what refuses it
 		for (const authenticatorType of ["localDevice", "remoteDevice"]) {
 			it(`Will refuse a hardware bound key as a ${authenticatorType} PassKey`, async () => {
 				const value = await tokenValue(authenticatorType);
@@ -1606,8 +1579,6 @@ const tests = (config) => {
 		}
 
 		it("Will refuse a PassKey on the wrong attachment", async () => {
-			// a synced PassKey passes the device type check for remoteDevice, but
-			// this one says it is on this device
 			const value = await tokenValue("remoteDevice");
 			await refused(registrationResponse, value, {
 				authenticatorType: "remoteDevice",
@@ -1651,8 +1622,6 @@ const tests = (config) => {
 		});
 	});
 
-	// SQL returns every column for an empty projection, so a dropped field list
-	// only shows up on a narrower store. Record what was asked for instead.
 	it("Can ask the store for only the columns it reads", async () => {
 		const calls = [];
 		const recording = {
@@ -1742,7 +1711,6 @@ const tests = (config) => {
 		});
 
 		it("Can decode a credential stored as serialised Buffers", () => {
-			// JSON.stringify(Buffer) is {type, data}, which older rows hold
 			const value = webauthnSecret().decode(
 				JSON.stringify({
 					credential: { publicKey: Buffer.from([1, 2]) },
@@ -1765,7 +1733,6 @@ const tests = (config) => {
 		return true;
 	};
 
-	// One verified credential on `sub`, from the recorded fixture unless told otherwise
 	const registered = async (response = registrationResponse) => {
 		await webauthnCreate(sub);
 		const [token] = await store.selectList(authnGetOptions().table, {
@@ -1906,14 +1873,11 @@ const registrationResponse = {
 // Same credential with the BE/BS flags cleared, so it reads as hardware bound
 // rather than a synced passkey. `fmt: none` carries no attestation signature,
 // so flipping those two bits leaves the response verifiable.
-// Same authenticator, different credential id. `fmt: none` signs nothing, so
-// swapping the id inside authData leaves the response verifiable.
 const withCredentialId = (response, id) => {
 	const attestation = isoCBOR.decodeFirst(
 		isoBase64URL.toBuffer(response.response.attestationObject),
 	);
 	const authData = Buffer.from(attestation.get("authData"));
-	// rpIdHash(32) flags(1) counter(4) aaguid(16) idLength(2)
 	Buffer.from(id, "base64url").copy(authData, 55);
 	attestation.set("authData", new Uint8Array(authData));
 	return {
