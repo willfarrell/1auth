@@ -179,6 +179,8 @@ describe("@1auth/crypto", () => {
 			);
 		});
 		it("createSaltedDigest keeps every byte of a binary salt", async () => {
+			// 0xfe and 0xff are both invalid UTF-8; decoding the salt as a string
+			// turned each into U+FFFD, so distinct salts collided
 			notEqual(
 				createSaltedDigest("1auth", { checksumSalt: Buffer.from([0xfe]) }),
 				createSaltedDigest("1auth", { checksumSalt: Buffer.from([0xff]) }),

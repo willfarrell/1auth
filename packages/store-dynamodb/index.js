@@ -202,6 +202,7 @@ const buildQueryCommand = (table, filters = {}) => {
 		}
 	}
 
+	// DynamoDB can't Query without an equality on the partition key
 	if (!keyConditions.length) {
 		throw new Error("@1auth/store-dynamodb filters have no key to query on", {
 			cause: { table, filters },

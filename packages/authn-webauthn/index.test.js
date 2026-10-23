@@ -1878,6 +1878,7 @@ const withCredentialId = (response, id) => {
 		isoBase64URL.toBuffer(response.response.attestationObject),
 	);
 	const authData = Buffer.from(attestation.get("authData"));
+	// rpIdHash(32) flags(1) counter(4) aaguid(16) idLength(2)
 	Buffer.from(id, "base64url").copy(authData, 55);
 	attestation.set("authData", new Uint8Array(authData));
 	return {

@@ -259,6 +259,7 @@ const remoteAttestation = isoCBOR.decodeFirst(
 	isoBase64URL.toBuffer(registrationResponse.response.attestationObject),
 );
 const remoteAuthData = Buffer.from(remoteAttestation.get("authData"));
+// rpIdHash(32) flags(1) counter(4) aaguid(16) idLength(2)
 Buffer.from(remoteCredentialId, "base64url").copy(remoteAuthData, 55);
 remoteAttestation.set("authData", new Uint8Array(remoteAuthData));
 const registrationResponseRemote = {

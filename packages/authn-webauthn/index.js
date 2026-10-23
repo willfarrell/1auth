@@ -297,6 +297,8 @@ export const createInstance = () => {
 
 	const verify = async (sub, response, { name = null } = {}, notify = true) => {
 		const value = await verifyToken(sub, response);
+		// WebAuthn §7.1 step 22: one credential id, one registration, on any
+		// account. An expired (revoked) registration can be replaced.
 		const digest = createSeasonedDigest(value.credential.id);
 		const now = nowInSeconds();
 		const registrations = await options.store.selectList(
