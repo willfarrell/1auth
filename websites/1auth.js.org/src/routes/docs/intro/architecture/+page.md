@@ -49,7 +49,6 @@ Notifications are decoupled from business logic. Events like "verification token
 - `@1auth/authn-webauthn` — WebAuthn/FIDO2 credential support
 - `@1auth/authn-recovery-codes` — Backup recovery codes
 - `@1auth/authn-access-token` — API access tokens (PATs)
-- `@1auth/authn-pow` — Proof-of-work anti-automation challenge for unauthenticated forms
 - `@1auth/messenger` — Messaging framework for contact verification
 - `@1auth/messenger-email-address` — Email address verification
 - `@1auth/session` — Session creation, signing, and management

@@ -23,7 +23,6 @@ const nav = {
 		"authn-webauthn-securitykey": "/docs/packages/authn-webauthn-securitykey",
 		"authn-recovery-codes": "/docs/packages/authn-recovery-codes",
 		"authn-access-token": "/docs/packages/authn-access-token",
-		"authn-pow": "/docs/packages/authn-pow",
 	},
 	Messengers: {
 		messenger: "/docs/packages/messenger",
