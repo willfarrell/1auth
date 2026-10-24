@@ -77,8 +77,23 @@ Ensure git commits meet the following FLOSS Best Practices:
 
 - Message follows [Conventional Commits](https://www.conventionalcommits.org/) pattern. This is automatically enforced using `@commitlint/cli`, in the `commit-msg` git hook and on Pull-Requests.
 - Message includes sign off for [Developer Certificate of Origin (DCO)](https://developercertificate.org/) compliance. This is automatically enforced using GitHub Actions on Pull-Requests.
-  a. `git config --global user.name "Your Name"` and `git config --global user.email username@example.org` setup with `--signoff` flag on `git commit`
-  a. Or, `Signed-off-by: username <email address>` as the last line of a commit, when a change is made through GitHub
+  1. Set your name and email once. The sign-off uses them:
+     ```bash
+     git config --global user.name "Your Name"
+     git config --global user.email username@example.org
+     ```
+  2. Sign off every commit with `-s` (`--signoff`). Git has no setting that does this automatically.
+     ```bash
+     git commit -s -m "fix: describe the change"
+     ```
+  3. When a change is made through GitHub, add `Signed-off-by: Your Name <email address>` as the last line of the commit message.
+  4. If commits on your branch are missing the sign-off, rebase onto the PR target and force-push:
+     ```bash
+     git fetch origin
+     git rebase --signoff origin/develop
+     git push --force-with-lease
+     ```
+     Rebase onto `origin/develop`, not `HEAD~N`. On a branch with merge commits, `HEAD~N` counts only first parents, so the rebase replays history that is already merged and flattens it. Merge commits are skipped by the check and don't need a sign-off.
 - Commit is cryptographically signed and can be verified. This is automatically enforced GitHub security configuration. [GitHub Docs: About commit signature verification](https://docs.github.com/en/authentication/managing-commit-signature-verification/about-commit-signature-verification)
 
 ## 6. Pull Request (PR)
