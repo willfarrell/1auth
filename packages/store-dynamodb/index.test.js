@@ -61,6 +61,33 @@ describe("@1auth/store-dynamodb", () => {
 		});
 	});
 
+	describe("defaults", () => {
+		it("Should apply the defaults on import, before anyone calls `default()`", () => {
+			// a fresh process, so no earlier configure() can mask the module's own
+			const sdkUrl = import.meta.resolve("@aws-sdk/client-dynamodb");
+			const storeUrl = new URL("./index.js", import.meta.url).href;
+			const output = execFileSync(
+				process.execPath,
+				[
+					"--input-type=module",
+					"-e",
+					`const { DynamoDBClient } = await import(${JSON.stringify(sdkUrl)});
+const sent = [];
+DynamoDBClient.prototype.send = async (command) => { sent.push(command.input); return {}; };
+const store = await import(${JSON.stringify(storeUrl)});
+await store.insert("t", { id: 1, sub: "sub_000", expire: 100 });
+console.log(JSON.stringify(sent));`,
+				],
+				{ encoding: "utf8" },
+			);
+			const [put, ...rest] = JSON.parse(output);
+			equal(rest.length, 0);
+			equal(put.TableName, "t");
+			// default `timeToLiveKey` and `timeToLiveExpireOffset`
+			deepEqual(put.Item.remove, { N: String(100 + 10 * 24 * 60 * 60) });
+		});
+	});
+
 	describe("makeQueryParams", () => {
 		it("Should format {ExpressionAttributeNames} properly", async () => {
 			const { ExpressionAttributeNames } = store.makeQueryParams({
