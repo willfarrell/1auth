@@ -146,8 +146,8 @@ export const createList = async (credentialOptions, sub, list) => {
 		list.map((values) => createCredential(credentialOptions, sub, values)),
 	);
 	const res = await options.store.insertList(options.table, rows);
-	const params = rows[0];
-	return { ...params, id: res };
+	// SQL stores resolve `RETURNING id` rows, store-dynamodb resolves bare ids
+	return res.map((row) => row.id ?? row);
 };
 
 // Only used by webauthn to update counter within value

@@ -59,6 +59,12 @@ describe("@1auth/store-postgres", () => {
 		it("Should be ready when the container is up", () => {
 			equal(isReadyWith({ SKIP_POSTGRES: "" }), "true");
 		});
+		// unwrapping here instead would hide a store that cannot read a real pg client
+		it("Should hand the store pg's own `{ rows }` result", async () => {
+			deepEqual((await mocks.storeClient.query("SELECT 1 AS one")).rows, [
+				{ one: 1 },
+			]);
+		});
 	});
 
 	describe("exports", () => {

@@ -146,7 +146,7 @@ Create a single credential.
 
 ### `createList(credentialOptions, sub, list)`
 
-Create multiple credentials at once (e.g., recovery codes).
+Create multiple credentials at once (e.g., recovery codes). Resolves an array with one id per created credential, each usable with `select` and `remove`.
 
 ### `subject(username)`
 

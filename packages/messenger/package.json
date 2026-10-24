@@ -1,6 +1,6 @@
 {
 	"name": "@1auth/messenger",
-	"version": "0.0.0-rc.8",
+	"version": "0.0.0-rc.9",
 	"description": "Messaging framework for sending notifications and verification codes",
 	"type": "module",
 	"engines": {
@@ -14,14 +14,17 @@
 	"sideEffects": false,
 	"exports": {
 		".": {
+			"types": "./index.d.ts",
 			"import": "./index.js"
 		},
 		"./table/*": {
 			"import": "./table/*"
 		}
 	},
+	"types": "./index.d.ts",
 	"files": [
 		"index.js",
+		"index.d.ts",
 		"table"
 	],
 	"scripts": {

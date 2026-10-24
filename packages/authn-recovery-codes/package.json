@@ -1,6 +1,6 @@
 {
 	"name": "@1auth/authn-recovery-codes",
-	"version": "0.0.0-rc.8",
+	"version": "0.0.0-rc.9",
 	"description": "One-time recovery code generation and verification for account recovery",
 	"type": "module",
 	"engines": {
@@ -14,11 +14,14 @@
 	"sideEffects": false,
 	"exports": {
 		".": {
+			"types": "./index.d.ts",
 			"import": "./index.js"
 		}
 	},
+	"types": "./index.d.ts",
 	"files": [
-		"index.js"
+		"index.js",
+		"index.d.ts"
 	],
 	"scripts": {
 		"test": "npm run test:unit",

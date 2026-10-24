@@ -21,6 +21,7 @@
 		"**/*.fuzz.js",
 		"**/*.bench.js",
 		"**/*.test.js",
+		"**/*.tst.ts",
 		"**/*.md",
 		"**/*.yml",
 		"**/*.yaml",

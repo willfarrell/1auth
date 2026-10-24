@@ -1,6 +1,6 @@
 {
 	"name": "@1auth/github-workflows",
-	"version": "0.0.0-rc.8",
+	"version": "0.0.0-rc.9",
 	"private": true,
 	"engines": {
 		"node": ">=26"
