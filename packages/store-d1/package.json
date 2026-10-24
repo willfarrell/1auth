@@ -59,6 +59,6 @@
 	},
 	"homepage": "https://github.com/willfarrell/1auth",
 	"dependencies": {
-		"@1auth/store-sql": "0.0.0-rc.8"
+		"@1auth/store-sql": "0.0.0-rc.9"
 	}
 }

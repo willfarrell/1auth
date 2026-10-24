@@ -58,7 +58,7 @@
 	},
 	"homepage": "https://github.com/willfarrell/1auth",
 	"dependencies": {
-		"@1auth/authn": "0.0.0-rc.8",
-		"@1auth/crypto": "0.0.0-rc.8"
+		"@1auth/authn": "0.0.0-rc.9",
+		"@1auth/crypto": "0.0.0-rc.9"
 	}
 }
