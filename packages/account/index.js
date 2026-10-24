@@ -44,11 +44,37 @@ export default (opt = {}) => {
 };
 export const getOptions = () => options;
 
+const ownedKeys = [
+	"id",
+	"sub",
+	"encryptionKey",
+	"value",
+	"digest",
+	"create",
+	"expire",
+	"remove",
+];
+const withoutOwnedKeys = (values, allowed) => {
+	const params = { ...values };
+	for (const key of ownedKeys) {
+		if (!allowed?.includes(key)) delete params[key];
+	}
+	return params;
+};
+
+const isExpired = (account) =>
+	!!account.expire && account.expire <= nowInSeconds();
+
 export const exists = async (sub) => {
 	if (!sub || typeof sub !== "string") {
 		throw new Error("404 Not Found", { cause: { sub } });
 	}
-	return await options.store.exists(options.table, { sub });
+	const account = await options.store.select(options.table, { sub }, [
+		"sub",
+		"expire",
+	]);
+	if (!account || isExpired(account)) return;
+	return account.sub;
 };
 
 export const lookup = async (sub) => {
@@ -56,7 +82,7 @@ export const lookup = async (sub) => {
 		throw new Error("404 Not Found", { cause: { sub } });
 	}
 	const account = await options.store.select(options.table, { sub });
-	if (!account) {
+	if (!account || isExpired(account)) {
 		throw new Error("404 Not Found", { cause: { sub } });
 	}
 	const { encryptionKey: encryptedKey } = account;
@@ -74,7 +100,7 @@ export const create = async (values = {}) => {
 
 	const { encryptionKey, encryptedKey } = symmetricGenerateEncryptionKey(sub);
 	const encryptedValues = symmetricEncryptFields(
-		values,
+		withoutOwnedKeys(values, ["create"]),
 		{ encryptionKey, sub },
 		options.encryptedFields,
 	);
@@ -97,6 +123,14 @@ export const create = async (values = {}) => {
 
 // for in the clear user metadata
 export const update = async (sub, values = {}) => {
+	await write(sub, withoutOwnedKeys(values));
+};
+
+export const updateIdentifier = async (sub, { value, digest }) => {
+	await write(sub, { value, digest });
+};
+
+const write = async (sub, values) => {
 	if (!sub || typeof sub !== "string") {
 		throw new Error("404 Not Found", { cause: { sub } });
 	}
@@ -132,6 +166,7 @@ export const expire = async (sub) => {
 		{ sub },
 		{ expire: nowInSeconds() },
 	);
+	await options.notify?.trigger("account-expire", sub);
 };
 
 export const remove = async (sub) => {

@@ -1,14 +1,13 @@
 // Copyright 2003 - 2026 will Farrell, and 1Auth contributors.
 // SPDX-License-Identifier: MIT
 import {
-	argon2Sync,
+	argon2 as argon2Callback,
 	createCipheriv,
 	createDecipheriv,
 	createHash,
 	createHmac,
 	generateKeyPair as generateKeyPairCallback,
 	randomBytes,
-	randomInt,
 	sign as signCallback,
 	timingSafeEqual,
 	verify as verifyCallback,
@@ -16,6 +15,7 @@ import {
 import { promisify } from "node:util";
 import { customAlphabet } from "nanoid";
 
+const argon2 = promisify(argon2Callback);
 const generateKeyPair = promisify(generateKeyPairCallback);
 const sign = promisify(signCallback);
 const verify = promisify(verifyCallback);
@@ -156,11 +156,7 @@ export const randomAlphaNumeric = (characterLength) => {
 };
 
 export const randomNumeric = (characterLength) => {
-	let value = "";
-	for (let i = characterLength; i--; ) {
-		value += randomInt(0, 10);
-	}
-	return value;
+	return randomCharacters(characterLength, charactersNumeric);
 };
 
 // *** configs *** //
@@ -191,13 +187,12 @@ export const randomChecksumPepper = () => {
 	return randomBytes(32); // 256 bits
 };
 
-export const createSaltedValue = (value, { checksumSalt } = {}) => {
+const createSaltedValue = (value, { checksumSalt } = {}) => {
 	checksumSalt ??= options.digestChecksumSalt;
 	if (!checksumSalt) {
 		return value;
 	}
-	const newValue = value + checksumSalt;
-	return newValue;
+	return Buffer.concat([Buffer.from(value), Buffer.from(checksumSalt)]);
 };
 // HMAC keyed by the pepper (a blind index): deterministic so equal values
 // yield equal digests for lookups, one-way without the pepper. Rotating the
@@ -206,10 +201,7 @@ export const createSaltedValue = (value, { checksumSalt } = {}) => {
 // still silently gets whatever the module globals happen to hold. That is
 // what a key rotation needs: the new digest, computed before the new material
 // is live.
-export const createPepperedValue = (
-	value,
-	{ hashAlgorithm, checksumPepper } = {},
-) => {
+const createPepperedValue = (value, { hashAlgorithm, checksumPepper } = {}) => {
 	hashAlgorithm ??= options.digestChecksumHashAlgorithm;
 	checksumPepper ??= options.digestChecksumPepper;
 	if (!checksumPepper) {
@@ -347,7 +339,7 @@ export const decodeArgon2 = (str) => {
 	return argon2Options;
 };
 
-export const createArgon2 = (
+export const createArgon2 = async (
 	message,
 	{
 		algorithm,
@@ -369,7 +361,7 @@ export const createArgon2 = (
 	assertMemoryCost(memoryCost);
 
 	const nonce = randomBytes(nonceLength);
-	const hash = argon2Sync(algorithm, {
+	const hash = await argon2(algorithm, {
 		message,
 		nonce,
 		parallelism,
@@ -387,7 +379,7 @@ export const createArgon2 = (
 		hash,
 	});
 };
-export const verifyArgon2 = (derivedKey, message) => {
+export const verifyArgon2 = async (derivedKey, message) => {
 	const {
 		algorithm,
 		memoryCost,
@@ -397,11 +389,9 @@ export const verifyArgon2 = (derivedKey, message) => {
 		hash,
 		hashLength,
 	} = decodeArgon2(derivedKey);
-	// Params come off a stored string; a malformed `m=` would otherwise reach
-	// argon2Sync as Infinity. authn treats a throw here as "credential invalid".
 	assertMemoryCost(memoryCost);
 
-	const verifyHash = argon2Sync(algorithm, {
+	const verifyHash = await argon2(algorithm, {
 		message,
 		nonce,
 		parallelism,
@@ -419,10 +409,6 @@ export const verifySecretHash = verifyArgon2;
 const authTagLength = 16;
 // 96 bits, the nonce size both supported AEAD ciphers take.
 const ivLength = 12;
-// 16 is already node's default for both supported AEAD ciphers, so this is
-// belt-and-braces against a future cipher whose default differs.
-// Stryker disable next-line ObjectLiteral: byte-identical output either way
-const cipherOptions = { authTagLength };
 // The subject is bound into the ciphertext as associated data. Buffer.from
 // decodes utf8 by default, which is what every stored packet was written with.
 const associatedData = (sub) => Buffer.from(sub);
@@ -431,7 +417,7 @@ export const symmetricRandomEncryptionKey = () => {
 	return randomBytes(32); // 256 bits
 };
 
-export const randomIV = () => {
+const randomIV = () => {
 	return randomBytes(ivLength); // 96 bits
 };
 
@@ -453,8 +439,6 @@ const encryptionKeyProviders = Object.create(null);
 export const registerEncryptionKeyProvider = (name, provider) => {
 	encryptionKeyProviders[name] = provider;
 };
-
-export const getEncryptionKeyProviders = () => encryptionKeyProviders;
 
 const parseEncryptedKey = (encryptedKey) => {
 	const separatorIndex = encryptedKey.indexOf(encryptionKeyProviderSeparator);
@@ -519,14 +503,13 @@ export const symmetricGenerateEncryptionKey = (sub, providerOptions = {}) => {
 	};
 };
 
+const missingEncryptionKey = "@1auth/crypto encryption key is missing";
+
 // sub add context to encryption
 export const symmetricEncryptFields = (
 	values,
 	{ encryptedKey, encryptionKey, signatureSecret, sub },
-	// naming a field the values do not carry is a no-op: `values[key] &&= ...`
-	// never assigns, so no default other than empty is observable
-	// Stryker disable next-line ArrayDeclaration
-	fields = [],
+	fields,
 ) => {
 	if (encryptedKey) {
 		encryptionKey ??= symmetricDecryptKey(encryptedKey, {
@@ -534,7 +517,10 @@ export const symmetricEncryptFields = (
 			sub,
 		});
 	}
-	if (!encryptionKey) return values;
+	if (!fields?.length) return values;
+	if (!encryptionKey) {
+		throw new Error(missingEncryptionKey, { cause: { sub, fields } });
+	}
 	const encryptedValues = structuredClone(values);
 	for (const key of fields) {
 		encryptedValues[key] &&= symmetricEncrypt(encryptedValues[key], {
@@ -556,17 +542,16 @@ export const symmetricEncrypt = (
 			sub,
 		});
 	}
-	if (!encryptionKey || !data) return data;
-	// Stryker disable next-line StringLiteral: node's normalizeEncoding maps "" to
-	// utf8, so the two spellings are the same encoding to every Buffer API
-	decoding ??= "utf8";
+	if (!data) return data;
+	if (!encryptionKey) {
+		throw new Error(missingEncryptionKey, { cause: { sub } });
+	}
 	encoding ??= options.symmetricEncryptionEncoding;
 	iv ??= randomIV();
 	const cipher = createCipheriv(
 		options.symmetricEncryptionAlgorithm,
 		encryptionKey,
 		iv,
-		cipherOptions,
 	);
 	cipher.setAAD(associatedData(sub));
 	const encryptedData =
@@ -584,9 +569,7 @@ export const symmetricEncrypt = (
 export const symmetricDecryptFields = (
 	encryptedValues,
 	{ encryptedKey, encryptionKey, signatureSecret, sub },
-	// see symmetricEncryptFields
-	// Stryker disable next-line ArrayDeclaration
-	fields = [],
+	fields,
 ) => {
 	if (encryptedKey) {
 		encryptionKey ??= symmetricDecryptKey(encryptedKey, {
@@ -594,7 +577,7 @@ export const symmetricDecryptFields = (
 			sub,
 		});
 	}
-	if (!encryptionKey) return encryptedValues;
+	if (!encryptionKey || !fields?.length) return encryptedValues;
 	const values = structuredClone(encryptedValues);
 	for (const key of fields) {
 		values[key] &&= symmetricDecrypt(values[key], {
@@ -627,8 +610,6 @@ export const symmetricDecrypt = (
 	if (!encryptionKey || !signedEncryptedDataPacket)
 		return signedEncryptedDataPacket;
 	decoding ??= options.symmetricEncryptionEncoding;
-	// Stryker disable next-line StringLiteral: see symmetricEncrypt's decoding
-	encoding ??= "utf8";
 
 	// remove signature when successful
 	const encryptedDataPacket = symmetricSignatureVerify(
@@ -665,25 +646,19 @@ export const symmetricDecrypt = (
 		options.symmetricEncryptionAlgorithm,
 		encryptionKey,
 		iv,
-		cipherOptions,
 	);
 	decipher.setAAD(associatedData(sub));
 
 	decipher.setAuthTag(authTag);
-	const data =
-		decipher.update(encryptedData, decoding, encoding) +
-		decipher.final(encoding);
-	return data;
+	return Buffer.concat([
+		decipher.update(encryptedData),
+		decipher.final(),
+	]).toString(encoding);
 };
 
 // *** Symmetric Signatures *** //
 export const symmetricRandomSignatureSecret = () => {
 	return randomBytes(32); // 256 bits
-};
-
-export const symmetricGenerateSignatureSecret = () => {
-	const signatureSecret = symmetricRandomSignatureSecret();
-	return { signatureSecret };
 };
 
 export const symmetricSignatureSign = (
@@ -695,11 +670,7 @@ export const symmetricSignatureSign = (
 	const digest = createHmac(hashAlgorithm, signatureSecret)
 		.update(data)
 		.digest(options.symmetricSignatureEncoding);
-	// base64 uses `=` only as trailing padding, so an unanchored match can never
-	// find one mid-string; the anchor documents the intent and still holds if the
-	// encoding ever changes.
-	// Stryker disable next-line Regex: equivalent for every padded encoding
-	const signature = digest.replace(/=+$/, "");
+	const signature = digest.replaceAll("=", "");
 
 	const signedData = `${data}.${signature}`;
 	return signedData;
@@ -711,11 +682,6 @@ export const symmetricSignatureVerify = (
 ) => {
 	if (typeof signedData !== "string") return false;
 	const lastIndexOf = signedData.lastIndexOf(".");
-	// Reject unsigned data
-	// Stryker disable next-line ConditionalExpression: without this guard the
-	// comparison below still fails for unsigned data, but only by accident of
-	// substring(0, -1); the explicit rejection is the contract.
-	if (lastIndexOf < 0) return false;
 	const data = signedData.substring(0, lastIndexOf);
 	const signedDataExpected = symmetricSignatureSign(data, {
 		hashAlgorithm,

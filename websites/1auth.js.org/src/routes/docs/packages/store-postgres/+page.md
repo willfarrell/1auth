@@ -45,9 +45,9 @@ client.query(sql, parameters) // => rows[]
 
 ## API
 
-Implements the [store interface](/docs/packages/store) using parameterized SQL queries with `$` placeholders.
+Implements the [store interface](/docs/packages/store) using parameterized SQL queries with `$` placeholders. Built on [`@1auth/store-sql`](/docs/packages/store-sql).
 
-All queries use parameterized statements to prevent SQL injection.
+All values are bound as parameters. Column names are checked against `^[A-Za-z_][A-Za-z0-9_]*$` before they're quoted, so a key can't inject SQL. See [`@1auth/store-sql`](/docs/packages/store-sql#api) for the filter rules.
 
 ## Post-quantum
 

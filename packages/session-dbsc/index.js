@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: MIT
 import { verify as asymmetricVerify, createPublicKey } from "node:crypto";
 import {
-	assertSub,
+	assertId,
+	createSeasonedDigest,
 	nowInSeconds,
+	randomAlphaNumeric,
 	safeEqual,
 	symmetricSignatureSign,
 	symmetricSignatureVerify,
@@ -35,6 +37,7 @@ const defaults = {
 	log: false,
 	require: false,
 	challengeExpire: 1 * 60,
+	challengeTable: "dbsc_challenges",
 	registerPath: "/dbsc/register",
 	refreshPath: "/dbsc/refresh",
 	sidCookieName: "__Host-Http-sid",
@@ -69,20 +72,7 @@ const attributeSet = (attributes, name) =>
 
 // Everything else passed to default() belongs to @1auth/session, so an app
 // configures one module rather than wiring two together
-const ownKeys = new Set([
-	"id",
-	"log",
-	"require",
-	"challengeExpire",
-	"registerPath",
-	"refreshPath",
-	"sidCookieName",
-	"sidCookieAttributes",
-	"dbscCookieName",
-	"dbscCookieAttributes",
-	"dbscCookieExpire",
-	"scope",
-]);
+const ownKeys = new Set(Object.keys(defaults));
 
 const options = {};
 // Accumulated, because session.default() replaces rather than merges: forwarding
@@ -148,7 +138,9 @@ const assertCookie = (nameKey, attributesKey) => {
 export const getOptions = () => options;
 
 const signedToken = (domain, sessionId) =>
-	symmetricSignatureSign(`${domain}:${nowInSeconds()}:${sessionId}`);
+	symmetricSignatureSign(
+		`${domain}:${nowInSeconds()}:${randomAlphaNumeric(16)}:${sessionId}`,
+	);
 
 const signedTokenVerify = (domain, value, sessionId, expire) => {
 	if (typeof value !== "string" || typeof sessionId !== "string") return false;
@@ -159,7 +151,9 @@ const signedTokenVerify = (domain, value, sessionId, expire) => {
 	const rest = data.substring(prefix.length);
 	const separator = rest.indexOf(":");
 	if (separator < 0) return false;
-	if (!safeEqual(rest.substring(separator + 1), sessionId)) return false;
+	const randomSeparator = rest.indexOf(":", separator + 1);
+	if (randomSeparator < 0) return false;
+	if (!safeEqual(rest.substring(randomSeparator + 1), sessionId)) return false;
 	const created = Number(rest.substring(0, separator));
 	const now = nowInSeconds();
 	return created <= now && now < created + expire;
@@ -185,9 +179,17 @@ export const registrationHeader = ({ authorization } = {}) => {
 	return header;
 };
 
-// Response header that hands the browser a fresh challenge to cache
-export const challengeHeader = (sessionId) =>
-	`"${challenge(sessionId)}";id="${sessionId}"`;
+// `sessionId` is the raw Sec-Secure-Session-Id request header, echoed into a
+// quoted structured field, so anything that could end the quotes is refused:
+// printable ASCII only, less `"` and `\`.
+const headerSafeId = /^[\x20\x21\x23-\x5b\x5d-\x7e]+$/;
+export const challengeHeader = (sessionId) => {
+	assertId(sessionId);
+	if (!headerSafeId.test(sessionId)) {
+		throw new Error("404 Not Found", { cause: { id: sessionId } });
+	}
+	return `"${challenge(sessionId)}";id="${sessionId}"`;
+};
 
 // Response body of both the registration and refresh endpoints
 const sessionConfig = (sessionId) => ({
@@ -250,7 +252,11 @@ export const verifyProof = async (
 	} catch {
 		throw unauthorized();
 	}
-	const algorithm = algorithms[header?.alg];
+	if (!payload || typeof payload !== "object") throw unauthorized();
+	const algorithm =
+		typeof header?.alg === "string" && Object.hasOwn(algorithms, header.alg)
+			? algorithms[header.alg]
+			: undefined;
 	if (header?.typ !== "dbsc+jwt" || !algorithm) throw unauthorized();
 	if (payload?.aud !== undefined) {
 		if (typeof payload.aud !== "string" || !safeEqual(payload.aud, aud)) {
@@ -339,34 +345,50 @@ export const select = async (sub, id) => await session.select(sub, id);
 export const list = async (sub) => await session.list(sub);
 
 /**
- * Bind a new device key, then open the first session on it
- * @param sub
+ * Bind a device key onto the session the browser already holds
+ * @param sid the `sidCookieName` cookie sent with the registration request
  * @param proof Secure-Session-Response header (DBSC proof JWT)
  * @param aud URL the proof was sent to
- * @param value {os, browser, ip, ...} passed to session create
+ * @param value {os, browser, ip, ...} compared as `lookup` does, then kept
  */
 export const register = async (
-	sub,
+	sid,
 	proof,
 	{ aud, value = {}, values = {} } = {},
 ) => {
-	// Fail before spending a signature verification on a request that cannot work
-	assertSub(sub);
+	const found = await lookup(sid, undefined, value);
+	if (!found) {
+		throw new Error("401 Unauthorized", { cause: { aud } });
+	}
 	const { publicKey } = await verifyProof(proof, { aud });
-	// The session row IS the binding, so its id is the `session_identifier` the
-	// browser caches and sends back as Sec-Session-Id
-	const created = await session.create(sub, value, {
+	const rotated = await session.rotate(found.sub, found.id, value, {
 		...values,
 		publicKey,
 	});
 	// The bound cookie is issued HERE, not on the login response: it proves
 	// possession of a key that does not exist until this exchange registers it.
 	return {
-		id: created.id,
-		session: created,
-		bound: boundToken(created.id),
-		config: sessionConfig(created.id),
+		id: rotated.id,
+		session: rotated,
+		bound: boundToken(rotated.id),
+		config: sessionConfig(rotated.id),
 	};
+};
+
+const spendChallenge = async (sub, jti, cause) => {
+	const { store } = session.getOptions();
+	const spent = { sub, id: createSeasonedDigest(jti) };
+	try {
+		await store.insert(options.challengeTable, {
+			...spent,
+			expire: nowInSeconds() + options.challengeExpire,
+		});
+	} catch (e) {
+		if (await store.exists(options.challengeTable, spent)) {
+			throw new Error("403 Forbidden", { cause });
+		}
+		throw e;
+	}
 };
 
 /**
@@ -394,14 +416,20 @@ export const refresh = async (
 	// moved by rotate(), so checking it here is the whole termination rule. The
 	// dead COOKIE is not this check: that is the browser's Max-Age, and it being
 	// dead is precisely why the browser is here.
-	if (binding.expire && binding.expire < nowInSeconds()) {
+	const now = nowInSeconds();
+	const { idleExpire } = session.getOptions();
+	if (
+		!(now <= binding.expire) ||
+		(idleExpire && !(now <= binding.update + idleExpire))
+	) {
 		throw new Error("401 Unauthorized", { cause: { sessionId } });
 	}
-	await verifyProof(proof, {
+	const { payload } = await verifyProof(proof, {
 		aud,
 		sessionId,
 		publicKey: binding.publicKey,
 	});
+	await spendChallenge(binding.sub, payload.jti, { aud, sessionId });
 	// In place, so `sessionId` stays the identifier the browser already holds
 	return {
 		id: sessionId,
@@ -410,8 +438,6 @@ export const refresh = async (
 	};
 };
 
-// Ends the cookie, NOT the binding: a bound session can still be refreshed
-// until the absolute cap. Use `remove` to revoke a device.
 export const expire = async (sub, id) => await session.expire(sub, id);
 
 export const remove = async (sub, id) => await session.remove(sub, id);

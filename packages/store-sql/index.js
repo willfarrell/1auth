@@ -1,120 +1,149 @@
 // Copyright 2003 - 2026 will Farrell, and 1Auth contributors.
 // SPDX-License-Identifier: MIT
 
-// Generic SQL store, usable on its own against any client exposing
-//   query(sql, parameters) -> rows[]
-// The dialect-specific backends (@1auth/store-postgres, @1auth/store-sqlite,
-// @1auth/store-d1) each carry their own copy of this, customized for their
-// placeholder style and client shape, so none of them depend on this package.
+export const createSqlStore = ({
+	id,
+	placeholder = "?",
+	query = (client, sql, parameters) => client.query(sql, parameters),
+}) => {
+	const options = {
+		id,
+		log: undefined,
+		client: undefined,
+		// 10d chosen based on EFF DNT Policy
+		timeToLiveExpireOffset: 10 * 24 * 60 * 60,
+		timeToLiveKey: "remove",
+		placeholder,
+	};
 
-const options = {
-	id: "sql",
-	// Stryker disable next-line BooleanLiteral: overwritten by default() before observation
-	log: false,
-	// Stryker disable next-line ObjectLiteral: overwritten by default() before observation
-	client: { query: undefined }, // async (sql, parameters) => rows[]
-	// number of seconds after expire before removal
-	// 10d chosen based on EFF DNT Policy
-	timeToLiveExpireOffset: 10 * 24 * 60 * 60,
-	timeToLiveKey: "remove",
-	placeholder: "?",
-};
+	const configure = (opt = {}) => {
+		Object.assign(options, opt);
+	};
 
-export default (opt = {}) => {
-	Object.assign(options, opt);
-};
+	const run = (sql, parameters) => query(options.client, sql, parameters);
 
-export const exists = async (table, filters) => {
-	log(options, "exists", table, filters);
-	const { select, where, parameters } = makeSqlParts(filters, {}, ["sub"]);
-	const sql = `SELECT ${select} FROM ${table} ${where} LIMIT 1`;
-	const res = await options.client.query(sql, parameters);
-	return res?.[0]?.sub;
-};
+	const getPlaceholder = (idx) => getPlaceholderFor(options.placeholder, idx);
+	const makeSqlParts = (filters, values, fields, idxStart) =>
+		makeSqlPartsFor(options.placeholder, filters, values, fields, idxStart);
 
-export const count = async (table, filters = {}) => {
-	log(options, "count", table, filters);
-	const { where, parameters } = makeSqlParts(filters, {});
-	const sql = `SELECT COUNT(*) AS count FROM ${table} ${where}`;
-	const res = await options.client.query(sql, parameters);
-	return Number(res[0].count);
-};
+	const exists = async (table, filters) => {
+		log(options, "exists", table, filters);
+		const { select, where, parameters } = makeSqlParts(filters, {}, ["sub"]);
+		const sql = `SELECT ${select} FROM ${table} ${where} LIMIT 1`;
+		const res = await run(sql, parameters);
+		return res?.[0]?.sub;
+	};
 
-export const select = async (table, filters = {}, fields = []) => {
-	log(options, "select", table, filters, fields);
-	const { select, where, parameters } = makeSqlParts(filters, {}, fields);
-	const sql = `SELECT ${select} FROM ${table} ${where} LIMIT 1`;
-	const res = await options.client.query(sql, parameters);
-	const row = res?.[0];
-	// Workaround because an expire filter doesn't exist yet
-	parseValues(row);
-	return row;
-};
-
-export const selectList = async (table, filters = {}, fields = []) => {
-	log(options, "selectList", table, filters, fields);
-	const { select, where, parameters } = makeSqlParts(filters, {}, fields);
-	const sql = `SELECT ${select} FROM ${table} ${where}`;
-	const rows = await options.client.query(sql, parameters);
-	// Workaround because an expire filter doesn't exist yet
-	return rows.map((row) => {
+	const select = async (table, filters = {}, fields = []) => {
+		log(options, "select", table, filters, fields);
+		const { select, where, parameters } = makeSqlParts(filters, {}, fields);
+		const sql = `SELECT ${select} FROM ${table} ${where} LIMIT 1`;
+		const res = await run(sql, parameters);
+		const row = res?.[0];
 		parseValues(row);
 		return row;
-	});
+	};
+
+	const selectList = async (table, filters = {}, fields = []) => {
+		log(options, "selectList", table, filters, fields);
+		const { select, where, parameters } = makeSqlParts(filters, {}, fields);
+		const sql = `SELECT ${select} FROM ${table} ${where}`;
+		const rows = await run(sql, parameters);
+		return rows.map((row) => {
+			parseValues(row);
+			return row;
+		});
+	};
+
+	const insert = async (table, inputValues = {}) => {
+		const values = makeValues(inputValues, options);
+		log(options, "insert", table, values);
+		const { insert, parameters } = makeSqlParts({}, values);
+		const sql = `INSERT INTO ${table} ${insert} RETURNING id`;
+		const res = await run(sql, parameters);
+		return res[0].id;
+	};
+
+	const insertList = async (table, rows = []) => {
+		log(options, "insertList", table, rows);
+		if (!rows.length) return [];
+		const { insert, parameters } = makeInsertList(
+			options.placeholder,
+			rows.map((row) => makeValues(row, options)),
+		);
+		const sql = `INSERT INTO ${table} ${insert} RETURNING id`;
+		return await run(sql, parameters);
+	};
+
+	const update = async (table, filters = {}, inputValues = {}) => {
+		const values = makeValues(inputValues, options);
+		log(options, "update", table, filters, values);
+		const { update, where, parameters } = makeSqlParts(filters, values);
+		assertWhere(table, where);
+		const sql = `UPDATE ${table} SET ${update} ${where}`;
+		await run(sql, parameters);
+	};
+
+	const remove = async (table, filters = {}) => {
+		log(options, "remove", table, filters);
+		const { where, parameters } = makeSqlParts(filters);
+		assertWhere(table, where);
+		const sql = `DELETE FROM ${table} ${where} RETURNING id`;
+		const res = await run(sql, parameters);
+		return !!res?.[0]?.id;
+	};
+
+	return {
+		default: configure,
+		exists,
+		select,
+		selectList,
+		insert,
+		insertList,
+		update,
+		remove,
+		removeList: remove,
+		getPlaceholder,
+		makeSqlParts,
+	};
 };
 
-export const insert = async (table, inputValues = {}) => {
-	const values = makeValues(inputValues, options);
-	log(options, "insert", table, values);
-	const { insert, parameters } = makeSqlParts({}, values);
-	const sql = `INSERT INTO ${table} ${insert} RETURNING id`;
-	const res = await options.client.query(sql, parameters);
-	return res[0].id;
-};
-
-export const insertList = async (table, rows = []) => {
-	log(options, "insertList", table, rows);
-	if (!rows.length) return [];
-	const { insert, parameters } = makeInsertList(
-		options.placeholder,
-		rows.map((row) => makeValues(row, options)),
-	);
-	const sql = `INSERT INTO ${table} ${insert} RETURNING id`;
-	return await options.client.query(sql, parameters);
-};
-
-export const update = async (table, filters = {}, inputValues = {}) => {
-	const values = makeValues(inputValues, options);
-	log(options, "update", table, filters, values);
-	const { update, where, parameters } = makeSqlParts(filters, values);
-	const sql = `UPDATE ${table} SET ${update} ${where}`;
-	await options.client.query(sql, parameters);
-};
-
-export const updateList = async (table, filtersList = [], values = {}) => {
-	log(options, "updateList", table, filtersList, values);
-	return await Promise.allSettled(
-		filtersList.map((filters) => update(table, filters, values)),
-	);
-};
-
-export const remove = async (table, filters = {}) => {
-	log(options, "remove", table, filters);
-	const { where, parameters } = makeSqlParts(filters);
-	const sql = `DELETE FROM ${table} ${where} RETURNING id`;
-	const res = await options.client.query(sql, parameters);
-	return !!res?.[0]?.id;
-};
-
-export const removeList = remove;
+const store = createSqlStore({ id: "sql" });
+export default store.default;
+export const {
+	exists,
+	select,
+	selectList,
+	insert,
+	insertList,
+	update,
+	remove,
+	removeList,
+	getPlaceholder,
+	makeSqlParts,
+} = store;
 
 // --- builders -------------------------------------------------------------
-// The `*For` variants take the placeholder explicitly; the bound pair at the
-// bottom reads this store's options.
 
 export const log = (options, method, ...args) => {
 	if (options.log) {
 		options.log(`@1auth/store-${options.id} ${method}(`, ...args, ")");
+	}
+};
+
+const identifierPattern = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const quote = (key) => {
+	if (!identifierPattern.test(key)) {
+		throw new Error("@1auth/store-sql invalid identifier", { cause: { key } });
+	}
+	return `"${key}"`;
+};
+
+const assertWhere = (table, where) => {
+	if (!where) {
+		throw new Error("@1auth/store-sql refusing to write without a filter", {
+			cause: { table },
+		});
 	}
 };
 
@@ -133,16 +162,16 @@ export const makeSqlPartsFor = (
 	let parameters = [];
 	const keys = Object.keys(values);
 
-	const select = fields.length ? `"${fields.join('", "')}"` : "*";
+	const select = fields.length ? fields.map(quote).join(", ") : "*";
 
 	const insertParts = [];
 	const updateParts = [];
 	for (const key of keys) {
 		insertParts.push(getPlaceholderFor(placeholder, idx));
-		updateParts.push(`"${key}" = ${getPlaceholderFor(placeholder, idx)}`);
+		updateParts.push(`${quote(key)} = ${getPlaceholderFor(placeholder, idx)}`);
 		idx++;
 	}
-	const insert = `("${keys.join('", "')}") VALUES (${insertParts.join(",")})`;
+	const insert = `(${keys.map(quote).join(", ")}) VALUES (${insertParts.join(",")})`;
 	const update = updateParts.join(", ");
 	parameters = parameters.concat(Object.values(values));
 
@@ -150,50 +179,48 @@ export const makeSqlPartsFor = (
 		.map((key) => {
 			const value = filters[key];
 			if (typeof value === "undefined") {
-				return null;
+				throw new Error("@1auth/store-sql filter value is undefined", {
+					cause: { key },
+				});
 			}
 			if (Array.isArray(value)) {
-				let sql = value
+				if (!value.length) {
+					throw new Error("@1auth/store-sql filter value is an empty array", {
+						cause: { key },
+					});
+				}
+				const sql = value
 					.map(() => getPlaceholderFor(placeholder, idx++))
 					.join(",");
-				sql &&= `"${key}" IN (${sql})`;
 				parameters = parameters.concat(value);
-				return sql;
+				return `${quote(key)} IN (${sql})`;
 			}
-			const sql = `"${key}" = ${getPlaceholderFor(placeholder, idx++)}`;
+			const sql = `${quote(key)} = ${getPlaceholderFor(placeholder, idx++)}`;
 			parameters.push(value);
 			return sql;
 		})
-		.filter((v) => v)
 		.join(" AND ");
 	where &&= `WHERE ${where}`;
 
 	return { select, insert, update, where, parameters };
 };
 
-// Single multi-row `("a", "b") VALUES (?,?),(?,?)` for drivers that batch in one statement
 export const makeInsertList = (placeholder, valuesList) => {
-	const insertValues = [];
-	let insertParameters = [];
-	for (let i = 0, l = valuesList.length; i < l; i++) {
-		const values = valuesList[i];
-		const { insert, parameters } = makeSqlPartsFor(
-			placeholder,
-			{},
-			values,
-			undefined, // no fields: `select` is unused here
-			i * Object.keys(values).length + 1,
-		);
-		if (i) {
-			insertValues.push(insert.split("VALUES")[1]); // (?)
-		} else {
-			insertValues.push(insert); // (name) VALUES (?)
-		}
-
-		insertParameters = insertParameters.concat(parameters);
-	}
-
-	return { insert: insertValues.join(","), parameters: insertParameters };
+	if (!valuesList.length) return { insert: "", parameters: [] };
+	const columns = [...new Set(valuesList.flatMap(Object.keys))];
+	const parameters = [];
+	let idx = 1;
+	const groups = valuesList.map((values) => {
+		const group = columns.map((column) => {
+			parameters.push(Object.hasOwn(values, column) ? values[column] : null);
+			return getPlaceholderFor(placeholder, idx++);
+		});
+		return `(${group.join(",")})`;
+	});
+	return {
+		insert: `(${columns.map(quote).join(", ")}) VALUES ${groups.join(", ")}`,
+		parameters,
+	};
 };
 
 export const withTimeToLive = (values, options) => {
@@ -228,16 +255,12 @@ export const normalizeValues = (values) => {
 	values.expire &&= new Date(values.expire * 1000).toISOString();
 	values.remove &&= new Date(values.remove * 1000).toISOString();
 	for (const [key, v] of Object.entries(values)) {
-		// Stryker disable next-line ConditionalExpression,StringLiteral: dropping the
-		// string guard is an equivalent mutant -- strings then fall through to
-		// String(v), which returns them unchanged.
-		if (v !== null && typeof v !== "string" && typeof v !== "number") {
-			values[key] =
-				v === undefined
-					? null
-					: typeof v === "object"
-						? JSON.stringify(v)
-						: String(v);
+		if (v === undefined) {
+			values[key] = null;
+		} else if (v !== null && typeof v === "object") {
+			values[key] = JSON.stringify(v);
+		} else if (v !== null && typeof v !== "number") {
+			values[key] = String(v);
 		}
 	}
 };
@@ -254,9 +277,3 @@ export const parseValues = (values) => {
 	values.expire &&= Date.parse(values.expire) / 1000;
 	values.remove &&= Date.parse(values.remove) / 1000;
 };
-
-// export for testing
-export const getPlaceholder = (idx) =>
-	getPlaceholderFor(options.placeholder, idx);
-export const makeSqlParts = (filters, values, fields, idxStart) =>
-	makeSqlPartsFor(options.placeholder, filters, values, fields, idxStart);

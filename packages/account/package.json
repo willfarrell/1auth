@@ -1,12 +1,11 @@
 {
 	"name": "@1auth/account",
-	"version": "0.0.0-rc.7",
+	"version": "0.0.0-rc.8",
 	"description": "User account management with encrypted storage and lifecycle operations",
 	"type": "module",
 	"engines": {
-		"node": ">=24"
+		"node": ">=26"
 	},
-	"engineStrict": true,
 	"publishConfig": {
 		"access": "public"
 	},
@@ -55,6 +54,6 @@
 	},
 	"homepage": "https://github.com/willfarrell/1auth",
 	"dependencies": {
-		"@1auth/crypto": "0.0.0-rc.7"
+		"@1auth/crypto": "0.0.0-rc.8"
 	}
 }

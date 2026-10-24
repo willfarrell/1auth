@@ -41,7 +41,7 @@ crypto({
 	digestChecksumSalt: randomChecksumSalt(),
 	digestChecksumPepper: randomChecksumPepper(),
 	secretArgon2TimeCost: 1,
-	secretArgon2MemoryCost: 2 ** 3,
+	secretArgon2MemoryCost: 3,
 	secretArgon2Parallelism: 1,
 });
 notify.default({
@@ -69,7 +69,7 @@ const webauthnOrigin = "http://localhost";
 let sub;
 // *** Setup End *** //
 
-describe("authn-webauthn-securitykey", { concurrency: 1 }, () => {
+describe("@1auth/authn-webauthn-securitykey", { concurrency: 1 }, () => {
 	test.before(async () => {
 		await mocks.storeAccount.create(mocks.storeClient);
 		await mocks.storeAuthn.create(mocks.storeClient);
@@ -149,6 +149,7 @@ describe("authn-webauthn-securitykey", { concurrency: 1 }, () => {
 
 		const [token] = await store.selectList(authnGetOptions().table, { sub });
 		equal(token.type, "WebAuthnSecurityKey-token");
+		equal(storedValue(token).requireUserVerification, true);
 	});
 
 	it("Can register a SecurityKey", async () => {
@@ -156,7 +157,17 @@ describe("authn-webauthn-securitykey", { concurrency: 1 }, () => {
 
 		equal(await securityKeyCount(sub), 1);
 		ok((await securityKeyCreateChallenge(sub)).secret);
+		const [challenge] = await store.selectList(authnGetOptions().table, {
+			sub,
+			type: "WebAuthnSecurityKey-challenge",
+		});
+		equal(storedValue(challenge).requireUserVerification, true);
 	});
+
+	const storedValue = (row) =>
+		JSON.parse(
+			symmetricDecrypt(row.value, { sub, encryptedKey: row.encryptionKey }),
+		);
 
 	it("Can notify with the SecurityKey template ids", async () => {
 		await register(registrationResponseSecurityKey, true);

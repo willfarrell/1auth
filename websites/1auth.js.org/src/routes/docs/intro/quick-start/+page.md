@@ -9,6 +9,8 @@ description: Install and configure 1auth packages to add secure authentication t
 npm i @1auth/store-dynamodb @1auth/notify-sqs @1auth/crypto @1auth/account-username @1auth/account @1auth/messenger @1auth/messenger-email-address @1auth/authn @1auth/authn-webauthn @1auth/authn-recovery-codes @1auth/authn-access-token @1auth/session
 ```
 
+> [`@1auth/crypto-kms`](/docs/packages/crypto-kms) is optional. It keeps the key-encryption key inside AWS KMS instead of in process memory; install it with `@aws-sdk/client-kms`.
+
 ## Example
 
 ```javascript

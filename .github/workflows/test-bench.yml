@@ -1,18 +1,23 @@
-name: Tests (perf)
+name: Tests (bench)
 
 on:
   pull_request:
 
 env:
-  NODE_VERSION: 24.x
+  NODE_VERSION: 26.x
 
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   unit:
-    name: Tests (perf)
+    name: Tests (bench)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
       - name: Harden runner
@@ -40,7 +45,7 @@ jobs:
       - name: Setup Node.js ${{ env.NODE_VERSION }}
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          cache: 'npm'
+          cache: "npm"
           node-version: ${{ env.NODE_VERSION }}
           registry-url: https://registry.npmjs.org
       - name: Install dependencies
@@ -53,4 +58,10 @@ jobs:
         run: |
           npm run test:dynamodb &
           npm run test:postgres &
-          npm run test:perf
+          for port in 8000 5432; do
+            for _ in $(seq 1 60); do
+              (exec 3<>/dev/tcp/127.0.0.1/"$port") 2>/dev/null && break
+              sleep 2
+            done
+          done
+          npm run test:bench

@@ -21,6 +21,8 @@ description: Overview of 1auth's modular architecture, package responsibilities,
 - Digest computation
 - Random ID generation
 
+`@1auth/crypto-kms` is an optional key provider for `@1auth/crypto` that keeps the key-encryption key inside AWS KMS, so row keys are wrapped and unwrapped by KMS instead of by a secret held in process memory.
+
 ### Storage layer
 
 Store modules implement a common interface for database operations:

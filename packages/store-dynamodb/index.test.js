@@ -1,4 +1,5 @@
 import { deepEqual, equal, ok, rejects } from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { randomInt } from "node:crypto";
 import { describe, it, test } from "node:test";
 import tests from "../store/index.test.js";
@@ -38,8 +39,54 @@ const mocks = {
 
 const table = mockDatabaseTable.name;
 
-describe("store-dynamodb", () => {
+describe("@1auth/store-dynamodb", () => {
 	tests(store, mocks);
+
+	describe("mock", () => {
+		const isReadyWith = (env) =>
+			execFileSync(
+				process.execPath,
+				[
+					"--input-type=module",
+					"-e",
+					`const m = await import(${JSON.stringify(new URL("./mock.js", import.meta.url).href)}); console.log(m.isReady()); m.storeClient.destroy();`,
+				],
+				{ env: { ...process.env, ...env }, encoding: "utf8" },
+			).trim();
+		it("Should not be ready when SKIP_DYNAMODB is set, even with the container up", () => {
+			equal(isReadyWith({ SKIP_DYNAMODB: "1" }), "false");
+		});
+		it("Should be ready when the container is up", () => {
+			equal(isReadyWith({ SKIP_DYNAMODB: "" }), "true");
+		});
+	});
+
+	describe("defaults", () => {
+		it("Should apply the defaults on import, before anyone calls `default()`", () => {
+			// a fresh process, so no earlier configure() can mask the module's own
+			const sdkUrl = import.meta.resolve("@aws-sdk/client-dynamodb");
+			const storeUrl = new URL("./index.js", import.meta.url).href;
+			const output = execFileSync(
+				process.execPath,
+				[
+					"--input-type=module",
+					"-e",
+					`const { DynamoDBClient } = await import(${JSON.stringify(sdkUrl)});
+const sent = [];
+DynamoDBClient.prototype.send = async (command) => { sent.push(command.input); return {}; };
+const store = await import(${JSON.stringify(storeUrl)});
+await store.insert("t", { id: 1, sub: "sub_000", expire: 100 });
+console.log(JSON.stringify(sent));`,
+				],
+				{ encoding: "utf8" },
+			);
+			const [put, ...rest] = JSON.parse(output);
+			equal(rest.length, 0);
+			equal(put.TableName, "t");
+			// default `timeToLiveKey` and `timeToLiveExpireOffset`
+			deepEqual(put.Item.remove, { N: String(100 + 10 * 24 * 60 * 60) });
+		});
+	});
 
 	describe("makeQueryParams", () => {
 		it("Should format {ExpressionAttributeNames} properly", async () => {
@@ -58,9 +105,8 @@ describe("store-dynamodb", () => {
 				sub: "sub_000",
 			});
 			deepEqual(ExpressionAttributeValues, {
-				":id": {
-					NS: ["1", "2"],
-				},
+				":id_0": { N: "1" },
+				":id_1": { N: "2" },
 				":sub": {
 					S: "sub_000",
 				},
@@ -71,11 +117,11 @@ describe("store-dynamodb", () => {
 				id: [1, 2],
 				sub: "sub_000",
 			});
-			equal(KeyConditionExpression, "#id IN (:id) and #sub = :sub");
+			equal(KeyConditionExpression, "#id IN (:id_0, :id_1) and #sub = :sub");
 		});
 		it("Should format {UpdateExpression} properly", async () => {
 			const { UpdateExpression } = store.makeQueryParams({
-				id: [1, 2],
+				id: 1,
 				sub: "sub_000",
 			});
 			equal(UpdateExpression, "SET #id = :id, #sub = :sub");
@@ -116,9 +162,22 @@ describe("store-dynamodb", () => {
 
 		it("Should handle string array filter values", async () => {
 			const result = store.makeQueryParams({ sub: ["sub_000", "sub_001"] });
-			equal(result.KeyConditionExpression, "#sub IN (:sub)");
+			equal(result.KeyConditionExpression, "#sub IN (:sub_0, :sub_1)");
 			deepEqual(result.ExpressionAttributeValues, {
-				":sub": { SS: ["sub_000", "sub_001"] },
+				":sub_0": { S: "sub_000" },
+				":sub_1": { S: "sub_001" },
+			});
+		});
+		it("Should keep a list item's placeholder apart from a key named like it", async () => {
+			const result = store.makeQueryParams({ id: [1, 2], id_0: 9 });
+			equal(
+				result.KeyConditionExpression,
+				"#id IN (:id_0, :id_1) and #id_0 = :id_0_1",
+			);
+			deepEqual(result.ExpressionAttributeValues, {
+				":id_0": { N: "1" },
+				":id_1": { N: "2" },
+				":id_0_1": { N: "9" },
 			});
 		});
 	});
@@ -206,13 +265,6 @@ describe("store-dynamodb", () => {
 				]);
 				equal(lastSent().input.ProjectionExpression, "#id, #value");
 				deepEqual(rows, [{ id: 1, value: "a" }]);
-			});
-
-			it("Should ask DynamoDB to do the counting", async () => {
-				await store.insert(table, { id: 1, sub: "sub_000", value: "a" });
-				sent.length = 0;
-				equal(await store.count(table, { sub: "sub_000" }), 1);
-				equal(lastSent().input.Select, "COUNT");
 			});
 
 			it("Should surface an error that is not a missing item", async () => {
@@ -320,6 +372,21 @@ describe("store-dynamodb", () => {
 				equal(rows.length, 1);
 			});
 
+			it("Should removeList only rows of the given `type`", async () => {
+				await store.removeList(typed, {
+					sub: row.sub,
+					id: [row.id],
+					type: "t2",
+				});
+				equal((await store.selectList(typed, { sub: row.sub })).length, 1);
+				await store.removeList(typed, {
+					sub: row.sub,
+					id: [row.id],
+					type: "t1",
+				});
+				equal((await store.selectList(typed, { sub: row.sub })).length, 0);
+			});
+
 			it("Should join several filters with `and`", async () => {
 				const rows = await store.selectList(typed, {
 					id: row.id,
@@ -363,7 +430,7 @@ describe("store-dynamodb", () => {
 				deepEqual(sentNames(), ["QueryCommand", "DeleteItemCommand"]);
 			});
 
-			it("Should query first when a key filter is joined by a non-key one", async () => {
+			it("Should delete by key when a key filter is joined by a non-key one", async () => {
 				await store.insert(table, {
 					id: 1,
 					sub: "sub_000",
@@ -375,7 +442,7 @@ describe("store-dynamodb", () => {
 					await store.remove(table, { sub: "sub_000", id: 1, type: "t1" }),
 					true,
 				);
-				deepEqual(sentNames(), ["QueryCommand", "DeleteItemCommand"]);
+				deepEqual(sentNames(), ["DeleteItemCommand"]);
 			});
 
 			it("Should report false when a non-key filter matches nothing", async () => {
@@ -407,6 +474,451 @@ describe("store-dynamodb", () => {
 					equal(await store.remove(table, { digest: "d1" }), false);
 				} finally {
 					configure();
+				}
+			});
+		});
+
+		describe("conditions", () => {
+			const row = { id: 1, sub: "sub_000", value: "a", type: "t1" };
+
+			it("Should insert only where the key is free", async () => {
+				await store.insert(table, row);
+				equal(
+					lastSent().input.ConditionExpression,
+					"attribute_not_exists(#sub) and attribute_not_exists(#id)",
+				);
+				deepEqual(lastSent().input.ExpressionAttributeNames, {
+					"#sub": "sub",
+					"#id": "id",
+				});
+				await rejects(
+					() => store.insert(table, row),
+					(e) => e.name === "ConditionalCheckFailedException",
+				);
+			});
+
+			it("Should update only an existing row matching every filter", async () => {
+				await store.insert(table, row);
+				sent.length = 0;
+				await store.update(
+					table,
+					{ sub: row.sub, id: row.id, type: "t1" },
+					{ value: "b" },
+				);
+				deepEqual(sentNames(), ["UpdateItemCommand"]);
+				const { input } = lastSent();
+				deepEqual(input.Key, { sub: { S: "sub_000" }, id: { N: "1" } });
+				equal(input.UpdateExpression, "SET #value = :value");
+				equal(
+					input.ConditionExpression,
+					"attribute_exists(#sub) and attribute_exists(#id) and #type = :if_type",
+				);
+				deepEqual(input.ExpressionAttributeValues, {
+					":value": { S: "b" },
+					":if_type": { S: "t1" },
+				});
+				equal((await store.select(table, { sub: row.sub, id: 1 })).value, "b");
+
+				await store.update(
+					table,
+					{ sub: row.sub, id: row.id, type: "t2" },
+					{ type: "t3" },
+				);
+				equal((await store.select(table, { sub: row.sub, id: 1 })).type, "t1");
+			});
+
+			it("Should set a list value as a list", async () => {
+				await store.insert(table, row);
+				await store.update(
+					table,
+					{ sub: row.sub, id: row.id },
+					{ value: ["a", "b"] },
+				);
+				deepEqual(
+					(await store.select(table, { sub: row.sub, id: row.id })).value,
+					["a", "b"],
+				);
+			});
+
+			it("Should leave an attribute set to undefined as it was", async () => {
+				await store.insert(table, row);
+				await store.update(
+					table,
+					{ sub: row.sub, id: row.id },
+					{ value: "b", type: undefined },
+				);
+				equal(lastSent().input.UpdateExpression, "SET #value = :value");
+				const updated = await store.select(table, { sub: row.sub, id: row.id });
+				equal(updated.value, "b");
+				equal(updated.type, "t1");
+			});
+
+			it("Should keep a set value apart from a condition named like it", async () => {
+				await store.insert(table, row);
+				await store.update(
+					table,
+					{ sub: row.sub, id: row.id, type: "t1" },
+					{ if_type: "y" },
+				);
+				equal(
+					(await store.select(table, { sub: row.sub, id: row.id })).if_type,
+					"y",
+				);
+			});
+
+			it("Should key an update on sub alone for a sub-keyed table", async () => {
+				await rejects(() =>
+					store.update(table, { sub: row.sub }, { value: "b" }),
+				);
+				equal(lastSent().input.ConditionExpression, "attribute_exists(#sub)");
+				deepEqual(lastSent().input.Key, { sub: { S: "sub_000" } });
+			});
+
+			it("Should surface an update error that is not a failed condition", async () => {
+				await rejects(
+					() =>
+						store.update(
+							"table_does_not_exist",
+							{ sub: "s", id: 1 },
+							{
+								value: "b",
+							},
+						),
+					(e) => e.name === "ResourceNotFoundException",
+				);
+			});
+
+			it("Should delete by key with the rest as a condition", async () => {
+				await store.insert(table, row);
+				sent.length = 0;
+				equal(
+					await store.remove(table, { sub: row.sub, id: row.id, type: "t2" }),
+					false,
+				);
+				deepEqual(sentNames(), ["DeleteItemCommand"]);
+				equal(lastSent().input.ConditionExpression, "#type = :if_type");
+				equal(
+					await store.remove(table, { sub: row.sub, id: row.id, type: "t1" }),
+					true,
+				);
+				equal(await store.select(table, { sub: row.sub, id: 1 }), undefined);
+			});
+
+			it("Should query first without the full key", async () => {
+				await store.insertList(table, [
+					row,
+					{ id: 2, sub: row.sub, value: "b", type: "t2" },
+					{ id: 3, sub: row.sub, value: "c", type: "t2" },
+				]);
+				sent.length = 0;
+				equal(await store.remove(table, { sub: row.sub, value: "a" }), true);
+				deepEqual(sentNames(), ["QueryCommand", "DeleteItemCommand"]);
+				equal(await store.remove(table, { sub: row.sub, id: [2, 3] }), true);
+				deepEqual(await store.selectList(table, { sub: row.sub }), []);
+			});
+
+			it("Should delete by sub alone for a sub-keyed table", async () => {
+				sent.length = 0;
+				await rejects(() => store.remove(table, { sub: row.sub }));
+				deepEqual(sentNames(), ["DeleteItemCommand"]);
+				deepEqual(lastSent().input.Key, { sub: { S: "sub_000" } });
+			});
+
+			it("Should surface a delete error that is not a failed condition", async () => {
+				await rejects(
+					() =>
+						store.remove("table_does_not_exist", {
+							sub: "s",
+							id: 1,
+							type: "t1",
+						}),
+					(e) => e.name === "ResourceNotFoundException",
+				);
+			});
+
+			it("Should match non-key filters after a GetItem", async () => {
+				await store.insert(table, row);
+				sent.length = 0;
+				equal(
+					await store.select(table, { sub: row.sub, id: 1, type: "t2" }),
+					undefined,
+				);
+				equal(
+					await store.exists(table, { sub: row.sub, id: 1, type: "t2" }),
+					undefined,
+				);
+				deepEqual(sentNames(), ["GetItemCommand", "GetItemCommand"]);
+				deepEqual(
+					await store.select(table, { sub: row.sub, id: 1, type: "t1" }, [
+						"value",
+					]),
+					{ value: "a" },
+				);
+				deepEqual(lastSent().input.AttributesToGet, ["value", "type"]);
+				deepEqual(
+					await store.select(table, {
+						sub: row.sub,
+						id: 1,
+						type: ["t0", "t1"],
+					}),
+					row,
+				);
+			});
+		});
+
+		describe("filters", () => {
+			const rejectsWith = (fn, message) =>
+				rejects(fn, { message: `@1auth/store-dynamodb ${message}` });
+
+			it("Should reject undefined and empty array filter values", async () => {
+				for (const fn of [
+					store.exists,
+					store.select,
+					store.selectList,
+					store.remove,
+					(t, f) => store.update(t, f, { value: "b" }),
+				]) {
+					await rejectsWith(
+						() => fn(table, { sub: "sub_000", id: undefined }),
+						"filter value is undefined",
+					);
+					await rejectsWith(
+						() => fn(table, { sub: "sub_000", id: [] }),
+						"filter value is an empty array",
+					);
+				}
+				deepEqual(sent, []);
+			});
+
+			it("Should refuse update and remove without a key", async () => {
+				for (const fn of [
+					() => store.update(table, {}, { value: "b" }),
+					() => store.update(table, undefined, { value: "b" }),
+					() => store.update(table, { type: "t1" }, { value: "b" }),
+					() => store.remove(table, {}),
+					() => store.remove(table),
+				]) {
+					await rejectsWith(fn, "refusing to write without a filter");
+				}
+				deepEqual(sent, []);
+			});
+
+			it("Should match any of a list filter", async () => {
+				await store.insertList(table, [
+					{ id: 1, sub: "sub_000", value: "a" },
+					{ id: 2, sub: "sub_000", value: "b" },
+					{ id: 3, sub: "sub_000", value: "c" },
+				]);
+				sent.length = 0;
+				const rows = await store.selectList(table, {
+					sub: "sub_000",
+					id: [1, 3],
+				});
+				deepEqual(rows.map((r) => r.id).sort(), [1, 3]);
+				equal(lastSent().input.KeyConditionExpression, "#sub = :sub");
+				equal(lastSent().input.FilterExpression, "#id IN (:id_0, :id_1)");
+			});
+		});
+
+		describe("pagination", () => {
+			const paged = () =>
+				configure({
+					client: {
+						send: (command) => {
+							sent.push(command);
+							if (command.constructor.name === "QueryCommand") {
+								command.input.Limit = 1;
+							}
+							return mocks.storeClient.send(command);
+						},
+					},
+				});
+
+			it("Should read every page of a query", async () => {
+				await store.insertList(table, [
+					{ id: 1, sub: "sub_000", value: "a" },
+					{ id: 2, sub: "sub_000", value: "b" },
+					{ id: 3, sub: "sub_000", value: "c" },
+				]);
+				paged();
+				try {
+					equal((await store.selectList(table, { sub: "sub_000" })).length, 3);
+					deepEqual(
+						await store.selectList(table, { sub: "sub_000", value: "c" }, [
+							"id",
+						]),
+						[{ id: 3 }],
+					);
+					equal(
+						(await store.select(table, { sub: "sub_000", value: "c" })).id,
+						3,
+					);
+					ok(sent.length > 6);
+				} finally {
+					configure();
+				}
+			});
+		});
+
+		describe("batch writes", () => {
+			const rowsOf = (n) =>
+				Array.from({ length: n }, (_, i) => ({
+					id: i + 1,
+					sub: "sub_000",
+					value: `v${i}`,
+				}));
+			const sizesOf = (name) =>
+				sent
+					.filter((c) => c.constructor.name === name)
+					.map((c) =>
+						name === "TransactWriteItemsCommand"
+							? c.input.TransactItems.length
+							: c.input.RequestItems[table].length,
+					);
+			const batchSizes = () => sizesOf("BatchWriteItemCommand");
+			const listed = async () =>
+				(await store.selectList(table, { sub: "sub_000" }))
+					.map((r) => r.id)
+					.sort((x, y) => x - y);
+
+			it("Should insert up to 100 rows in one transaction, each put conditional", async () => {
+				sent.length = 0;
+				deepEqual(
+					await store.insertList(table, rowsOf(100)),
+					rowsOf(100).map((r) => r.id),
+				);
+				deepEqual(sizesOf("TransactWriteItemsCommand"), [100]);
+				deepEqual(batchSizes(), []);
+				const put = sent[0].input.TransactItems[0].Put;
+				equal(put.TableName, table);
+				equal(
+					put.ConditionExpression,
+					"attribute_not_exists(#sub) and attribute_not_exists(#id)",
+				);
+				deepEqual(put.ExpressionAttributeNames, { "#sub": "sub", "#id": "id" });
+				equal((await listed()).length, 100);
+			});
+
+			it("Should insert an empty list without a request", async () => {
+				sent.length = 0;
+				deepEqual(await store.insertList(table, []), []);
+				deepEqual(sent, []);
+			});
+
+			it("Should reject more than 100 rows, writing none of them", async () => {
+				sent.length = 0;
+				await rejects(
+					() => store.insertList(table, rowsOf(101)),
+					(e) =>
+						e.message ===
+							"@1auth/store-dynamodb insertList takes at most 100 rows" &&
+						e.cause.table === table &&
+						e.cause.count === 101,
+				);
+				deepEqual(sent, []);
+				deepEqual(await listed(), []);
+			});
+
+			it("Should reject a list holding an existing key, writing none of it", async () => {
+				await store.insert(table, rowsOf(2)[1]);
+				await rejects(
+					() => store.insertList(table, rowsOf(3)),
+					(e) => e.name === "TransactionCanceledException",
+				);
+				deepEqual(await listed(), [2]);
+			});
+
+			it("Should remove in chunks of 25", async () => {
+				await store.insertList(table, rowsOf(60));
+				sent.length = 0;
+				await store.removeList(table, {
+					sub: "sub_000",
+					id: rowsOf(55).map((r) => r.id),
+				});
+				deepEqual(batchSizes(), [25, 25, 5]);
+				equal((await listed()).length, 5);
+			});
+
+			it("Should remove only rows matching every other filter", async () => {
+				await store.insertList(table, rowsOf(3));
+				sent.length = 0;
+				await store.removeList(table, {
+					sub: "sub_000",
+					id: [1, 2],
+					value: "v0",
+				});
+				deepEqual(sentNames(), ["QueryCommand", "DeleteItemCommand"]);
+				deepEqual(await listed(), [2, 3]);
+			});
+
+			it("Should retry unprocessed items", async () => {
+				await store.insertList(table, rowsOf(3));
+				configure({
+					client: {
+						send: async (command) => {
+							sent.push(command);
+							if (command.constructor.name === "BatchWriteItemCommand") {
+								const requests = command.input.RequestItems[table];
+								if (requests.length > 1) {
+									await mocks.storeClient.send(
+										new command.constructor({
+											RequestItems: { [table]: requests.slice(0, -1) },
+										}),
+									);
+									return {
+										UnprocessedItems: { [table]: requests.slice(-1) },
+									};
+								}
+							}
+							return mocks.storeClient.send(command);
+						},
+					},
+				});
+				try {
+					sent.length = 0;
+					await store.removeList(table, { sub: "sub_000", id: [1, 2, 3] });
+					deepEqual(batchSizes(), [3, 1]);
+					deepEqual(await listed(), []);
+				} finally {
+					configure();
+				}
+			});
+
+			it("Should throw when items stay unprocessed", async () => {
+				configure({
+					client: {
+						send: async (command) => {
+							sent.push(command);
+							return { UnprocessedItems: command.input.RequestItems };
+						},
+					},
+				});
+				try {
+					sent.length = 0;
+					await rejects(
+						() => store.removeList(table, { sub: "sub_000", id: [1, 2] }),
+						{
+							message:
+								"@1auth/store-dynamodb batch write left unprocessed items",
+							cause: { table, count: 2 },
+						},
+					);
+					deepEqual(batchSizes(), [2, 2, 2, 2, 2, 2]);
+				} finally {
+					configure();
+				}
+			});
+		});
+
+		describe("queries without a key", () => {
+			it("Should throw clearly when no filter can key the query", async () => {
+				for (const filters of [{ id: [1, 2] }, { value: "a" }]) {
+					sent.length = 0;
+					await rejects(() => store.selectList(table, filters), {
+						message: "@1auth/store-dynamodb filters have no key to query on",
+						cause: { table, filters },
+					});
+					deepEqual(sent, []);
 				}
 			});
 		});
@@ -524,12 +1036,6 @@ describe("store-dynamodb", () => {
 					key,
 					")",
 				]);
-				deepEqual(await argsOf(() => store.count(table, key)), [
-					`${prefix}count(`,
-					table,
-					key,
-					")",
-				]);
 				deepEqual(await argsOf(() => store.select(table, key, ["value"])), [
 					`${prefix}select(`,
 					table,
@@ -558,10 +1064,6 @@ describe("store-dynamodb", () => {
 					await argsOf(() => store.update(table, key, { value: "z" })),
 					[`${prefix}update(`, table, key, { value: "z" }, ")"],
 				);
-				deepEqual(
-					await argsOf(() => store.updateList(table, [key], { value: "y" })),
-					[`${prefix}updateList(`, table, [key], { value: "y" }, ")"],
-				);
 				deepEqual(await argsOf(() => store.remove(table, key)), [
 					`${prefix}remove(`,
 					table,
@@ -587,11 +1089,9 @@ describe("store-dynamodb", () => {
 					await store.insert(table, row);
 					await store.insertList(table, [{ id: 2, sub: row.sub, value: "b" }]);
 					await store.exists(table, key);
-					await store.count(table, key);
 					await store.select(table, key);
 					await store.selectList(table, key);
 					await store.update(table, key, { value: "z" });
-					await store.updateList(table, [key], { value: "y" });
 					await store.remove(table, key);
 					await store.removeList(table, { sub: row.sub, id: [2] });
 					equal(mocks.log.mock.calls.length, 0);
@@ -723,16 +1223,6 @@ describe("store-dynamodb", () => {
 				const result = await store.selectList(table, { sub: "sub_000" });
 				equal(result.length, 1);
 				equal(result[0].id, 2);
-			});
-		});
-
-		describe("count edge cases", () => {
-			it("Should count by sub", async () => {
-				await store.insert(table, { id: 1, sub: "sub_000", value: "a" });
-				await store.insert(table, { id: 2, sub: "sub_000", value: "b" });
-				await store.insert(table, { id: 3, sub: "sub_001", value: "c" });
-				const result = await store.count(table, { sub: "sub_000" });
-				equal(result, 2);
 			});
 		});
 

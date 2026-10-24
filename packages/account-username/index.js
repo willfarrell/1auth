@@ -3,12 +3,13 @@
 import {
 	lookup as accountLookup,
 	getOptions as accountOptions,
-	update as accountUpdate,
+	updateIdentifier as accountUpdateIdentifier,
 } from "@1auth/account";
 
 import {
 	assertSub,
 	createSeasonedDigest,
+	nowInSeconds,
 	symmetricDecryptFields,
 } from "@1auth/crypto";
 
@@ -34,12 +35,18 @@ export default (opt = {}) => {
 };
 export const getOptions = () => options;
 
+const isExpired = (item) => !!item.expire && item.expire <= nowInSeconds();
+
 export const exists = async (username) => {
 	const usernameSanitized = sanitize(username);
 	const usernameDigest = createSeasonedDigest(usernameSanitized);
-	return await options.store.exists(options.table, {
-		digest: usernameDigest,
-	});
+	const item = await options.store.select(
+		options.table,
+		{ digest: usernameDigest },
+		["sub", "expire"],
+	);
+	if (!item || isExpired(item)) return;
+	return item.sub;
 };
 
 export const lookup = async (username) => {
@@ -49,7 +56,7 @@ export const lookup = async (username) => {
 	let item = await options.store.select(options.table, {
 		digest: usernameDigest,
 	});
-	if (!item) return;
+	if (!item || isExpired(item)) return;
 	// must match @1auth/account
 	item = symmetricDecryptFields(
 		item,
@@ -70,17 +77,25 @@ export const create = async (sub, username) => {
 		});
 	}
 	const usernameDigest = createSeasonedDigest(usernameSanitized);
-	const usernameExists = await options.store.exists(options.table, {
-		digest: usernameDigest,
-	});
-	if (usernameExists) {
+	const usernameExists = () =>
+		options.store.exists(options.table, { digest: usernameDigest });
+	if (await usernameExists()) {
 		throw new Error("409 Conflict", { cause: { username, usernameSanitized } });
 	}
 
-	await accountUpdate(sub, {
-		value: username,
-		digest: usernameDigest,
-	});
+	try {
+		await accountUpdateIdentifier(sub, {
+			value: usernameSanitized,
+			digest: usernameDigest,
+		});
+	} catch (e) {
+		if (await usernameExists()) {
+			throw new Error("409 Conflict", {
+				cause: { username, usernameSanitized },
+			});
+		}
+		throw e;
+	}
 };
 
 export const update = async (sub, username) => {

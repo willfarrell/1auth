@@ -25,7 +25,7 @@ messengerEmailAddress()
 |--------|------|---------|-------------|
 | `optionalDotDomains` | `string[]` | Gmail domains | Domains where dots are optional |
 | `aliasDomains` | `object` | — | Domain alias mapping |
-| `usernameBlacklist` | `string[]` | `[]` | Blocked email usernames |
+| `usernameBlacklist` | `string[]` | `['admin', 'root', 'sa']` | Blocked local parts, matched exactly |
 
 ## API
 
@@ -71,7 +71,9 @@ Verify the token and mark the email as verified.
 
 ### `sanitize(value)`
 
-Normalize an email address: lowercase, IDNA encoding, optional dot handling, alias domain resolution.
+Normalize an email address: lowercase, IDNA encoding, optional dot handling, alias domain resolution. Anything without exactly one `@` is returned unchanged, for `validate` to reject.
+
+`+tag` is stripped from every address, not only at providers that support subaddressing, so `user+a@example.com` and `user@example.com` are one address.
 
 ### `validate(value)`
 

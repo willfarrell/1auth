@@ -1,6 +1,19 @@
-import { deepEqual, equal, notEqual, ok, throws } from "node:assert/strict";
-import { sign as asymmetricSign, generateKeyPairSync } from "node:crypto";
+import {
+	deepEqual,
+	equal,
+	notEqual,
+	ok,
+	rejects,
+	throws,
+} from "node:assert/strict";
+import {
+	sign as asymmetricSign,
+	createHash,
+	generateKeyPairSync,
+} from "node:crypto";
 import { describe, it, test } from "node:test";
+import { setTimeout } from "node:timers/promises";
+import { isDeepStrictEqual } from "node:util";
 import account, {
 	create as accountCreate,
 	remove as accountRemove,
@@ -11,7 +24,10 @@ import accountUsername, {
 	create as accountUsernameCreate,
 	exists as accountUsernameExists,
 } from "@1auth/account-username";
-import authn, { getOptions as authnGetOptions } from "@1auth/authn";
+import authn, {
+	getOptions as authnGetOptions,
+	update as authnUpdate,
+} from "@1auth/authn";
 import * as mockAuthnDynamoDBTable from "@1auth/authn/table/dynamodb.js";
 import * as mockAuthnSQLTable from "@1auth/authn/table/sql.js";
 import crypto, {
@@ -45,6 +61,7 @@ import webauthn, {
 	expire as webauthnExpire,
 	getOptions as webauthnGetOptions,
 	list as webauthnList,
+	makePreset as webauthnMakePreset,
 	remove as webauthnRemove,
 	secret as webauthnSecret,
 	select as webauthnSelect,
@@ -58,7 +75,7 @@ crypto({
 	digestChecksumSalt: randomChecksumSalt(),
 	digestChecksumPepper: randomChecksumPepper(),
 	secretArgon2TimeCost: 1,
-	secretArgon2MemoryCost: 2 ** 3,
+	secretArgon2MemoryCost: 3,
 	secretArgon2Parallelism: 1,
 });
 notify.default({
@@ -231,10 +248,32 @@ const tests = (config) => {
 		});
 
 		it("Refuses anything it cannot hash the same way twice", () => {
-			throws(() => makeRequestHash({ url: "/a", body: new URLSearchParams() }));
+			throws(
+				() => makeRequestHash({ url: "/a", body: new URLSearchParams() }),
+				{
+					name: "TypeError",
+					message: "makeRequestHash: url must be a URL",
+				},
+			);
 			// A plain object stringifies an array to "x,y", which collides with the
 			// literal string "x,y".
-			throws(() => makeRequestHash({ url, body: { a: ["x", "y"] } }));
+			throws(() => makeRequestHash({ url, body: { a: ["x", "y"] } }), {
+				name: "TypeError",
+				message: "makeRequestHash: body must be FormData or URLSearchParams",
+			});
+		});
+
+		it("Is a sha256 of path, query and sorted fields, in base64url", () => {
+			equal(
+				makeRequestHash({ url, body: new URLSearchParams("b=2&a=1") }),
+				createHash("sha256")
+					.update("/settings/billing?/refund\na=1&b=2")
+					.digest("base64url"),
+			);
+		});
+
+		it("Names the form field it skips", () => {
+			equal(formInputName, "webauthnCredential");
 		});
 	});
 
@@ -288,6 +327,31 @@ const tests = (config) => {
 				(await live()).length,
 				webauthnGetOptions().challengeKeep + afterOne.length,
 			);
+		});
+
+		it("Will evict the oldest challenge, not whichever comes back last", async () => {
+			await registered();
+			for (let i = 0; i < 4; i++) await webauthnCreateChallenge(sub);
+			const rows = (
+				await store.selectList(authnGetOptions().table, { sub })
+			).filter((row) => row.type === "WebAuthn-challenge");
+			equal(rows.length, 4);
+			const now = nowInSeconds();
+			const ages = [20, 40, 10, 30];
+			for (let i = 0; i < rows.length; i++) {
+				await store.update(
+					authnGetOptions().table,
+					{ sub, id: rows[i].id },
+					{ create: now - ages[i] },
+				);
+			}
+			await webauthnCreateChallenge(sub);
+			const left = (await store.selectList(authnGetOptions().table, { sub }))
+				.filter((row) => row.type === "WebAuthn-challenge")
+				.map((row) => row.id);
+			equal(left.length, 4);
+			ok(!left.includes(rows[1].id), "the oldest is evicted");
+			for (const i of [0, 2, 3]) ok(left.includes(rows[i].id));
 		});
 
 		it("Can encode an absent secret without throwing", async () => {
@@ -393,26 +457,79 @@ const tests = (config) => {
 				equal(e.cause.type, "missing");
 			}
 		});
-		// it("Will throw when unverfied credentials", async () => {
-		// 	await webauthnCreate(sub);
-		//    try {
-		//      await webauthnAuthenticate(username, {});
-		//    } catch(e) {
-		//      equal(e.message, '401 Unauthorized')
-		//      equal(e.cause, 'missing')
-		//    }
-		// });
-		// it("Will throw when expired credentials", async () => {
-		//    const { id } = await webauthnCreate(sub);
-		//    await store.update(authnGetOptions().table, { sub, id }, {verify:1})
-		//    await webauthnExpire(sub, id);
-		//    try {
-		//      await webauthnAuthenticate(username, {});
-		//    } catch(e) {
-		//      equal(e.message, '401 Unauthorized')
-		//      equal(e.cause, 'expired')
-		//    }
-		//  });
+		const challengeFor = async () => {
+			const { id } = await registered();
+			await webauthnCreateChallenge(sub);
+			const [challengeRow] = await store.selectList(authnGetOptions().table, {
+				sub,
+				type: "WebAuthn-challenge",
+			});
+			await overrideGetChallenge(sub, challengeRow);
+			return id;
+		};
+
+		it("Will throw when expired credentials", async () => {
+			const id = await challengeFor();
+			await store.update(
+				authnGetOptions().table,
+				{ sub, id },
+				{ expire: nowInSeconds() - 1 },
+			);
+			await rejects(
+				webauthnAuthenticate(username, authenticationResponse),
+				unauthorized,
+			);
+		});
+		it("Will throw when removed credentials", async () => {
+			const id = await challengeFor();
+			await store.remove(authnGetOptions().table, { sub, id });
+			await rejects(
+				webauthnAuthenticate(username, authenticationResponse),
+				unauthorized,
+			);
+		});
+		it("Will throw when the credential counter moved on since the challenge", async () => {
+			const id = await challengeFor();
+			const row = await store.select(authnGetOptions().table, { sub, id });
+			const value = webauthnSecret().decode(
+				symmetricDecrypt(row.value, { sub, encryptedKey: row.encryptionKey }),
+			);
+			value.credential.counter = 5;
+			await authnUpdate(webauthnSecret(), {
+				id,
+				sub,
+				encryptedKey: row.encryptionKey,
+				value,
+			});
+			await rejects(
+				webauthnAuthenticate(username, authenticationResponse),
+				unauthorized,
+			);
+		});
+		for (const [name, offset] of [
+			["later", 60],
+			["this second", 0],
+		]) {
+			it(`Can authenticate with a credential set to expire ${name}`, async () => {
+				const id = await challengeFor();
+				await frontOfSecond();
+				await store.update(
+					authnGetOptions().table,
+					{ sub, id },
+					{ expire: nowInSeconds() + offset },
+				);
+				equal(
+					await webauthnAuthenticate(username, authenticationResponse),
+					sub,
+				);
+			});
+		}
+		it("Can authenticate a live credential and record its use", async () => {
+			const id = await challengeFor();
+			equal(await webauthnAuthenticate(username, authenticationResponse), sub);
+			const row = await store.select(authnGetOptions().table, { sub, id });
+			equal(typeof row.lastused, "number");
+		});
 	});
 
 	describe("`expire`", () => {
@@ -515,7 +632,7 @@ const tests = (config) => {
 		const challenge = authnDB[1];
 		equal(challenge.type, "WebAuthn-challenge");
 		equal(challenge.otp, true);
-		equal(challenge.value.length, 1977);
+		equal(challenge.value.length, 353);
 		ok(challenge.expire);
 
 		// Override authentication challenge
@@ -528,9 +645,11 @@ const tests = (config) => {
 		equal(userSub, sub);
 
 		authnDB = await store.selectList(authnGetOptions().table, { sub });
-		equal(authnDB.length, 2);
 		authnDB = authnDB.filter((item) => !item.expire);
-		equal(authnDB.length, 1);
+		deepEqual(
+			authnDB.map((item) => item.type),
+			["WebAuthn-secret"],
+		);
 	});
 
 	// The fixture assertion signed one 32 byte challenge. Split those bytes and
@@ -717,7 +836,9 @@ const tests = (config) => {
 			}),
 		);
 		try {
-			await webauthnChallenge().verify(tampered, challengeValue);
+			await webauthnChallenge().verify(tampered, challengeValue, {
+				sourceId: challengeRow.sourceId,
+			});
 			throw new Error("expected Failed verifyAuthenticationResponse");
 		} catch (e) {
 			equal(e.message, "Failed verifyAuthenticationResponse");
@@ -725,8 +846,9 @@ const tests = (config) => {
 		}
 	});
 	it("Will report an empty credential list, with or without a logger", async () => {
-		// a fresh account has no registered secret, so there is nothing to allow
-		deepEqual(await webauthnCreateChallenge(sub), {});
+		const { id, secret } = await webauthnCreateChallenge(sub);
+		equal(id, undefined);
+		equal(secret.allowCredentials.length, 1);
 		ok(
 			mocks.log.mock.calls.some(
 				({ arguments: [first] }) =>
@@ -737,7 +859,7 @@ const tests = (config) => {
 		// `log: false` is not callable, so the guard around it is what keeps an
 		// account with no credentials from taking the request down
 		webauthn({ name: webauthnName, origin: webauthnOrigin, log: false });
-		deepEqual(await webauthnCreateChallenge(sub), {});
+		equal((await webauthnCreateChallenge(sub)).id, undefined);
 		webauthn({
 			name: webauthnName,
 			origin: webauthnOrigin,
@@ -772,10 +894,90 @@ const tests = (config) => {
 			type: "WebAuthn-token",
 		});
 		await overrideCreateChallenge(sub, token);
-		await webauthnVerify(sub, registrationResponse, { name: "Yubikey" }, false);
+		await webauthnVerify(
+			sub,
+			otherRegistrationResponse,
+			{ name: "Yubikey" },
+			false,
+		);
 
 		const count = await webauthnCount(sub);
 		equal(count, 2);
+	});
+	describe("a credential id already registered", () => {
+		const conflict = (e) => {
+			equal(e.message, "409 Conflict");
+			return true;
+		};
+		it("Can NOT be registered again on the same account", async () => {
+			await registered();
+			await rejects(registered(), conflict);
+			equal(await webauthnCount(sub), 1);
+		});
+		it("Can NOT be registered on another account", async () => {
+			await registered();
+			const otherSub = sub;
+			sub = await accountCreate();
+			try {
+				await rejects(registered(), conflict);
+				equal(await webauthnCount(sub), 0);
+			} finally {
+				await accountRemove(sub);
+				sub = otherSub;
+			}
+		});
+		for (const [name, offset] of [
+			["later", 60],
+			["this second", 0],
+		]) {
+			it(`Can NOT be registered again while set to expire ${name}`, async () => {
+				const { id } = await registered();
+				await frontOfSecond();
+				await store.update(
+					authnGetOptions().table,
+					{ sub, id },
+					{ expire: nowInSeconds() + offset },
+				);
+				await rejects(registered(), conflict);
+			});
+		}
+		for (const [name, revoke] of [
+			["expired", webauthnExpire],
+			["removed", webauthnRemove],
+		]) {
+			it(`Can be registered again once ${name}`, async () => {
+				const { id } = await registered();
+				await revoke(sub, id);
+				ok(await registered());
+				await rejects(registered(), conflict);
+			});
+		}
+	});
+	describe("revoking a credential", () => {
+		const liveChallenges = async () =>
+			(await store.selectList(authnGetOptions().table, { sub })).filter(
+				(row) => row.type === "WebAuthn-challenge",
+			);
+		const twoCredentialsWithChallenges = async () => {
+			const { id } = await registered();
+			const { id: otherId } = await registered(otherRegistrationResponse);
+			await webauthnCreateChallenge(sub);
+			return { id, otherId };
+		};
+
+		for (const [name, revoke] of [
+			["expire", webauthnExpire],
+			["remove", webauthnRemove],
+		]) {
+			it(`Will drop its outstanding challenges on ${name}`, async () => {
+				const { id, otherId } = await twoCredentialsWithChallenges();
+				await revoke(sub, id);
+				deepEqual(
+					(await liveChallenges()).map((row) => row.sourceId),
+					[otherId],
+				);
+			});
+		}
 	});
 	it("Can remove WebAuthn on an account", async () => {
 		await webauthnCreate(sub);
@@ -807,9 +1009,15 @@ const tests = (config) => {
 
 	it("Can NOT create a challenge before a credential is verified", async () => {
 		await webauthnCreate(sub);
-		const { secret } = await webauthnCreateChallenge(sub);
+		const { id } = await webauthnCreateChallenge(sub);
 
-		equal(secret, undefined);
+		equal(id, undefined);
+		equal(
+			(await store.selectList(authnGetOptions().table, { sub })).filter(
+				(row) => row.type === "WebAuthn-challenge",
+			).length,
+			0,
+		);
 	});
 	describe("decoy challenge", () => {
 		it("Can return a challenge for an unknown account", async () => {
@@ -851,6 +1059,15 @@ const tests = (config) => {
 			equal(real.userVerification, decoy.userVerification);
 			equal(real.timeout, decoy.timeout);
 			equal(real.challenge.length, decoy.challenge.length);
+		});
+
+		it("Can NOT tell an account without credentials from an unknown one", async () => {
+			const known = await webauthnCreateChallenge(sub, { username });
+			await accountRemove(sub);
+			const unknown = await webauthnCreateChallenge(undefined, { username });
+
+			deepEqual(Object.keys(known).sort(), Object.keys(unknown).sort());
+			deepEqual(known.secret.allowCredentials, unknown.secret.allowCredentials);
 		});
 
 		it("Can return the same credential id for the same username", async () => {
@@ -950,6 +1167,40 @@ const tests = (config) => {
 				requireResidentKey: false,
 			});
 		});
+
+		const storedValue = async (type) => {
+			const [row] = await store.selectList(authnGetOptions().table, {
+				sub,
+				type,
+			});
+			return JSON.parse(
+				symmetricDecrypt(row.value, { sub, encryptedKey: row.encryptionKey }),
+			);
+		};
+		for (const [userVerification, requireUserVerification] of [
+			["preferred", false],
+			["discouraged", false],
+			["required", true],
+		]) {
+			it(`Will ${requireUserVerification ? "" : "NOT "}require user verification when ${userVerification}`, async () => {
+				webauthn({ ...originalOptions, userVerification });
+				await webauthnCreate(sub);
+				equal(
+					(await storedValue("WebAuthn-token")).requireUserVerification,
+					requireUserVerification,
+				);
+				await store.remove(authnGetOptions().table, {
+					sub,
+					type: "WebAuthn-token",
+				});
+				await registered();
+				await webauthnCreateChallenge(sub);
+				equal(
+					(await storedValue("WebAuthn-challenge")).requireUserVerification,
+					requireUserVerification,
+				);
+			});
+		}
 
 		it("Can create WebAuthn with userName option", async () => {
 			webauthn({
@@ -1157,6 +1408,25 @@ const tests = (config) => {
 			});
 		});
 
+		it("Can build a preset whose options sit under the caller's", () => {
+			const preset = webauthnMakePreset(
+				{ userVerification: "required", residentKey: "required" },
+				"WebAuthnPreset",
+			);
+			preset.configure({ residentKey: "preferred" });
+			const options = preset.getOptions();
+			equal(options.userVerification, "required");
+			equal(options.residentKey, "preferred");
+			equal(options.secret.id, "WebAuthnPreset");
+			equal(options.token.id, "WebAuthnPreset");
+			equal(options.challenge.id, "WebAuthnPreset");
+
+			preset.configure({ id: "WebAuthnOther" });
+			equal(preset.getOptions().challenge.id, "WebAuthnOther");
+			preset.configure();
+			equal(preset.getOptions().secret.id, "WebAuthnPreset");
+		});
+
 		it("Can hold three independent configs", () => {
 			notEqual(passkey.getOptions(), securitykey.getOptions());
 			notEqual(passkey.getOptions(), webauthnGetOptions());
@@ -1205,7 +1475,7 @@ const tests = (config) => {
 			equal(await securitykey.count(sub), 0);
 			equal(await webauthnCount(sub), 0);
 
-			deepEqual(await securitykey.createChallenge(sub), {});
+			equal((await securitykey.createChallenge(sub)).id, undefined);
 			const { secret: authenticationOptions } =
 				await passkey.createChallenge(sub);
 			deepEqual(authenticationOptions.allowCredentials, [
@@ -1221,7 +1491,7 @@ const tests = (config) => {
 			equal(await passkey.count(sub), 0);
 			equal(await webauthnCount(sub), 0);
 
-			deepEqual(await passkey.createChallenge(sub), {});
+			equal((await passkey.createChallenge(sub)).id, undefined);
 			ok((await securitykey.createChallenge(sub)).secret);
 		});
 
@@ -1263,6 +1533,215 @@ const tests = (config) => {
 			return secret.id;
 		};
 	});
+
+	describe("what each refusal reports", () => {
+		const refused = async (response, value, cause) => {
+			try {
+				await webauthnToken().verify(response, value);
+			} catch (e) {
+				equal(e.message, "Failed authenticatorType");
+				deepEqual(e.cause, cause);
+				return;
+			}
+			throw new Error("expected Failed authenticatorType");
+		};
+		const tokenValue = async (preferredAuthenticatorType) => {
+			await webauthnCreate(sub, { preferredAuthenticatorType });
+			const [token] = await store.selectList(authnGetOptions().table, {
+				sub,
+				type: "WebAuthn-token",
+			});
+			await overrideCreateChallenge(sub, token);
+			const stored = await store.select(authnGetOptions().table, {
+				sub,
+				id: token.id,
+			});
+			return JSON.parse(
+				symmetricDecrypt(stored.value, {
+					sub,
+					encryptedKey: stored.encryptionKey,
+				}),
+			);
+		};
+
+		for (const authenticatorType of ["localDevice", "remoteDevice"]) {
+			it(`Will refuse a hardware bound key as a ${authenticatorType} PassKey`, async () => {
+				const value = await tokenValue(authenticatorType);
+				await refused(
+					{
+						...registrationResponseSecurityKey,
+						authenticatorAttachment: undefined,
+					},
+					value,
+					{ authenticatorType, credentialDeviceType: "singleDevice" },
+				);
+			});
+		}
+
+		it("Will refuse a PassKey on the wrong attachment", async () => {
+			const value = await tokenValue("remoteDevice");
+			await refused(registrationResponse, value, {
+				authenticatorType: "remoteDevice",
+				authenticatorAttachment: "platform",
+			});
+		});
+
+		it("Will refuse a missing credential with its sourceId", async () => {
+			await rejects(
+				webauthnChallenge().verify(
+					authenticationResponse,
+					{ sub },
+					{ sourceId: "authn_00000000000" },
+				),
+				(e) => {
+					equal(e.message, "Failed verifyAuthenticationResponse");
+					deepEqual(e.cause, { sourceId: "authn_00000000000" });
+					return true;
+				},
+			);
+		});
+
+		it("Will name the type it refused as a bad request", async () => {
+			await rejects(
+				webauthnCreate(sub, { preferredAuthenticatorType: "phone" }),
+				(e) => {
+					equal(e.message, "400 Bad Request");
+					deepEqual(e.cause, { preferredAuthenticatorType: "phone" });
+					return true;
+				},
+			);
+		});
+
+		it("Will name the account a duplicate registration was refused on", async () => {
+			await registered();
+			await rejects(registered(), (e) => {
+				equal(e.message, "409 Conflict");
+				deepEqual(e.cause, { sub });
+				return true;
+			});
+		});
+	});
+
+	it("Can ask the store for only the columns it reads", async () => {
+		const calls = [];
+		const recording = {
+			...store,
+			select: async (...args) => {
+				calls.push(["select", ...args]);
+				return await store.select(...args);
+			},
+			selectList: async (...args) => {
+				calls.push(["selectList", ...args]);
+				return await store.selectList(...args);
+			},
+		};
+		const authnOptions = { ...authnGetOptions() };
+		const webauthnOptions = { ...webauthnGetOptions() };
+		authn({ ...authnOptions, store: recording });
+		webauthn({ ...webauthnOptions, store: recording });
+		try {
+			const { id } = await registered();
+			await webauthnCreate(sub);
+			await webauthnCreateChallenge(sub);
+			const [challengeRow] = await store.selectList(authnGetOptions().table, {
+				sub,
+				type: "WebAuthn-challenge",
+			});
+			await overrideGetChallenge(sub, challengeRow);
+			await webauthnAuthenticate(username, authenticationResponse);
+			await webauthnRemove(sub, id);
+
+			const asked = (method, fields, filter = () => true) =>
+				calls.some(
+					([m, , filters, f]) =>
+						m === method && isDeepStrictEqual(f, fields) && filter(filters),
+				);
+			ok(
+				asked("selectList", ["expire"], (filters) => !!filters.digest),
+				"duplicate check",
+			);
+			ok(asked("selectList", ["encryptionKey", "value"]), "excludeCredentials");
+			ok(asked("selectList", ["id", "create"]), "stale challenges");
+			ok(
+				asked("selectList", ["id", "encryptionKey", "value"]),
+				"allowCredentials",
+			);
+			ok(
+				asked("selectList", ["id"], (filters) => filters.sourceId === id),
+				"challenges of a removed credential",
+			);
+			ok(
+				asked("select", ["encryptionKey"], (filters) =>
+					isDeepStrictEqual(filters, { id, sub }),
+				),
+				"counter write back",
+			);
+		} finally {
+			authn(authnOptions);
+			webauthn(webauthnOptions);
+		}
+	});
+
+	describe("registration options", () => {
+		it("Can expire a registration token ten minutes out", async () => {
+			const before = nowInSeconds();
+			await webauthnCreate(sub);
+			const [token] = await store.selectList(authnGetOptions().table, { sub });
+			ok(token.expire >= before + 10 * 60);
+			ok(token.expire <= nowInSeconds() + 10 * 60);
+		});
+
+		it("Can ask for no attestation", async () => {
+			const { secret } = await webauthnCreate(sub);
+			equal(secret.attestation, "none");
+		});
+
+		it("Can exclude credentials the account already holds", async () => {
+			await registered();
+			const { secret } = await webauthnCreate(sub);
+			deepEqual(
+				secret.excludeCredentials.map(({ id }) => id),
+				[registrationResponse.id],
+			);
+		});
+
+		it("Will NOT notify when told not to", async () => {
+			await registered();
+			equal(mocks.notifyClient.mock.calls.length, 0);
+		});
+
+		it("Can decode a credential stored as serialised Buffers", () => {
+			const value = webauthnSecret().decode(
+				JSON.stringify({
+					credential: { publicKey: Buffer.from([1, 2]) },
+					attestationObject: Buffer.from([3]),
+				}),
+			);
+			deepEqual(value.credential.publicKey, Buffer.from([1, 2]));
+			deepEqual(value.attestationObject, Buffer.from([3]));
+		});
+	});
+
+	const frontOfSecond = async () => {
+		while (Date.now() % 1000 > 500) {
+			await setTimeout(25);
+		}
+	};
+
+	const unauthorized = (e) => {
+		equal(e.message, "401 Unauthorized");
+		return true;
+	};
+
+	const registered = async (response = registrationResponse) => {
+		await webauthnCreate(sub);
+		const [token] = await store.selectList(authnGetOptions().table, {
+			sub,
+			type: "WebAuthn-token",
+		});
+		await overrideCreateChallenge(sub, token);
+		return await webauthnVerify(sub, response, { name: "PassKey" }, false);
+	};
 
 	const overrideCreateChallenge = async (sub, token) => {
 		await store.update(
@@ -1326,7 +1805,7 @@ const tests = (config) => {
 		);
 	};
 };
-describe("authn-webauthn", { concurrency: 1 }, () => {
+describe("@1auth/authn-webauthn", { concurrency: 1 }, () => {
 	for (const storeKey of Object.keys(mockStores)) {
 		describe(`using store-${storeKey}`, () => {
 			tests(mockStores[storeKey]);
@@ -1394,6 +1873,30 @@ const registrationResponse = {
 // Same credential with the BE/BS flags cleared, so it reads as hardware bound
 // rather than a synced passkey. `fmt: none` carries no attestation signature,
 // so flipping those two bits leaves the response verifiable.
+const withCredentialId = (response, id) => {
+	const attestation = isoCBOR.decodeFirst(
+		isoBase64URL.toBuffer(response.response.attestationObject),
+	);
+	const authData = Buffer.from(attestation.get("authData"));
+	// rpIdHash(32) flags(1) counter(4) aaguid(16) idLength(2)
+	Buffer.from(id, "base64url").copy(authData, 55);
+	attestation.set("authData", new Uint8Array(authData));
+	return {
+		...response,
+		id,
+		rawId: id,
+		response: {
+			...response.response,
+			attestationObject: isoBase64URL.fromBuffer(isoCBOR.encode(attestation)),
+			authenticatorData: authData.toString("base64url"),
+		},
+	};
+};
+const otherRegistrationResponse = withCredentialId(
+	registrationResponse,
+	Buffer.alloc(20, 7).toString("base64url"),
+);
+
 const registrationResponseSecurityKey = {
 	...registrationResponse,
 	response: {

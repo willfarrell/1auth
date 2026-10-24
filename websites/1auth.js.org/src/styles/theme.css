@@ -1,3 +1,5 @@
+@import "@willfarrell-ds/vanilla/components/ds-keyshortcut.css";
+
 :root {
 	--hex-main: #0d7377;
 }

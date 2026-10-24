@@ -29,6 +29,7 @@ const defaults = {
 	idGenerate: true,
 	randomId: randomId(),
 	authenticationDuration: 250, // minimum duration authentication should take (ms), must exceed worst-case secret hash time
+	otpMaxAttempts: 5,
 	usernameExists: [], // hooks to allow what to be used as a username
 	encryptedFields: ["value"],
 };
@@ -184,6 +185,33 @@ export const subject = async (username) => {
 	});
 };
 
+const dummyValues = new Map();
+const dummyVerify = async (credentialOptions, secret, credentialParams) => {
+	const type = makeType(credentialOptions);
+	if (!dummyValues.has(type)) {
+		dummyValues.set(
+			type,
+			(async () =>
+				await credentialOptions.encode(await credentialOptions.create()))(),
+		);
+	}
+	try {
+		const value = await credentialOptions.decode(await dummyValues.get(type));
+		await credentialOptions.verify(secret, value, {}, credentialParams);
+	} catch (_e) {}
+};
+
+const decryptCredential = async (credentialOptions, sub, credential) => {
+	const { encryptionKey: encryptedKey } = credential;
+	const decryptedCredential = symmetricDecryptFields(
+		credential,
+		{ encryptedKey, sub },
+		options.encryptedFields,
+	);
+	const { value, ...values } = decryptedCredential;
+	return { value: await credentialOptions.decode(value), values };
+};
+
 export const authenticate = async (
 	credentialOptions,
 	username,
@@ -194,21 +222,27 @@ export const authenticate = async (
 
 	const sub = await subject(username);
 	if (!sub) {
+		await dummyVerify(credentialOptions, secret, credentialParams);
 		await timeout;
 		throw new Error("401 Unauthorized", { cause: { username } });
 	}
 	const type = makeType(credentialOptions);
+	const filters = { sub, type };
+	if (credentialOptions.digest) {
+		filters.digest = credentialOptions.digest;
+	}
 
-	const credentials = await options.store.selectList(
-		options.table,
-		{
-			sub,
-			type,
-		},
-		["id", "encryptionKey", "value", "otp", "verify", "expire", "sourceId"],
-	);
+	const credentials = await options.store.selectList(options.table, filters, [
+		"id",
+		"encryptionKey",
+		"value",
+		"otp",
+		"verify",
+		"expire",
+		"sourceId",
+	]);
 	const now = nowInSeconds();
-	let valid;
+	const candidates = [];
 	let skipIgnoredCount = 0;
 	let skipExpiredCount = 0;
 	for (const credential of credentials) {
@@ -222,44 +256,56 @@ export const authenticate = async (
 			skipExpiredCount += 1;
 			continue;
 		}
-		const { encryptionKey: encryptedKey } = credential;
-		const decryptedCredential = symmetricDecryptFields(
-			credential,
-			{ encryptedKey, sub },
-			options.encryptedFields,
-		);
-		let { value, ...values } = decryptedCredential;
-		value = await credentialOptions.decode(value);
-		try {
-			valid = await credentialOptions.verify(
-				secret,
-				value,
-				values,
-				credentialParams,
-			);
-		} catch (e) {
-			if (options.log) {
-				options.log(e);
+		candidates.push(credential);
+	}
+	if (!candidates.length) {
+		await dummyVerify(credentialOptions, secret, credentialParams);
+	}
+
+	const results = await Promise.all(
+		candidates.map(async (credential) => {
+			try {
+				const { value, values } = await decryptCredential(
+					credentialOptions,
+					sub,
+					credential,
+				);
+				const valid = await credentialOptions.verify(
+					secret,
+					value,
+					values,
+					credentialParams,
+				);
+				return valid && { credential, value, values };
+			} catch (e) {
+				if (options.log) {
+					options.log(e);
+				}
 			}
+		}),
+	);
+
+	let valid;
+	for (const result of results) {
+		if (!result) {
 			continue;
 		}
-		if (valid) {
-			const { id, otp } = credential;
-			if (otp) {
-				await expire(credentialOptions, sub, id, { lastused: now });
-			} else {
-				await options.store.update(
-					options.table,
-					{ id, sub },
-					{ lastused: now },
-				);
+		const { credential, value, values } = result;
+		const { id, otp } = credential;
+		if (otp) {
+			const consumed = await remove(credentialOptions, sub, id);
+			if (!consumed) {
+				continue;
 			}
-
-			if (credentialOptions.cleanup) {
-				await credentialOptions.cleanup(sub, value, values);
-			}
-			break;
+		} else {
+			await options.store.update(options.table, { id, sub }, { lastused: now });
 		}
+
+		if (credentialOptions.cleanup) {
+			await credentialOptions.cleanup(sub, value, values);
+		}
+		valid = true;
+		break;
 	}
 
 	await timeout;
@@ -318,34 +364,33 @@ export const verify = async (credentialOptions, sub, input) => {
 			skipExpiredCount += 1;
 			continue;
 		}
-		const { encryptionKey: encryptedKey } = credential;
-		const decryptedCredential = symmetricDecryptFields(
-			credential,
-			{ encryptedKey, sub },
-			options.encryptedFields,
-		);
-		let { value, ...values } = decryptedCredential;
-		value = await credentialOptions.decode(value);
+		const { id, otp } = credential;
 		try {
+			const { value, values } = await decryptCredential(
+				credentialOptions,
+				sub,
+				credential,
+			);
 			valid = await credentialOptions.verify(input, value, values);
 		} catch (e) {
 			if (options.log) {
 				options.log(e);
 			}
+		}
+		if (!valid) {
+			if (otp) {
+				await failedAttempt(credentialOptions, sub, credential);
+			}
 			continue;
 		}
-		if (valid) {
-			const { id, otp } = credential;
-			if (otp) {
-				const consumed = await remove(credentialOptions, sub, id);
-				if (!consumed) {
-					// Already consumed by a concurrent request
-					valid = undefined;
-					continue;
-				}
+		if (otp) {
+			const consumed = await remove(credentialOptions, sub, id);
+			if (!consumed) {
+				valid = undefined;
+				continue;
 			}
-			break;
 		}
+		break;
 	}
 
 	await timeout;
@@ -362,6 +407,15 @@ export const verify = async (credentialOptions, sub, input) => {
 		throw new Error("401 Unauthorized", { cause: { type } });
 	}
 	return { ...credential, ...valid };
+};
+
+const failedAttempt = async (credentialOptions, sub, { id, attempts }) => {
+	attempts = (attempts ?? 0) + 1;
+	if (attempts >= options.otpMaxAttempts) {
+		await remove(credentialOptions, sub, id);
+		return;
+	}
+	await options.store.update(options.table, { sub, id }, { attempts });
 };
 
 export const expire = async (_credentialOptions, sub, id, values = {}) => {

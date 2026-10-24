@@ -119,7 +119,13 @@ export const create = async (client, table = name, { dbsc = true } = {}) => {
 									],
 									Projection: {
 										ProjectionType: "INCLUDE",
-										NonKeyAttributes: ["sub", "publicKey", "create", "expire"],
+										NonKeyAttributes: [
+											"sub",
+											"publicKey",
+											"create",
+											"update",
+											"expire",
+										],
 									},
 								},
 							]
@@ -162,6 +168,7 @@ export const create = async (client, table = name, { dbsc = true } = {}) => {
 								"value",
 								"publicKey", // to support sesson-dbsc
 								"create",
+								"update",
 								"expire",
 							],
 						},

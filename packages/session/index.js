@@ -56,6 +56,7 @@ const defaults = {
 	randomId: randomId(),
 	randomSessionId: randomSessionId(),
 	expire: 12 * 60 * 60,
+	idleExpire: 30 * 60,
 	limit: 10, // concurrent live sessions per sub, falsy turns the cap off
 	encryptedFields: ["value"],
 	encode: (value) => JSON.stringify(sortKeys(value ?? {})),
@@ -68,6 +69,8 @@ export default (opt = {}) => {
 };
 export const getOptions = () => options;
 
+const idleUpdateInterval = 60;
+
 export const lookup = async (sid, value = {}) => {
 	if (!sid || typeof sid !== "string") {
 		throw new Error("401 Unauthorized", { cause: { sid } });
@@ -76,7 +79,10 @@ export const lookup = async (sid, value = {}) => {
 	const session = await options.store.select(options.table, { digest });
 	if (session) {
 		const now = nowInSeconds();
-		if (session.expire && session.expire < now) {
+		if (!(now <= session.expire)) {
+			return;
+		}
+		if (options.idleExpire && !(now <= session.update + options.idleExpire)) {
 			return;
 		}
 		const encodedValue = options.encode(value);
@@ -85,6 +91,14 @@ export const lookup = async (sid, value = {}) => {
 			encryptedKey: session.encryptionKey,
 		});
 		if (options.checkMetadata(decryptedValue, encodedValue)) {
+			if (session.update + idleUpdateInterval <= now) {
+				session.update = now;
+				await options.store.update(
+					options.table,
+					{ sub: session.sub, id: session.id },
+					{ update: now },
+				);
+			}
 			return session;
 		}
 	}
@@ -113,7 +127,7 @@ export const select = async (sub, id) => {
 // Deliberately projects a fixed, narrow field list: unlike `sid`, `id` travels
 // in a plaintext header, so this must never hand back `value`, `digest` or
 // `encryptionKey`.
-const bindingFields = ["id", "sub", "publicKey", "create", "expire"];
+const bindingFields = ["id", "sub", "publicKey", "create", "update", "expire"];
 export const selectBinding = async (id) => {
 	assertId(id);
 	return await options.store.select(options.table, { id }, bindingFields);
@@ -264,7 +278,9 @@ export const check = async (sub, value = {}) => {
 	assertSub(sub);
 	const encodedValue = options.encode(value);
 	const sessions = await options.store.selectList(options.table, { sub });
+	const now = nowInSeconds();
 	for (const session of sessions) {
+		if (!(now <= session.expire)) continue;
 		const decryptedValue = symmetricDecrypt(session.value, {
 			sub,
 			encryptedKey: session.encryptionKey,

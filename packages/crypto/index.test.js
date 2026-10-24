@@ -4,6 +4,7 @@ import {
 	notDeepEqual,
 	notEqual,
 	ok,
+	rejects,
 	throws,
 } from "node:assert/strict";
 import { randomBytes } from "node:crypto";
@@ -22,14 +23,12 @@ import crypto, {
 	createDigest,
 	createPepperedDigest,
 	createSaltedDigest,
-	createSaltedValue,
 	createSeasonedDigest,
 	createSecretHash,
 	decodeArgon2,
 	encodeArgon2,
 	encryptionKeyProviderSeparator,
 	entropyToCharacterLength,
-	getEncryptionKeyProviders,
 	getOptions,
 	makeAsymmetricKeys,
 	makeAsymmetricSignature,
@@ -48,7 +47,6 @@ import crypto, {
 	symmetricEncrypt,
 	symmetricEncryptFields,
 	symmetricGenerateEncryptionKey,
-	symmetricGenerateSignatureSecret,
 	symmetricRandomEncryptionKey,
 	symmetricRandomSignatureSecret,
 	symmetricRotation,
@@ -79,7 +77,7 @@ ASVS v5.0 (bits)
 3.2.2: 128
 */
 
-describe("crypto", () => {
+describe("@1auth/crypto", () => {
 	describe("entropy", () => {
 		it("alphaNumeric", async () => {
 			for (const [bits, chars] of Object.entries({
@@ -152,9 +150,9 @@ describe("crypto", () => {
 		});
 		it("createSaltedDigest", async () => {
 			let digest = createSaltedDigest("1auth", { hashAlgorithm: "sha3-256" });
-			equal(digest, "sha3-256:8aVqzzAf/gWlLblIWvvNVO/2ct5LGq8jK/MPi0q/ZZ8=");
+			equal(digest, "sha3-256:PJLGwnEnMUNDNeGO2+px+JfMxynZ+YFSR18WE+Tl+Es=");
 			digest = createSaltedDigest("1auth", { hashAlgorithm: "sha3-256" });
-			equal(digest, "sha3-256:8aVqzzAf/gWlLblIWvvNVO/2ct5LGq8jK/MPi0q/ZZ8=");
+			equal(digest, "sha3-256:PJLGwnEnMUNDNeGO2+px+JfMxynZ+YFSR18WE+Tl+Es=");
 		});
 		it("createSaltedDigest w/o checksumSalt", async () => {
 			let digest = createSaltedDigest("1auth", {
@@ -168,14 +166,29 @@ describe("crypto", () => {
 			});
 			equal(digest, "sha3-256:0uITV182D6igoH3CrcihY+fFrN1s/1aQlYjJoCOjhDs=");
 		});
-		it("createSaltedValue passes the value through when salting is off", async () => {
+		it("createSaltedDigest passes the value through when salting is off", async () => {
 			// `??=` only fills in the configured salt for null/undefined, so any
 			// other falsy value is an explicit "salting disabled"
+			const unsalted = createDigest("1auth");
 			for (const checksumSalt of ["", false, 0]) {
-				equal(createSaltedValue("1auth", { checksumSalt }), "1auth");
+				equal(createSaltedDigest("1auth", { checksumSalt }), unsalted);
 			}
-			// and with a salt the value is extended by it
-			equal(createSaltedValue("1auth", { checksumSalt: "S" }), "1authS");
+			equal(
+				createSaltedDigest("1auth", { checksumSalt: Buffer.from("S") }),
+				createDigest("1authS"),
+			);
+		});
+		it("createSaltedDigest keeps every byte of a binary salt", async () => {
+			notEqual(
+				createSaltedDigest("1auth", { checksumSalt: Buffer.from([0xfe]) }),
+				createSaltedDigest("1auth", { checksumSalt: Buffer.from([0xff]) }),
+			);
+			equal(
+				createSaltedDigest("1auth", { checksumSalt: Buffer.from([0xff]) }),
+				createDigest(
+					Buffer.concat([Buffer.from("1auth"), Buffer.from([0xff])]),
+				),
+			);
 		});
 		it("createPepperedDigest", async () => {
 			let digest = createPepperedDigest("1auth", {
@@ -205,12 +218,11 @@ describe("crypto", () => {
 			let digest = createSeasonedDigest("1auth", {
 				hashAlgorithm: "sha3-256",
 			});
-			// KAT: sha3-256(HMAC-sha3-256(pepper, value + salt))
-			equal(digest, "sha3-256:aNyexR/m4tFFX5FyROEHKcS2yPwmuZd5a/6b03H5UJo=");
+			equal(digest, "sha3-256:a5ddjDcCPGltHPIqakIy6n2zdBjox9YZJgTmxQRd5D8=");
 			digest = createSeasonedDigest("1auth", {
 				hashAlgorithm: "sha3-256",
 			});
-			equal(digest, "sha3-256:aNyexR/m4tFFX5FyROEHKcS2yPwmuZd5a/6b03H5UJo=");
+			equal(digest, "sha3-256:a5ddjDcCPGltHPIqakIy6n2zdBjox9YZJgTmxQRd5D8=");
 		});
 		it("createSeasonedDigest w/o checksumSalt & checksumPepper", async () => {
 			let digest = createSeasonedDigest("1auth", {
@@ -279,7 +291,7 @@ describe("crypto", () => {
 	describe("hash", () => {
 		it("decodeArgon2() tolerates a hash with no version segment", async () => {
 			const { nonce, hash } = decodeArgon2(
-				createSecretHash("s3cret", { sub: "sub_000" }),
+				await createSecretHash("s3cret", { sub: "sub_000" }),
 			);
 			const encoding = getOptions().defaultEncoding;
 			const noVersion = `$argon2id$$m=4,t=2,p=1$${nonce.toString(encoding)}$${hash.toString(encoding)}`;
@@ -314,7 +326,7 @@ describe("crypto", () => {
 		it("createSecretHash() rejects memoryCost given in KiB instead of log2", async () => {
 			// 2 ** 15 is the *memory*, 15 is the exponent. Passing the former
 			// used to compute 2 ** 32768 = Infinity and throw deep inside node.
-			throws(() => createSecretHash("1auth", { memoryCost: 2 ** 15 }), {
+			await rejects(createSecretHash("1auth", { memoryCost: 2 ** 15 }), {
 				name: "RangeError",
 				message: /log2 exponent/,
 			});
@@ -336,6 +348,33 @@ describe("crypto", () => {
 			ok(valid);
 		});
 
+		it("createSecretHash() and verifySecretHash() hash off the event loop", async () => {
+			const hash = await createSecretHash("1auth");
+			for (const run of [
+				() => createSecretHash("1auth"),
+				() => verifySecretHash(hash, "1auth"),
+			]) {
+				let ticked = false;
+				const pending = run();
+				setImmediate(() => {
+					ticked = true;
+				});
+				ok(pending instanceof Promise);
+				await pending;
+				ok(ticked);
+			}
+		});
+		it("verifySecretHash() rejects a stored hash whose memoryCost is out of range", async () => {
+			const hash = await createSecretHash("1auth");
+			await rejects(
+				verifySecretHash(hash.replace("m=15", "m=32768"), "1auth"),
+				{
+					name: "RangeError",
+					message:
+						"memoryCost must be a log2 exponent between 3 and 31, received 32768",
+				},
+			);
+		});
 		it("verifySecretHash() should fail when value was not used to create hash", async () => {
 			const value = "1auth";
 			const hash = await createSecretHash(value);
@@ -429,12 +468,12 @@ describe("crypto", () => {
 			const encryptionKey = "";
 
 			const value = "1auth";
-			const encryptedValue = symmetricEncrypt(value, {
-				encryptionKey,
-				sub,
+			throws(() => symmetricEncrypt(value, { encryptionKey, sub }), {
+				message: "@1auth/crypto encryption key is missing",
+				cause: { sub },
 			});
-			equal(encryptedValue, value);
-			const decryptedValue = symmetricDecrypt(encryptedValue, {
+			equal(symmetricEncrypt("", { encryptionKey, sub }), "");
+			const decryptedValue = symmetricDecrypt(value, {
 				encryptionKey,
 				sub,
 			});
@@ -470,12 +509,12 @@ describe("crypto", () => {
 			const encryptedKey = "";
 
 			const value = "1auth";
-			const encryptedValue = symmetricEncrypt(value, {
-				encryptedKey,
-				sub,
+			throws(() => symmetricEncrypt(value, { encryptedKey, sub }), {
+				message: "@1auth/crypto encryption key is missing",
+				cause: { sub },
 			});
-			equal(encryptedValue, value);
-			const decryptedValue = symmetricDecrypt(encryptedValue, {
+			equal(symmetricEncrypt("", { encryptedKey, sub }), "");
+			const decryptedValue = symmetricDecrypt(value, {
 				encryptedKey,
 				sub,
 			});
@@ -532,6 +571,27 @@ describe("crypto", () => {
 				encryptionKey.toString("base64"),
 			);
 		});
+		it("Should only read a provider name before a separator", async () => {
+			const sub = "sub_000000";
+			const { encryptedKey, encryptionKey } =
+				symmetricGenerateEncryptionKey(sub);
+			const payload = encryptedKey.substring(
+				encryptedKey.indexOf(encryptionKeyProviderSeparator) + 1,
+			);
+			const emptyNamed = symmetricRandomEncryptionKey();
+			registerEncryptionKeyProvider("", { decrypt: () => emptyNamed });
+			try {
+				deepEqual(symmetricDecryptKey(payload, { sub }), encryptionKey);
+				deepEqual(
+					symmetricDecryptKey(`${encryptionKeyProviderSeparator}${payload}`, {
+						sub,
+					}),
+					emptyNamed,
+				);
+			} finally {
+				registerEncryptionKeyProvider("", undefined);
+			}
+		});
 		it("Should NOT silently read a key whose provider is not loaded", async () => {
 			// a row wrapped by a provider this deployment has not loaded must fail
 			// loudly, never fall back to a local unwrap that returns garbage
@@ -553,7 +613,7 @@ describe("crypto", () => {
 					symmetricGenerateEncryptionKey("sub_000000", {
 						encryptionKeyProvider: "nope",
 					}),
-				{ message: "Unknown encryptionKeyProvider" },
+				{ message: "Unknown encryptionKeyProvider", cause: { name: "nope" } },
 			);
 		});
 		it("Should treat an Object.prototype name as a provider that does not exist", async () => {
@@ -597,9 +657,6 @@ describe("crypto", () => {
 				}),
 				decrypt: () => rowKey,
 			});
-			// an own key, which is the point: on a plain object this assignment
-			// would have set the prototype and stored nothing
-			ok(Object.hasOwn(getEncryptionKeyProviders(), "__proto__"));
 
 			const { encryptedKey } = symmetricGenerateEncryptionKey(sub, {
 				encryptionKeyProvider: "__proto__",
@@ -623,7 +680,6 @@ describe("crypto", () => {
 					return rowKey;
 				},
 			});
-			ok(getEncryptionKeyProviders().test1);
 
 			const { encryptedKey } = symmetricGenerateEncryptionKey(sub, {
 				encryptionKeyProvider: "test1",
@@ -659,14 +715,14 @@ describe("crypto", () => {
 	describe("symmetric signatures", () => {
 		it("Should be able to sign using a encryption key and verify using encryption key", async () => {
 			const data = "1auth";
-			const { signatureSecret } = symmetricGenerateSignatureSecret();
+			const signatureSecret = symmetricRandomSignatureSecret();
 			const signedData = symmetricSignatureSign(data, { signatureSecret });
 			const valid = symmetricSignatureVerify(signedData, { signatureSecret });
 			ok(valid);
 		});
 		it("Should NOT be able to sign using a encryption key and verify using another encryption key", async () => {
 			const data = "1auth";
-			const { signatureSecret } = symmetricGenerateSignatureSecret();
+			const signatureSecret = symmetricRandomSignatureSecret();
 			const signedData = symmetricSignatureSign(data, { signatureSecret });
 			const valid = symmetricSignatureVerify(signedData, {
 				signatureSecret: Buffer.from(`not${signatureSecret}`),
@@ -674,13 +730,13 @@ describe("crypto", () => {
 			ok(!valid);
 		});
 		it("Should NOT be able to sign using a encryption key and verify when input is undefined", async () => {
-			const { signatureSecret } = symmetricGenerateSignatureSecret();
+			const signatureSecret = symmetricRandomSignatureSecret();
 			const valid = symmetricSignatureVerify(undefined, { signatureSecret });
 			ok(!valid);
 		});
 		it("Should NOT be able to sign using a encryption key and verify when input is unsigned", async () => {
 			const data = "1auth";
-			const { signatureSecret } = symmetricGenerateSignatureSecret();
+			const signatureSecret = symmetricRandomSignatureSecret();
 			const valid = symmetricSignatureVerify(data, { signatureSecret });
 			ok(!valid);
 		});
@@ -715,7 +771,7 @@ describe("crypto", () => {
 			equal(symmetricSignatureVerify(1234), false);
 		});
 		it("Should make a signature secret of its own", () => {
-			const { signatureSecret } = symmetricGenerateSignatureSecret();
+			const signatureSecret = symmetricRandomSignatureSecret();
 			equal(Buffer.byteLength(signatureSecret), 32);
 			// and it is usable as one
 			const signed = symmetricSignatureSign("1auth", { signatureSecret });
@@ -725,11 +781,22 @@ describe("crypto", () => {
 	});
 
 	describe("symmetric field helpers", () => {
-		it("Should hand back the very same object when there is no key", () => {
+		it("Should throw to encrypt named fields when there is no key", () => {
+			const values = { value: "1auth" };
+			throws(
+				() => symmetricEncryptFields(values, { sub: "sub_0" }, ["value"]),
+				{
+					message: "@1auth/crypto encryption key is missing",
+					cause: { sub: "sub_0", fields: ["value"] },
+				},
+			);
+			equal(symmetricEncryptFields(values, {}), values);
+			equal(symmetricEncryptFields(values, {}, []), values);
+		});
+		it("Should hand back the very same object to decrypt when there is no key", () => {
 			// not a clone: without a key there is nothing to do, so the caller's
 			// object is passed straight through
 			const values = { value: "1auth" };
-			equal(symmetricEncryptFields(values, {}, ["value"]), values);
 			equal(symmetricDecryptFields(values, {}, ["value"]), values);
 		});
 		it("Should leave every field alone when none are named", () => {
@@ -738,6 +805,17 @@ describe("crypto", () => {
 			const values = { value: "1auth", other: "kept" };
 			deepEqual(symmetricEncryptFields(values, { encryptionKey, sub }), values);
 			deepEqual(symmetricDecryptFields(values, { encryptionKey, sub }), values);
+		});
+		it("Should refuse to decrypt under a different sub", () => {
+			const { encryptionKey } = symmetricGenerateEncryptionKey("sub_000000");
+			const encrypted = symmetricEncrypt("1auth", {
+				encryptionKey,
+				sub: "sub_000000",
+			});
+			throws(
+				() => symmetricDecrypt(encrypted, { encryptionKey, sub: "sub_000001" }),
+				{ message: "Unsupported state or unable to authenticate data" },
+			);
 		});
 		it("Should honour a non-default decoding and encoding", () => {
 			const sub = "sub_000000";
@@ -1064,10 +1142,6 @@ describe("crypto", () => {
 		it("Should pass values through untouched without an encryption key", async () => {
 			const values = { value: "plain" };
 			deepEqual(
-				symmetricEncryptFields(values, { sub: "sub_0" }, ["value"]),
-				values,
-			);
-			deepEqual(
 				symmetricDecryptFields(values, { sub: "sub_0" }, ["value"]),
 				values,
 			);
@@ -1207,7 +1281,11 @@ describe("crypto", () => {
 			try {
 				throws(
 					() => crypto({ ...secrets, digestChecksumPepper: randomBytes(31) }),
-					{ name: "RangeError", message: /at least 32 bytes, received 31/ },
+					{
+						name: "RangeError",
+						message: /at least 32 bytes, received 31/,
+						cause: { length: 31 },
+					},
 				);
 			} finally {
 				restore();
@@ -1267,7 +1345,7 @@ describe("crypto", () => {
 				restore();
 			}
 		});
-		it("Should carry the argon2 settings into the hasher", () => {
+		it("Should carry the argon2 settings into the hasher", async () => {
 			try {
 				crypto({
 					...secrets,
@@ -1277,7 +1355,7 @@ describe("crypto", () => {
 					secretArgon2HashLength: 32,
 					secretArgon2NonceLength: 8,
 				});
-				const hash = createSecretHash("s3cret", { sub: "sub_000" });
+				const hash = await createSecretHash("s3cret", { sub: "sub_000" });
 				const decoded = decodeArgon2(hash);
 				equal(decoded.algorithm, "argon2id");
 				equal(decoded.version, 19);

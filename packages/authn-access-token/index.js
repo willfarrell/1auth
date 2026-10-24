@@ -72,15 +72,20 @@ export default (opt = {}) => {
 
 // authenticate(accessToken, accessToken)
 export const authenticate = async (username, secret) => {
-	return await authnAuthenticate(options.secret, username, secret);
+	if (!username || typeof username !== "string") {
+		throw new Error("401 Unauthorized", { cause: { username } });
+	}
+	const digest = createDigest(username);
+	return await authnAuthenticate(
+		{ ...options.secret, digest },
+		username,
+		secret,
+	);
 };
 
 export const exists = async (username) => {
-	if (!username || typeof username !== "string") {
-		throw new Error("404 Not Found", { cause: { username } });
-	}
-	const digest = createDigest(username);
-	return await options.store.exists(options.table, { digest });
+	const authn = await lookup(username);
+	return authn?.sub;
 };
 
 export const count = async (sub) => {

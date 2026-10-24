@@ -29,7 +29,10 @@ export const create = async (client, table = name) => {
      CONSTRAINT ${table}_pkey PRIMARY KEY ("id")
    );
    `;
-	return await client.query(sql);
+	await client.query(sql);
+	return await client.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS ${table}_digest_ukey ON ${table} ("type", "digest") WHERE "verify" IS NOT NULL;
+  `);
 };
 
 export const truncate = async (client, table = name) => {

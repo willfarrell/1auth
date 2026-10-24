@@ -1,12 +1,11 @@
 {
 	"name": "@1auth/session-dbsc",
-	"version": "0.0.0-rc.7",
+	"version": "0.0.0-rc.8",
 	"description": "Device Bound Session Credentials (DBSC) for @1auth/session",
 	"type": "module",
 	"engines": {
-		"node": ">=24"
+		"node": ">=26"
 	},
-	"engineStrict": true,
 	"publishConfig": {
 		"access": "public"
 	},
@@ -16,10 +15,14 @@
 	"exports": {
 		".": {
 			"import": "./index.js"
+		},
+		"./table/*": {
+			"import": "./table/*"
 		}
 	},
 	"files": [
-		"index.js"
+		"index.js",
+		"table"
 	],
 	"scripts": {
 		"test": "npm run test:unit",
@@ -53,7 +56,7 @@
 	},
 	"homepage": "https://github.com/willfarrell/1auth",
 	"dependencies": {
-		"@1auth/crypto": "0.0.0-rc.7",
-		"@1auth/session": "0.0.0-rc.7"
+		"@1auth/crypto": "0.0.0-rc.8",
+		"@1auth/session": "0.0.0-rc.8"
 	}
 }

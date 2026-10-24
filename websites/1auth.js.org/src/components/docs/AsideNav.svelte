@@ -1,5 +1,5 @@
 <script>
-import LayoutAsideNav from "@design-system/components/LayoutAsideNav.svelte";
+import LayoutAsideNav from "@willfarrell-ds/svelte/components/LayoutAsideNav.svelte";
 
 const nav = {
 	"Getting Started": {
@@ -42,6 +42,7 @@ const nav = {
 	},
 	Security: {
 		crypto: "/docs/packages/crypto",
+		"crypto-kms": "/docs/packages/crypto-kms",
 		Algorithms: "/docs/security/algorithms",
 		"Threat Model": "/docs/security/threat-model",
 	},

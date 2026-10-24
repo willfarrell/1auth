@@ -14,7 +14,7 @@ Store modules provide a common interface for database operations. All 1auth modu
 | Package | Backend | Notes |
 |---------|---------|-------|
 | [`@1auth/store-dynamodb`](/docs/packages/store-dynamodb) | AWS DynamoDB | Serverless, pay-per-request |
-| [`@1auth/store-sql`](/docs/packages/store-sql) | Any SQL database | Generic; the dialect packages below are copies of it |
+| [`@1auth/store-sql`](/docs/packages/store-sql) | Any SQL database | Generic; the dialect packages below are built on its `createSqlStore` factory |
 | [`@1auth/store-postgres`](/docs/packages/store-postgres) | PostgreSQL | Relational, self-hosted |
 | [`@1auth/store-sqlite`](/docs/packages/store-sqlite) | SQLite | Embedded, local development |
 | [`@1auth/store-d1`](/docs/packages/store-d1) | Cloudflare D1 | Edge, serverless SQLite |
@@ -27,13 +27,7 @@ All store implementations provide these methods:
 
 Check if a record exists matching the filters.
 
-**Returns:** `boolean`
-
-### `count(table, filters)`
-
-Count records matching the filters.
-
-**Returns:** `number`
+**Returns:** the matching record's `sub`, or `undefined`
 
 ### `select(table, filters, fields)`
 
@@ -49,15 +43,43 @@ Retrieve multiple records.
 
 ### `insert(table, values)`
 
-Insert a new record.
+Insert a new record. Throws if a record with the same primary key already exists.
+
+**Returns:** the record's `id`
+
+### `insertList(table, rows)`
+
+Insert several records.
+
+**Returns:** `id[]`
 
 ### `update(table, filters, values)`
 
-Update an existing record.
+Update the record matching every filter. If nothing matches, nothing changes and no record is created.
+
+**Returns:** `undefined`
 
 ### `remove(table, filters)`
 
-Delete a record.
+Delete the records matching every filter.
+
+**Returns:** `true` if a record was deleted
+
+### `removeList(table, filters)`
+
+Delete the records matching `filters`, where `id` is an array.
+
+## Filters
+
+`filters` is an object of `column: value` pairs, all of which must match. An array value matches any of its items.
+
+Filters are never silently dropped, so a mistake can't widen a query to more rows than intended:
+
+- A value of `undefined` throws.
+- An empty array throws.
+- `update` and `remove` throw when `filters` is empty.
+
+The SQL stores also throw on any column name that isn't a plain identifier (`^[A-Za-z_][A-Za-z0-9_]*$`).
 
 ## Configuration
 

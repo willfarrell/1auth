@@ -47,7 +47,7 @@ crypto({
 	digestChecksumSalt: randomChecksumSalt(),
 	digestChecksumPepper: randomChecksumPepper(),
 	secretArgon2TimeCost: 1,
-	secretArgon2MemoryCost: 2 ** 3,
+	secretArgon2MemoryCost: 3,
 	secretArgon2Parallelism: 1,
 });
 notify.default({
@@ -97,7 +97,7 @@ let subOther;
 const username = "username";
 const usernameOther = "username-other";
 
-describe("authn", () => {
+describe("@1auth/authn", () => {
 	test.before(async () => {
 		await mockAccountSQLTable.create(mocks.storeClient);
 		await mockAuthnSQLTable.create(mocks.storeClient);
@@ -147,6 +147,7 @@ describe("authn", () => {
 			equal(options.table, "authentications");
 			deepEqual(options.encryptedFields, ["value"]);
 			equal(options.idGenerate, true);
+			equal(options.otpMaxAttempts, 5);
 
 			const config = authnRandomId();
 			equal(config.id, "authn");
@@ -578,16 +579,157 @@ describe("authn", () => {
 				cause: { type: "invalid" },
 			});
 		});
-		it("Can authenticate a one-time credential and expire it", async () => {
+		it("Can authenticate a one-time credential and consume it", async () => {
 			const config = plain({ otp: true });
 			const { id } = await authnCreate(config, sub, { value: "a" });
 			equal(await authnAuthenticate(config, username, "a"), sub);
-			// consumed: expired in place, with lastused recorded
-			const item = await authnSelect(config, sub, id);
-			equal(typeof item.expire, "number");
-			ok(item.expire < nowInSeconds());
-			ok(item.lastused);
+			equal(await authnSelect(config, sub, id), undefined);
 			equal(await authnCount(config, sub), 0);
+			await rejects(() => authnAuthenticate(config, username, "a"), {
+				cause: { type: "missing" },
+			});
+		});
+		it("Will let exactly one of two concurrent requests use a one-time credential", async () => {
+			const config = plain({ otp: true });
+			await authnCreate(config, sub, { value: "a" });
+			const results = await Promise.allSettled([
+				authnAuthenticate(config, username, "a"),
+				authnAuthenticate(config, username, "a"),
+			]);
+			deepEqual(results.map(({ status }) => status).sort(), [
+				"fulfilled",
+				"rejected",
+			]);
+			const lost = results.find(({ status }) => status === "rejected");
+			equal(lost.reason.message, "401 Unauthorized");
+			deepEqual(lost.reason.cause, { type: "invalid" });
+		});
+		it("Will treat a one-time credential consumed elsewhere as invalid", async () => {
+			const config = plain({ otp: true });
+			await authnCreate(config, sub, { value: "a" });
+			const options = authnGetOptions();
+			const original = options.store;
+			options.store = { ...storeSQLite, remove: async () => false };
+			try {
+				await rejects(() => authnAuthenticate(config, username, "a"), {
+					cause: { type: "invalid" },
+				});
+			} finally {
+				options.store = original;
+			}
+		});
+		it("Will skip an undecryptable credential and still check the rest", async () => {
+			const bad = await authnCreate(plain(), sub, { value: "a", verify: 1 });
+			await storeSQLite.update(
+				table,
+				{ sub, id: bad.id },
+				{ value: "junk.sig" },
+			);
+			const { id } = await authnCreate(plain(), sub, { value: "a", verify: 1 });
+			equal(await authnAuthenticate(plain(), username, "a"), sub);
+			ok((await authnSelect(plain(), sub, id)).lastused);
+			ok(
+				mocks.log.mock.calls.some(
+					({ arguments: [first] }) => first?.message === "Signature incorrect",
+				),
+			);
+		});
+		it("Will skip a credential whose decode throws and still check the rest", async () => {
+			await authnCreate(plain(), sub, { value: "bad", verify: 1 });
+			await authnCreate(plain(), sub, { value: "a", verify: 1 });
+			const config = plain({
+				decode: (value) => {
+					if (value === "bad") throw new Error("bad json");
+					return value;
+				},
+			});
+			equal(await authnAuthenticate(config, username, "a"), sub);
+			await rejects(() => authnAuthenticate(config, username, "bad"), {
+				cause: { type: "invalid" },
+			});
+		});
+		it("Will verify every candidate concurrently", async () => {
+			for (const value of ["a", "b", "c"]) {
+				await authnCreate(plain(), sub, { value, verify: 1 });
+			}
+			let inFlight = 0;
+			let maxInFlight = 0;
+			const config = plain({
+				verify: async (input, value) => {
+					inFlight += 1;
+					maxInFlight = Math.max(maxInFlight, inFlight);
+					await new Promise((resolve) => setImmediate(resolve));
+					inFlight -= 1;
+					return input === value;
+				},
+			});
+			equal(await authnAuthenticate(config, username, "c"), sub);
+			equal(maxInFlight, 3);
+		});
+		it("Will do a dummy verify for an unknown username or no candidates", async () => {
+			const calls = { create: 0, encode: 0, verify: 0 };
+			const counted = (params = {}) =>
+				plain({
+					type: "dummy",
+					create: () => {
+						calls.create += 1;
+						return "dummy";
+					},
+					encode: (value) => {
+						calls.encode += 1;
+						return `encoded:${value}`;
+					},
+					decode: (value) => value,
+					verify: (input, value, values, params) => {
+						calls.verify += 1;
+						calls.last = { input, value, values, params };
+						return input === value;
+					},
+					...params,
+				});
+			const params = { requestHash: "h" };
+			await rejects(() => authnAuthenticate(counted(), "nobody", "a", params), {
+				cause: { username: "nobody" },
+			});
+			deepEqual(calls.last, {
+				input: "a",
+				value: "encoded:dummy",
+				values: {},
+				params,
+			});
+			await rejects(() => authnAuthenticate(counted(), "nobody", "a"));
+			await rejects(() => authnAuthenticate(counted(), username, "a"), {
+				cause: { type: "missing" },
+			});
+			deepEqual(
+				{ create: calls.create, encode: calls.encode, verify: calls.verify },
+				{ create: 1, encode: 1, verify: 3 },
+			);
+			await authnCreate(counted(), sub, { value: "b", verify: 1 });
+			calls.verify = 0;
+			await rejects(() => authnAuthenticate(counted(), username, "a"));
+			equal(calls.verify, 1);
+			const broken = plain({
+				type: "broken",
+				encode: () => {
+					throw new Error("no dummy");
+				},
+			});
+			await rejects(() => authnAuthenticate(broken, "nobody", "a"), {
+				cause: { username: "nobody" },
+			});
+		});
+		it("Can narrow candidates to one digest", async () => {
+			await authnCreate(plain(), sub, { value: "a", verify: 1, digest: "d_a" });
+			await authnCreate(plain(), sub, { value: "b", verify: 1, digest: "d_b" });
+			await rejects(
+				() => authnAuthenticate(plain({ digest: "d_a" }), username, "b"),
+				{ cause: { type: "invalid" } },
+			);
+			equal(
+				await authnAuthenticate(plain({ digest: "d_a" }), username, "a"),
+				sub,
+			);
 		});
 		it("Can run a cleanup hook after a successful authentication", async () => {
 			const seen = [];
@@ -707,6 +849,72 @@ describe("authn", () => {
 			ok(await authnVerify(plain(), sub, "a"));
 			equal("sourceId" in filters[0], false);
 			configure();
+		});
+		it("Will skip an undecryptable credential and still check the rest", async () => {
+			const bad = await authnCreate(plain(), sub, { value: "a" });
+			await storeSQLite.update(
+				table,
+				{ sub, id: bad.id },
+				{ value: "junk.sig" },
+			);
+			await authnCreate(plain(), sub, { value: "a" });
+			ok(await authnVerify(plain(), sub, "a"));
+			const config = plain({
+				decode: () => {
+					throw new Error("bad json");
+				},
+			});
+			await rejects(() => authnVerify(config, sub, "a"), {
+				cause: { type: "invalid" },
+			});
+		});
+		it("Will burn a one-time credential after too many failed attempts", async () => {
+			const config = plain({ otp: true });
+			const { id } = await authnCreate(config, sub, { value: "a" });
+			for (let i = 1; i < 5; i++) {
+				await rejects(() => authnVerify(config, sub, "wrong"), {
+					cause: { type: "invalid" },
+				});
+				equal((await authnSelect(config, sub, id)).attempts, i);
+			}
+			await rejects(() => authnVerify(config, sub, "wrong"));
+			equal(await authnSelect(config, sub, id), undefined);
+			await rejects(() => authnVerify(config, sub, "a"), {
+				cause: { type: "missing" },
+			});
+		});
+		it("Can verify a one-time credential under the attempt limit", async () => {
+			configure({ otpMaxAttempts: 2 });
+			const config = plain({ otp: true });
+			await authnCreate(config, sub, { value: "a" });
+			await rejects(() => authnVerify(config, sub, "wrong"));
+			ok(await authnVerify(config, sub, "a"));
+			const { id } = await authnCreate(config, sub, { value: "b" });
+			const throwing = plain({
+				otp: true,
+				verify: () => {
+					throw new Error("boom");
+				},
+			});
+			await rejects(() => authnVerify(throwing, sub, "b"));
+			equal((await authnSelect(config, sub, id)).attempts, 1);
+			await rejects(() => authnVerify(throwing, sub, "b"));
+			equal(await authnSelect(config, sub, id), undefined);
+		});
+		it("Will count from zero on a row with no attempts stored", async () => {
+			const config = plain({ otp: true });
+			const { id } = await authnCreate(config, sub, { value: "a" });
+			await storeSQLite.update(table, { sub, id }, { attempts: null });
+			await rejects(() => authnVerify(config, sub, "wrong"));
+			equal((await authnSelect(config, sub, id)).attempts, 1);
+		});
+		it("Will not count failed attempts on a reusable credential", async () => {
+			const { id } = await authnCreate(plain(), sub, { value: "a" });
+			for (let i = 0; i < 6; i++) {
+				await rejects(() => authnVerify(plain(), sub, "wrong"));
+			}
+			equal((await authnSelect(plain(), sub, id)).attempts, 0);
+			ok(await authnVerify(plain(), sub, "a"));
 		});
 		it("Will not consume a one-time credential that did not match", async () => {
 			const config = plain({ otp: true });

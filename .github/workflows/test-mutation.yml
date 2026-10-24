@@ -4,15 +4,20 @@ on:
   pull_request:
 
 env:
-  NODE_VERSION: 24.x
+  NODE_VERSION: 26.x
 
 permissions:
   contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   setup:
     name: List packages
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     outputs:
       packages: ${{ steps.list.outputs.packages }}
     steps:
@@ -23,7 +28,6 @@ jobs:
           disable-sudo: true
           disable-telemetry: true
           allowed-endpoints: >
-            api.github.com:443
             github.com:443
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

@@ -39,7 +39,7 @@ client.query(sql, parameters) // => rows[]
 
 ## API
 
-Implements the [store interface](/docs/packages/store) using parameterized SQL queries with `?` placeholders.
+Implements the [store interface](/docs/packages/store) using parameterized SQL queries with `?` placeholders. Built on [`@1auth/store-sql`](/docs/packages/store-sql), whose identifier and filter rules apply here too.
 
 ## Post-quantum
 

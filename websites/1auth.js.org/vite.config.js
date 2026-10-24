@@ -1,28 +1,59 @@
+import { resolve } from "node:path";
+import adapter from "@sveltejs/adapter-cloudflare";
 import { sveltekit } from "@sveltejs/kit/vite";
-import { createLogger, defineConfig } from "vite";
+import { mdsvex } from "mdsvex";
+import { defineConfig } from "vite";
 import mkcert from "vite-plugin-mkcert";
-import sitemap from "vite-plugin-sitemap";
 import sriPrerendered from "vite-plugin-sri";
+import { rehypeAddHeadingIds } from "./src/lib/rehype-add-heading-ids.js";
+import { rehypeCopyPre } from "./src/lib/rehype-copy-pre.js";
+import { remarkExtractHeadings } from "./src/lib/remark-extract-headings.js";
+import tardisec from "./tardisec.json" with { type: "json" };
 
-// TODO remove after vite 8 — https://github.com/vitejs/vite/issues/19498
-const logger = createLogger();
-const originalWarn = logger.warn.bind(logger);
-logger.warn = (msg, options) => {
-	if (msg.includes("node:async_hooks")) return;
-	originalWarn(msg, options);
-};
+const domain = process.env.ORIGIN ?? "1auth.js.org";
 
 export default defineConfig({
 	plugins: [
-		sveltekit(),
+		sveltekit({
+			adapter: adapter({}),
+			appDir: "_",
+			csp: tardisec["svelte.config.js"]["Content-Security-Policy"],
+			paths: {
+				origin: `https://${domain}`,
+			},
+			prerender: {
+				concurrency: 5,
+				crawl: true,
+				entries: ["/", "/sitemap.xml", "/llms.txt"],
+				handleHttpError: "warn",
+				handleMissingId: "warn",
+				handleEntryGeneratorMismatch: "warn",
+			},
+			preprocess: [
+				mdsvex({
+					extensions: [".md"],
+					layout: {
+						_: resolve("./src/components/docs/mdsvex-layout.svelte"),
+					},
+					remarkPlugins: [remarkExtractHeadings],
+					rehypePlugins: [rehypeAddHeadingIds, rehypeCopyPre],
+				}),
+			],
+			extensions: [".svelte", ".md"],
+			onwarn(warning, defaultHandler) {
+				if (warning.code === "attribute_avoid_is") return;
+				if (warning.code === "non_reactive_update") return;
+
+				warning.message = `[${warning.code}] ${warning.message}`;
+				defaultHandler(warning);
+			},
+		}),
 		mkcert({ mkcertPath: "/opt/homebrew/bin/mkcert" }),
 		sriPrerendered(),
-		sitemap({ hostname: "https://1auth.js.org", outDir: "build/assets/" }),
 	],
 	build: {
 		assetsInlineLimit: 0,
 	},
-	customLogger: logger,
 	ssr: {
 		noExternal: ["prismjs"],
 	},

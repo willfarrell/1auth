@@ -34,7 +34,7 @@ crypto({
 	digestChecksumSalt: randomChecksumSalt(),
 	digestChecksumPepper: randomChecksumPepper(),
 	secretArgon2TimeCost: 1,
-	secretArgon2MemoryCost: 2 ** 3,
+	secretArgon2MemoryCost: 3,
 	secretArgon2Parallelism: 1,
 });
 notify.default({

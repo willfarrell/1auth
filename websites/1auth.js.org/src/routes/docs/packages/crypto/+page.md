@@ -78,7 +78,7 @@ Encryption is randomised, so an encrypted email cannot be searched for. Digests 
 deterministic, one-way value that can be indexed.
 
 ```
-  value ──► + digestChecksumSalt ──► HMAC keyed with ──────► hash ──► digest
+  value ──► ‖ digestChecksumSalt ──► HMAC keyed with ──────► hash ──► digest
                      │               digestChecksumPepper      │
                      │                        │                │
         a secret the │           a keyed PRF: deterministic,   │
@@ -89,6 +89,13 @@ deterministic, one-way value that can be indexed.
               a stolen table cannot be brute forced without BOTH
               secrets, and neither lives in the database
 ```
+
+The salt is appended as raw bytes. Up to `0.0.0-rc.7` it was appended as a string, which UTF-8
+decoded the random salt and collapsed invalid byte sequences to U+FFFD.
+
+**Breaking: existing digests must be rehashed.** Every digest written by `0.0.0-rc.7` or earlier
+(`createSeasonedDigest`, `createSaltedDigest`: usernames, email addresses, sessions) no longer
+matches. Recompute each one from its decrypted plaintext before upgrading lookups.
 
 Rotating `digestChecksumPepper` invalidates every digest at once, which is the intended lever
 for a right-to-erasure sweep. Digests are keyed only by the salt and pepper, so rotating the
@@ -114,15 +121,18 @@ encryption key or signature secret leaves them intact.
 
 ### Secret hashing
 
-- `createSecretHash(secret)` — Hash a secret with Argon2id
-- `verifySecretHash(secret, hash)` — Verify a secret against its hash
+- `createSecretHash(secret)` — Hash a secret with Argon2id. Async: resolves to the encoded hash
+- `verifySecretHash(hash, secret)` — Verify a secret against its hash. Async: resolves to a boolean
+
+Both run Argon2 on the libuv threadpool (`crypto.argon2`), not on the event loop, so a hash
+does not stall other requests. Concurrent hashes are bounded by `UV_THREADPOOL_SIZE` (default 4).
 
 ### Symmetric encryption
 
 - `symmetricGenerateEncryptionKey()` — Generate a new encryption key
-- `symmetricEncrypt(value, key)` — Encrypt a value
+- `symmetricEncrypt(value, key)` — Encrypt a value. Throws when no encryption key resolves, rather than returning the plaintext
 - `symmetricDecrypt(encrypted, key)` — Decrypt a value
-- `symmetricEncryptFields(fields, values, key)` — Encrypt specific fields in an object
+- `symmetricEncryptFields(fields, values, key)` — Encrypt specific fields in an object. Throws when fields are named but no encryption key resolves
 - `symmetricDecryptFields(fields, values, key)` — Decrypt specific fields in an object
 - `symmetricRotation(encrypted, oldKey, newKey)` — Re-encrypt with a new key
 

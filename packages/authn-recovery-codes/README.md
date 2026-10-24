@@ -5,7 +5,7 @@
 <p>
   <a href="https://github.com/willfarrell/1auth/actions/workflows/test-unit.yml"><img src="https://github.com/willfarrell/1auth/actions/workflows/test-unit.yml/badge.svg" alt="GitHub Actions unit test status"></a>
   <a href="https://github.com/willfarrell/1auth/actions/workflows/test-dast.yml"><img src="https://github.com/willfarrell/1auth/actions/workflows/test-dast.yml/badge.svg" alt="GitHub Actions dast test status"></a>
-  <a href="https://github.com/willfarrell/1auth/actions/workflows/test-perf.yml"><img src="https://github.com/willfarrell/1auth/actions/workflows/test-perf.yml/badge.svg" alt="GitHub Actions perf test status"></a>
+  <a href="https://github.com/willfarrell/1auth/actions/workflows/test-bench.yml"><img src="https://github.com/willfarrell/1auth/actions/workflows/test-bench.yml/badge.svg" alt="GitHub Actions perf test status"></a>
   <a href="https://github.com/willfarrell/1auth/actions/workflows/test-sast.yml"><img src="https://github.com/willfarrell/1auth/actions/workflows/test-sast.yml/badge.svg" alt="GitHub Actions SAST test status"></a>
   <a href="https://github.com/willfarrell/1auth/actions/workflows/test-lint.yml"><img src="https://github.com/willfarrell/1auth/actions/workflows/test-lint.yml/badge.svg" alt="GitHub Actions lint test status"></a>
   <br/>
@@ -30,6 +30,10 @@
 ```bash
 npm install @1auth/authn-recovery-codes
 ```
+
+## Security
+
+`authenticate` does not count failed attempts. Rate limit attempts per account and per IP in your application or gateway. A code is removed when it is used, so two parallel requests with one code get one success.
 
 ## Documentation and examples
 

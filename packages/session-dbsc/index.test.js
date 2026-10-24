@@ -1,4 +1,11 @@
-import { deepEqual, equal, match, ok, throws } from "node:assert/strict";
+import {
+	deepEqual,
+	equal,
+	match,
+	notEqual,
+	ok,
+	throws,
+} from "node:assert/strict";
 import {
 	sign as asymmetricSign,
 	generateKeyPairSync,
@@ -17,6 +24,7 @@ import accountUsername, {
 import * as mockAuthnDynamoDBTable from "@1auth/authn/table/dynamodb.js";
 import * as mockAuthnSQLTable from "@1auth/authn/table/sql.js";
 import crypto, {
+	createSeasonedDigest,
 	nowInSeconds,
 	randomChecksumPepper,
 	randomChecksumSalt,
@@ -52,6 +60,8 @@ import dbsc, {
 	terminate as dbscTerminate,
 	verifyProof as dbscVerifyProof,
 } from "./index.js";
+import * as mockDbscDynamoDBTable from "./table/dynamodb.js";
+import * as mockDbscSQLTable from "./table/sql.js";
 
 crypto({
 	symmetricEncryptionKey: symmetricRandomEncryptionKey(),
@@ -59,7 +69,7 @@ crypto({
 	digestChecksumSalt: randomChecksumSalt(),
 	digestChecksumPepper: randomChecksumPepper(),
 	secretArgon2TimeCost: 1,
-	secretArgon2MemoryCost: 2 ** 3,
+	secretArgon2MemoryCost: 3,
 	secretArgon2Parallelism: 1,
 });
 notify.default({
@@ -90,6 +100,7 @@ const mockStores = {
 			storeAccount: mockAccountSQLTable,
 			storeAuthn: mockAuthnSQLTable,
 			storeSession: mockSessionSQLTable,
+			storeDbsc: mockDbscSQLTable,
 		},
 	},
 	...(mockDynamoDB.isReady()
@@ -102,6 +113,7 @@ const mockStores = {
 						storeAccount: mockAccountDynamoDBTable,
 						storeAuthn: mockAuthnDynamoDBTable,
 						storeSession: mockSessionDynamoDBTable,
+						storeDbsc: mockDbscDynamoDBTable,
 					},
 				},
 			}
@@ -206,6 +218,7 @@ const tests = (config) => {
 		await mocks.storeAccount.create(mocks.storeClient);
 		await mocks.storeAuthn.create(mocks.storeClient);
 		await mocks.storeSession.create(mocks.storeClient);
+		await mocks.storeDbsc.create(mocks.storeClient);
 
 		account({ store, notify });
 		accountUsername();
@@ -229,17 +242,24 @@ const tests = (config) => {
 	test.afterEach(async (t) => {
 		t.mock.reset();
 		await accountRemove(sub);
+		await mocks.storeDbsc.truncate(mocks.storeClient);
 		await mocks.storeSession.truncate(mocks.storeClient);
 		await mocks.storeAuthn.truncate(mocks.storeClient);
 		await mocks.storeAccount.truncate(mocks.storeClient);
 	});
 
 	test.after(async () => {
+		await mocks.storeDbsc.drop(mocks.storeClient);
 		await mocks.storeSession.drop(mocks.storeClient);
 		await mocks.storeAuthn.drop(mocks.storeClient);
 		await mocks.storeAccount.drop(mocks.storeClient);
 		mocks.storeClient.after?.();
 	});
+
+	const register = async (proof, options = {}) => {
+		const { sid } = await session.create(sub, options.value ?? {});
+		return await dbscRegister(sid, proof, options);
+	};
 
 	describe("config", () => {
 		it("Ships the spec's defaults", () => {
@@ -248,6 +268,7 @@ const tests = (config) => {
 			equal(options.id, "session-dbsc");
 			equal(options.log, false);
 			equal(options.challengeExpire, 1 * 60);
+			equal(options.challengeTable, "dbsc_challenges");
 			equal(options.require, false);
 			equal(options.registerPath, "/dbsc/register");
 			equal(options.refreshPath, "/dbsc/refresh");
@@ -422,6 +443,15 @@ const tests = (config) => {
 				false,
 			);
 		});
+		it("Will reject a correctly signed payload with no random part", () => {
+			equal(
+				dbscBoundTokenVerify(
+					session.sign(`dbsc:${nowInSeconds()}:session_1`),
+					"session_1",
+				),
+				false,
+			);
+		});
 	});
 
 	describe("token domain separation", () => {
@@ -440,7 +470,7 @@ const tests = (config) => {
 			// a registration proof whose `jti` is a bound token rather than a challenge
 			await rejects(
 				() =>
-					dbscRegister(sub, makeProof(device, { jti: dbscBoundToken("") }), {
+					register(makeProof(device, { jti: dbscBoundToken("") }), {
 						aud: registerUrl,
 					}),
 				"403 Forbidden",
@@ -451,6 +481,30 @@ const tests = (config) => {
 	describe("`challengeHeader`", () => {
 		it("Can name the session the challenge is bound to", () => {
 			match(dbscChallengeHeader("session_1"), /^"[^"]+";id="session_1"$/);
+		});
+		it("Will throw rather than echo an id that breaks out of the quotes", () => {
+			for (const id of [
+				undefined,
+				"",
+				1234,
+				'session_1";path="/evil',
+				"session_1\\",
+				"session_1\r\nSet-Cookie: x=1",
+				"session_\u00e9",
+			]) {
+				throws(
+					() => dbscChallengeHeader(id),
+					(e) => {
+						equal(e.message, "404 Not Found");
+						deepEqual(e.cause, { id });
+						return true;
+					},
+				);
+			}
+		});
+		it('Can echo every printable id character but `"` and `\\`', () => {
+			const id = "session_ !#$%&'()*+,-./09:;<=>?@AZ[]^_`az{|}~";
+			match(dbscChallengeHeader(id), /;id="session_ !#.*~"$/);
 		});
 	});
 
@@ -658,6 +712,17 @@ const tests = (config) => {
 				{ aud: registerUrl, sessionId: "" },
 			);
 		});
+		it("Will refuse a refresh proof whose payload is not an object", async () => {
+			await rejects(
+				() =>
+					dbscVerifyProof(
+						`${base64url({ typ: "dbsc+jwt", alg: "ES256" })}.${base64url(null)}.signature`,
+						{ aud: refreshUrl, sessionId: "session_1", publicKey: "{}" },
+					),
+				"401 Unauthorized",
+				{ aud: refreshUrl, sessionId: "session_1" },
+			);
+		});
 		// The key crosses the wire once, in the JOSE header at registration. A
 		// refresh that carried its own key would certify itself, so the spec forbids
 		// `jwk` there and the server verifies against what it already stored.
@@ -740,6 +805,23 @@ const tests = (config) => {
 			);
 		});
 
+		it("Will refuse an `alg` that is not one of its own names", async () => {
+			const payload = base64url({ jti: dbscChallenge("") });
+			for (const alg of [
+				{ toString: 0 },
+				{ toString: [] },
+				"toString",
+				"__proto__",
+				"constructor",
+			]) {
+				const header = base64url({ typ: "dbsc+jwt", alg });
+				await rejects(
+					() => dbscVerifyProof(`${header}.${payload}.`, { aud: registerUrl }),
+					"401 Unauthorized",
+					{ aud: registerUrl, sessionId: "" },
+				);
+			}
+		});
 		it("Will name what it was checking when it refuses", async () => {
 			// `cause` is developer-facing only, but it is the only thing that says
 			// which endpoint and session a refusal was about
@@ -752,17 +834,126 @@ const tests = (config) => {
 	});
 
 	describe("`register`", () => {
-		it("Will throw with an invalid sub", async () => {
-			for (const badSub of [undefined, "", 0, 1234, null, {}]) {
+		it("Will throw with an invalid sid", async () => {
+			for (const badSid of [undefined, "", 0, 1234, null, {}]) {
 				await rejects(
 					() =>
-						dbscRegister(badSub, makeProof(makeDevice()), {
+						dbscRegister(badSid, makeProof(makeDevice()), {
 							aud: registerUrl,
 						}),
 					"401 Unauthorized",
-					{ sub: badSub },
+					{ sid: badSid },
 				);
 			}
+		});
+
+		it("Will throw for a sid that resolves to no session", async () => {
+			await rejects(
+				() =>
+					dbscRegister("sid_unknown", makeProof(makeDevice()), {
+						aud: registerUrl,
+					}),
+				"401 Unauthorized",
+				{ aud: registerUrl },
+			);
+		});
+
+		it("Will throw for a sid from a different device", async () => {
+			const { sid } = await session.create(sub, { os: "MacOS" });
+			await rejects(
+				() =>
+					dbscRegister(sid, makeProof(makeDevice()), {
+						aud: registerUrl,
+						value: { os: "Windows" },
+					}),
+				"401 Unauthorized",
+			);
+		});
+
+		it("Will throw for an expired session", async () => {
+			const { id, sid } = await session.create(sub, {});
+			await session.expire(sub, id);
+			await rejects(
+				() => dbscRegister(sid, makeProof(makeDevice()), { aud: registerUrl }),
+				"401 Unauthorized",
+			);
+		});
+
+		it("Will throw for a session that is already bound", async () => {
+			const { session: opened } = await register(makeProof(makeDevice()), {
+				aud: registerUrl,
+			});
+			await rejects(
+				() =>
+					dbscRegister(opened.sid, makeProof(makeDevice()), {
+						aud: registerUrl,
+					}),
+				"401 Unauthorized",
+			);
+		});
+
+		it("Will throw for an unbound session past the window under `require`", async (t) => {
+			const dbscOptions = dbscGetOptions();
+			dbscOptions.require = true;
+			try {
+				const { sid, create } = await session.create(sub, {});
+				t.mock.timers.enable({
+					apis: ["Date"],
+					now: (create + dbscOptions.challengeExpire) * 1000,
+				});
+				await rejects(
+					() =>
+						dbscRegister(sid, makeProof(makeDevice()), { aud: registerUrl }),
+					"401 Unauthorized",
+				);
+			} finally {
+				t.mock.timers.reset();
+				dbscOptions.require = false;
+			}
+		});
+
+		it("Will retire the pre-binding sid, binding the same row", async () => {
+			const currentDevice = { os: "MacOS" };
+			const { id, sid } = await session.create(sub, currentDevice);
+			const registered = await dbscRegister(sid, makeProof(makeDevice()), {
+				aud: registerUrl,
+				value: currentDevice,
+			});
+			equal(registered.id, id);
+			equal(registered.session.id, id);
+			equal(registered.session.sub, sub);
+			notEqual(registered.session.sid, sid);
+			equal(await session.lookup(sid, currentDevice), undefined);
+			equal(await dbscLookup(sid, registered.bound, currentDevice), undefined);
+			ok(
+				await dbscLookup(
+					registered.session.sid,
+					registered.bound,
+					currentDevice,
+				),
+			);
+			equal((await session.list(sub)).length, 1);
+		});
+
+		it("Will leave the sid working when the proof fails", async () => {
+			const { sid } = await session.create(sub, {});
+			await rejects(() =>
+				dbscRegister(sid, makeProof(makeDevice(), { tamper: true }), {
+					aud: registerUrl,
+				}),
+			);
+			ok(await session.lookup(sid, {}));
+			ok(!(await dbscList(sub))[0].publicKey);
+		});
+
+		it("Can carry additional values onto the bound row", async () => {
+			const { id } = await register(makeProof(makeDevice()), {
+				aud: registerUrl,
+				values: { metadata: "Toronto" },
+			});
+			const bound = await dbscSelect(sub, id);
+			ok(bound.publicKey);
+			equal(bound.metadata, "Toronto");
 		});
 
 		it("Will throw on an ES256 proof from the wrong curve", async () => {
@@ -771,7 +962,7 @@ const tests = (config) => {
 			// stands between it and a binding.
 			const device = generateKeyPairSync("ec", { namedCurve: "secp384r1" });
 			await rejects(
-				() => dbscRegister(sub, makeProof(device), { aud: registerUrl }),
+				() => register(makeProof(device), { aud: registerUrl }),
 				"401 Unauthorized",
 			);
 		});
@@ -782,7 +973,7 @@ const tests = (config) => {
 				id,
 				session: opened,
 				config,
-			} = await dbscRegister(sub, makeProof(device), {
+			} = await register(makeProof(device), {
 				aud: registerUrl,
 				value: { os: "MacOS" },
 			});
@@ -813,20 +1004,16 @@ const tests = (config) => {
 
 		it("Can bind an RS256 device key", async () => {
 			const device = makeDevice("rsa");
-			const { id } = await dbscRegister(
-				sub,
-				makeProof(device, { alg: "RS256" }),
-				{
-					aud: registerUrl,
-				},
-			);
+			const { id } = await register(makeProof(device, { alg: "RS256" }), {
+				aud: registerUrl,
+			});
 			ok(id);
 		});
 
 		it("Will NOT store private key members sent in the proof", async () => {
 			const device = makeDevice();
 			const key = device.privateKey.export({ format: "jwk" }); // has `d`
-			const { id } = await dbscRegister(sub, makeProof(device, { key }), {
+			const { id } = await register(makeProof(device, { key }), {
 				aud: registerUrl,
 			});
 			const binding = await dbscSelect(sub, id);
@@ -841,14 +1028,14 @@ const tests = (config) => {
 		});
 
 		it("Will throw when the proof is not a JWT", async () => {
-			await rejects(() => dbscRegister(sub, "nope", { aud: registerUrl }));
-			await rejects(() => dbscRegister(sub, undefined, { aud: registerUrl }));
-			await rejects(() => dbscRegister(sub, "a.b.c", { aud: registerUrl }));
+			await rejects(() => register("nope", { aud: registerUrl }));
+			await rejects(() => register(undefined, { aud: registerUrl }));
+			await rejects(() => register("a.b.c", { aud: registerUrl }));
 		});
 
 		it("Will throw with the wrong `typ`", async () => {
 			await rejects(() =>
-				dbscRegister(sub, makeProof(makeDevice(), { typ: "JWT" }), {
+				register(makeProof(makeDevice(), { typ: "JWT" }), {
 					aud: registerUrl,
 				}),
 			);
@@ -856,7 +1043,7 @@ const tests = (config) => {
 
 		it("Will throw with an unsupported `alg`", async () => {
 			await rejects(() =>
-				dbscRegister(sub, makeProof(makeDevice(), { alg: "none" }), {
+				register(makeProof(makeDevice(), { alg: "none" }), {
 					aud: registerUrl,
 				}),
 			);
@@ -864,15 +1051,11 @@ const tests = (config) => {
 
 		it("Will throw when `aud` does not match the endpoint", async () => {
 			await rejects(() =>
-				dbscRegister(
-					sub,
-					makeProof(makeDevice(), { aud: "https://evil.test/" }),
-					{
-						aud: registerUrl,
-					},
-				),
+				register(makeProof(makeDevice(), { aud: "https://evil.test/" }), {
+					aud: registerUrl,
+				}),
 			);
-			await rejects(() => dbscRegister(sub, makeProof(makeDevice()), {}));
+			await rejects(() => register(makeProof(makeDevice()), {}));
 		});
 
 		// Both of these are retriable: the signature already proved the device, so a
@@ -881,7 +1064,7 @@ const tests = (config) => {
 		it("Will throw with an unsigned challenge", async () => {
 			await rejects(
 				() =>
-					dbscRegister(sub, makeProof(makeDevice(), { jti: randomUUID() }), {
+					register(makeProof(makeDevice(), { jti: randomUUID() }), {
 						aud: registerUrl,
 					}),
 				"403 Forbidden",
@@ -897,8 +1080,7 @@ const tests = (config) => {
 			dbscOptions.challengeExpire = -1;
 			try {
 				await rejects(
-					() =>
-						dbscRegister(sub, makeProof(makeDevice()), { aud: registerUrl }),
+					() => register(makeProof(makeDevice()), { aud: registerUrl }),
 					"403 Forbidden",
 				);
 			} finally {
@@ -908,7 +1090,7 @@ const tests = (config) => {
 
 		it("Will throw when the payload is tampered with", async () => {
 			await rejects(() =>
-				dbscRegister(sub, makeProof(makeDevice(), { tamper: true }), {
+				register(makeProof(makeDevice(), { tamper: true }), {
 					aud: registerUrl,
 				}),
 			);
@@ -918,14 +1100,14 @@ const tests = (config) => {
 			const device = makeDevice();
 			const key = makeDevice("rsa").publicKey.export({ format: "jwk" });
 			await rejects(() =>
-				dbscRegister(sub, makeProof(device, { key }), { aud: registerUrl }),
+				register(makeProof(device, { key }), { aud: registerUrl }),
 			);
 		});
 
 		it("Will throw with a weak RSA key", async () => {
 			const device = generateKeyPairSync("rsa", { modulusLength: 1024 });
 			await rejects(() =>
-				dbscRegister(sub, makeProof(device, { alg: "RS256" }), {
+				register(makeProof(device, { alg: "RS256" }), {
 					aud: registerUrl,
 				}),
 			);
@@ -934,13 +1116,9 @@ const tests = (config) => {
 		it("Will throw with a malformed key", async () => {
 			const device = makeDevice();
 			await rejects(() =>
-				dbscRegister(
-					sub,
-					makeProof(device, { key: { kty: "EC", crv: "P-256" } }),
-					{
-						aud: registerUrl,
-					},
-				),
+				register(makeProof(device, { key: { kty: "EC", crv: "P-256" } }), {
+					aud: registerUrl,
+				}),
 			);
 		});
 	});
@@ -953,7 +1131,7 @@ const tests = (config) => {
 		// ever sends, and a 401 tears the session down.
 		it("Can refresh with a Chrome-shaped proof: `jti` and nothing else", async () => {
 			const device = makeDevice();
-			const { id } = await dbscRegister(sub, makeProof(device), {
+			const { id } = await register(makeProof(device), {
 				aud: registerUrl,
 			});
 			const refreshed = await dbscRefresh(
@@ -996,7 +1174,7 @@ const tests = (config) => {
 
 		it("Will throw once the binding's absolute lifetime has passed", async () => {
 			const device = makeDevice();
-			const { id } = await dbscRegister(sub, makeProof(device), {
+			const { id } = await register(makeProof(device), {
 				aud: registerUrl,
 			});
 			// `expire` on the row is the absolute cap, so age it past now
@@ -1015,9 +1193,82 @@ const tests = (config) => {
 			);
 		});
 
+		it("Will throw once the session has gone idle, as `lookup` does", async () => {
+			const device = makeDevice();
+			const { id } = await register(makeProof(device), {
+				aud: registerUrl,
+			});
+			const { table, idleExpire } = session.getOptions();
+			await store.update(
+				table,
+				{ sub, id },
+				{ update: nowInSeconds() - idleExpire - 1 },
+			);
+			await rejects(
+				() =>
+					dbscRefresh(id, makeProof(device, { aud: refreshUrl, sub: id }), {
+						aud: refreshUrl,
+					}),
+				"401 Unauthorized",
+				{ sessionId: id },
+			);
+		});
+
+		it("Can refresh an idle session when the idle timeout is off", async () => {
+			const device = makeDevice();
+			const { id } = await register(makeProof(device), {
+				aud: registerUrl,
+			});
+			const sessionOptions = session.getOptions();
+			const { idleExpire } = sessionOptions;
+			await store.update(
+				sessionOptions.table,
+				{ sub, id },
+				{ update: nowInSeconds() - idleExpire - 1 },
+			);
+			sessionOptions.idleExpire = 0;
+			try {
+				const { id: refreshedId } = await dbscRefresh(
+					id,
+					makeProof(device, { aud: refreshUrl, sub: id }),
+					{ aud: refreshUrl },
+				);
+				equal(refreshedId, id);
+			} finally {
+				sessionOptions.idleExpire = idleExpire;
+			}
+		});
+
+		it("Will throw on a binding with no `expire`, as `lookup` does", async () => {
+			const device = makeDevice();
+			const { id } = await register(makeProof(device), {
+				aud: registerUrl,
+			});
+			const sessionOptions = session.getOptions();
+			sessionOptions.store = {
+				...store,
+				select: async (...args) => {
+					const { expire, ...row } = await store.select(...args);
+					return row;
+				},
+			};
+			try {
+				await rejects(
+					() =>
+						dbscRefresh(id, makeProof(device, { aud: refreshUrl, sub: id }), {
+							aud: refreshUrl,
+						}),
+					"401 Unauthorized",
+					{ sessionId: id },
+				);
+			} finally {
+				sessionOptions.store = store;
+			}
+		});
+
 		it("Can refresh a binding expiring on the current second", async (t) => {
 			const device = makeDevice();
-			const { id } = await dbscRegister(sub, makeProof(device), {
+			const { id } = await register(makeProof(device), {
 				aud: registerUrl,
 			});
 			// the cap is exclusive: a binding dying this very second is still live
@@ -1042,11 +1293,9 @@ const tests = (config) => {
 
 		it("Can mint a new bound cookie and leave `sid` alone", async () => {
 			const device = makeDevice();
-			const { id, session: first } = await dbscRegister(
-				sub,
-				makeProof(device),
-				{ aud: registerUrl },
-			);
+			const { id, session: first } = await register(makeProof(device), {
+				aud: registerUrl,
+			});
 			const {
 				id: refreshedId,
 				bound,
@@ -1066,7 +1315,7 @@ const tests = (config) => {
 
 		it("Will throw when `sub` names a different session", async () => {
 			const device = makeDevice();
-			const { id } = await dbscRegister(sub, makeProof(device), {
+			const { id } = await register(makeProof(device), {
 				aud: registerUrl,
 			});
 			await rejects(() =>
@@ -1085,7 +1334,7 @@ const tests = (config) => {
 		it("Will throw when a different key signs the proof", async () => {
 			const device = makeDevice();
 			const attacker = makeDevice();
-			const { id } = await dbscRegister(sub, makeProof(device), {
+			const { id } = await register(makeProof(device), {
 				aud: registerUrl,
 			});
 			await rejects(() =>
@@ -1097,7 +1346,7 @@ const tests = (config) => {
 
 		it("Will throw when `sub` does not name the session", async () => {
 			const device = makeDevice();
-			const { id } = await dbscRegister(sub, makeProof(device), {
+			const { id } = await register(makeProof(device), {
 				aud: registerUrl,
 			});
 			await rejects(() =>
@@ -1109,7 +1358,7 @@ const tests = (config) => {
 
 		it("Will throw when the challenge is bound to another session", async () => {
 			const device = makeDevice();
-			const { id } = await dbscRegister(sub, makeProof(device), {
+			const { id } = await register(makeProof(device), {
 				aud: registerUrl,
 			});
 			await rejects(
@@ -1134,7 +1383,7 @@ const tests = (config) => {
 				id,
 				session: first,
 				bound: firstBound,
-			} = await dbscRegister(sub, makeProof(device), { aud: registerUrl });
+			} = await register(makeProof(device), { aud: registerUrl });
 			// A dead bound cookie leaves no trace server side -- Max-Age is the
 			// browser's business -- so refresh cannot and does not check for it.
 			const { bound } = await dbscRefresh(
@@ -1154,27 +1403,25 @@ const tests = (config) => {
 
 		// `expire` is set once at create and rotate never moves it, so it is the cap
 		// on how long a login may last no matter how often it refreshes
-		it("Will throw once past the absolute session cap", async () => {
+		it("Will throw once past the absolute session cap", async (t) => {
 			const device = makeDevice();
-			// The cap is the row's own `expire` now, owned by @1auth/session. Mutate
-			// the live options rather than reconfiguring, so the backend's store and
-			// notify wiring survives.
-			const sessionOptions = session.getOptions();
-			const originalExpire = sessionOptions.expire;
-			sessionOptions.expire = -1;
+			const { id, session: opened } = await register(makeProof(device), {
+				aud: registerUrl,
+			});
+			equal(opened.expire, undefined);
+			const { expire } = await dbscSelect(sub, id);
+			t.mock.timers.enable({ apis: ["Date"], now: (expire + 1) * 1000 });
 			try {
-				const { id: expired } = await dbscRegister(sub, makeProof(device), {
-					aud: registerUrl,
-				});
-				await rejects(() =>
-					dbscRefresh(
-						expired,
-						makeProof(device, { aud: refreshUrl, sub: expired }),
-						{ aud: refreshUrl },
-					),
+				await rejects(
+					() =>
+						dbscRefresh(id, makeProof(device, { aud: refreshUrl, sub: id }), {
+							aud: refreshUrl,
+						}),
+					"401 Unauthorized",
+					{ sessionId: id },
 				);
 			} finally {
-				sessionOptions.expire = originalExpire;
+				t.mock.timers.reset();
 			}
 		});
 
@@ -1189,9 +1436,166 @@ const tests = (config) => {
 			);
 		});
 
+		it("Will throw once the session is expired", async () => {
+			const device = makeDevice();
+			const { id } = await register(makeProof(device), {
+				aud: registerUrl,
+			});
+			await dbscExpire(sub, id);
+			await rejects(
+				() =>
+					dbscRefresh(id, makeProof(device, { aud: refreshUrl, sub: id }), {
+						aud: refreshUrl,
+					}),
+				"401 Unauthorized",
+				{ sessionId: id },
+			);
+		});
+
+		describe("replay", () => {
+			const bind = async () => {
+				const device = makeDevice();
+				const { id } = await register(makeProof(device), {
+					aud: registerUrl,
+				});
+				return { device, id };
+			};
+			it("Will throw on a refresh proof used twice", async () => {
+				const { device, id } = await bind();
+				const proof = makeProof(device, { aud: refreshUrl, sub: id });
+				await dbscRefresh(id, proof, { aud: refreshUrl });
+				await rejects(
+					() => dbscRefresh(id, proof, { aud: refreshUrl }),
+					"403 Forbidden",
+					{ aud: refreshUrl, sessionId: id },
+				);
+			});
+			it("Will throw on a second proof over the same challenge", async () => {
+				const { device, id } = await bind();
+				const jti = dbscChallenge(id);
+				await dbscRefresh(
+					id,
+					makeProof(device, { aud: refreshUrl, sub: id, jti }),
+					{ aud: refreshUrl },
+				);
+				await rejects(
+					() =>
+						dbscRefresh(
+							id,
+							makeProof(device, { omitAud: true, sendJwk: false, jti }),
+							{ aud: refreshUrl },
+						),
+					"403 Forbidden",
+				);
+			});
+			it("Will let only one of two racing replays through", async () => {
+				const { device, id } = await bind();
+				const proof = makeProof(device, { aud: refreshUrl, sub: id });
+				const results = await Promise.allSettled([
+					dbscRefresh(id, proof, { aud: refreshUrl }),
+					dbscRefresh(id, proof, { aud: refreshUrl }),
+				]);
+				deepEqual(results.map(({ status }) => status).sort(), [
+					"fulfilled",
+					"rejected",
+				]);
+				equal(
+					results.find(({ status }) => status === "rejected").reason.message,
+					"403 Forbidden",
+				);
+			});
+			it("Will record the challenge until it could no longer verify", async () => {
+				const { device, id } = await bind();
+				const jti = dbscChallenge(id);
+				const sessionOptions = session.getOptions();
+				const inserts = [];
+				sessionOptions.store = {
+					...store,
+					insert: async (...args) => {
+						inserts.push(args);
+						return await store.insert(...args);
+					},
+				};
+				const before = nowInSeconds();
+				try {
+					await dbscRefresh(
+						id,
+						makeProof(device, { aud: refreshUrl, sub: id, jti }),
+						{ aud: refreshUrl },
+					);
+				} finally {
+					sessionOptions.store = store;
+				}
+				const { challengeTable, challengeExpire } = dbscGetOptions();
+				equal(inserts.length, 1);
+				const [table, row] = inserts[0];
+				equal(table, challengeTable);
+				deepEqual(Object.keys(row).sort(), ["expire", "id", "sub"]);
+				equal(row.sub, sub);
+				equal(row.id, createSeasonedDigest(jti));
+				ok(row.expire >= before + challengeExpire);
+				ok(row.expire <= nowInSeconds() + challengeExpire);
+			});
+			it("Will not report a store failure as a replay", async () => {
+				const { device, id } = await bind();
+				const error = new Error("connect ECONNREFUSED");
+				const sessionOptions = session.getOptions();
+				sessionOptions.store = {
+					...store,
+					insert: async () => {
+						throw error;
+					},
+				};
+				try {
+					await rejects(
+						() =>
+							dbscRefresh(id, makeProof(device, { aud: refreshUrl, sub: id }), {
+								aud: refreshUrl,
+							}),
+						error.message,
+					);
+				} finally {
+					sessionOptions.store = store;
+				}
+			});
+			it("Will hand out a different challenge each time, even within a second", () => {
+				notEqual(dbscChallenge("session_1"), dbscChallenge("session_1"));
+				notEqual(
+					dbscChallengeHeader("session_1"),
+					dbscChallengeHeader("session_1"),
+				);
+			});
+			it("Will not spend the challenge on a proof that fails", async () => {
+				const { device, id } = await bind();
+				const jti = dbscChallenge(id);
+				await rejects(() =>
+					dbscRefresh(
+						id,
+						makeProof(makeDevice(), { aud: refreshUrl, sub: id, jti }),
+						{ aud: refreshUrl },
+					),
+				);
+				const { id: refreshed } = await dbscRefresh(
+					id,
+					makeProof(device, { aud: refreshUrl, sub: id, jti }),
+					{ aud: refreshUrl },
+				);
+				equal(refreshed, id);
+			});
+			it("Will not spend a registration challenge", async () => {
+				const jti = dbscChallenge("");
+				await register(makeProof(makeDevice(), { jti }), { aud: registerUrl });
+				ok(
+					await register(makeProof(makeDevice(), { jti }), {
+						aud: registerUrl,
+					}),
+				);
+			});
+		});
+
 		it("Will throw once the binding is removed", async () => {
 			const device = makeDevice();
-			const { id } = await dbscRegister(sub, makeProof(device), {
+			const { id } = await register(makeProof(device), {
 				aud: registerUrl,
 			});
 			await dbscRemove(sub, id);
@@ -1209,7 +1613,7 @@ const tests = (config) => {
 		});
 		it("Will return nothing for a bound session without a valid bound cookie", async () => {
 			const device = makeDevice();
-			const { session: opened } = await dbscRegister(sub, makeProof(device), {
+			const { session: opened } = await register(makeProof(device), {
 				aud: registerUrl,
 			});
 			// the row carries a publicKey, so `sid` alone is no longer enough
@@ -1233,10 +1637,10 @@ const tests = (config) => {
 			const { sid } = await session.create(sub, {});
 			ok(await dbscLookup(sid, undefined));
 		});
-		it("Can leave an unbound session untouched by a registration", async () => {
+		it("Can leave another unbound session untouched by a registration", async () => {
 			const currentDevice = { os: "MacOS" };
 			const { sid } = await session.create(sub, currentDevice);
-			await dbscRegister(sub, makeProof(makeDevice()), { aud: registerUrl });
+			await register(makeProof(makeDevice()), { aud: registerUrl });
 			ok(await session.lookup(sid, currentDevice));
 			equal((await session.list(sub)).length, 2);
 		});
@@ -1278,11 +1682,9 @@ const tests = (config) => {
 			dbscOptions.require = true;
 			try {
 				const device = makeDevice();
-				const { session: opened, bound } = await dbscRegister(
-					sub,
-					makeProof(device),
-					{ aud: registerUrl },
-				);
+				const { session: opened, bound } = await register(makeProof(device), {
+					aud: registerUrl,
+				});
 				ok(await dbscLookup(opened.sid, bound));
 			} finally {
 				dbscOptions.require = false;
@@ -1304,8 +1706,8 @@ const tests = (config) => {
 
 	describe("`list`/`select`/`expire`/`remove`", () => {
 		it("Can list the bindings on an account", async () => {
-			await dbscRegister(sub, makeProof(makeDevice()), { aud: registerUrl });
-			await dbscRegister(sub, makeProof(makeDevice()), { aud: registerUrl });
+			await register(makeProof(makeDevice()), { aud: registerUrl });
+			await register(makeProof(makeDevice()), { aud: registerUrl });
 			equal((await dbscList(sub)).length, 2);
 		});
 		it("Will throw with an invalid sub", async () => {
@@ -1334,6 +1736,8 @@ const tests = (config) => {
 	});
 };
 
-for (const store of Object.keys(mockStores)) {
-	describe(`session-dbsc using ${store}`, () => tests(mockStores[store]));
-}
+describe("@1auth/session-dbsc", () => {
+	for (const store of Object.keys(mockStores)) {
+		describe(`using ${store}`, () => tests(mockStores[store]));
+	}
+});

@@ -5,7 +5,7 @@
 <p>
   <a href="https://github.com/willfarrell/1auth/actions/workflows/test-unit.yml"><img src="https://github.com/willfarrell/1auth/actions/workflows/test-unit.yml/badge.svg" alt="GitHub Actions unit test status"></a>
   <a href="https://github.com/willfarrell/1auth/actions/workflows/test-dast.yml"><img src="https://github.com/willfarrell/1auth/actions/workflows/test-dast.yml/badge.svg" alt="GitHub Actions dast test status"></a>
-  <a href="https://github.com/willfarrell/1auth/actions/workflows/test-perf.yml"><img src="https://github.com/willfarrell/1auth/actions/workflows/test-perf.yml/badge.svg" alt="GitHub Actions perf test status"></a>
+  <a href="https://github.com/willfarrell/1auth/actions/workflows/test-bench.yml"><img src="https://github.com/willfarrell/1auth/actions/workflows/test-bench.yml/badge.svg" alt="GitHub Actions perf test status"></a>
   <a href="https://github.com/willfarrell/1auth/actions/workflows/test-sast.yml"><img src="https://github.com/willfarrell/1auth/actions/workflows/test-sast.yml/badge.svg" alt="GitHub Actions SAST test status"></a>
   <a href="https://github.com/willfarrell/1auth/actions/workflows/test-lint.yml"><img src="https://github.com/willfarrell/1auth/actions/workflows/test-lint.yml/badge.svg" alt="GitHub Actions lint test status"></a>
   <br/>
@@ -48,6 +48,22 @@ session({
 ```
 
 The count is read, not locked. No store here offers an atomic counter across an account's rows, so two logins arriving at the same moment can both pass the check. Treat the cap as advisory.
+
+## Idle timeout
+
+`lookup()` refuses a session unused for longer than `idleExpire` seconds, `1800` (30 minutes) by default, as OWASP ASVS 7.3.1 asks. Each successful lookup counts as use and moves the row's `update` forward, at most once a minute, so an active session costs one write a minute rather than one per request.
+
+```javascript
+session({
+  store,
+  notify,
+  idleExpire: 30 * 60 // 0, or any falsy value, turns the idle timeout off
+})
+```
+
+`expire` is still the absolute cap, whatever the activity. A row with no `update` or no `expire` never resolves.
+
+On DynamoDB the `digest` index has to project `update`; `table/dynamodb.js` does.
 
 ## Documentation and examples
 

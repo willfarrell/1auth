@@ -54,7 +54,7 @@ crypto({
 	digestChecksumSalt: randomChecksumSalt(),
 	digestChecksumPepper: randomChecksumPepper(),
 	secretArgon2TimeCost: 1,
-	secretArgon2MemoryCost: 2 ** 3,
+	secretArgon2MemoryCost: 3,
 	secretArgon2Parallelism: 1,
 });
 notify.default({
@@ -371,6 +371,36 @@ const tests = (config) => {
 		const userSub = await accessTokenAuthenticate(username, secret);
 		equal(userSub, sub);
 	});
+	it("Will NOT authenticate one token's username with another token's secret", async () => {
+		const tokenA = await accessTokenCreate(sub);
+		const tokenB = await accessTokenCreate(sub);
+		await rejects(
+			() => accessTokenAuthenticate(tokenA.username, tokenB.secret),
+			"401 Unauthorized",
+			{ type: "invalid" },
+		);
+		await accessTokenExpire(sub, tokenA.id);
+		await rejects(
+			() => accessTokenAuthenticate(tokenA.username, tokenB.secret),
+			"401 Unauthorized",
+		);
+		equal(await accessTokenAuthenticate(tokenB.username, tokenB.secret), sub);
+	});
+	it("Will NOT authenticate without a username", async () => {
+		for (const badUsername of [undefined, "", 1234]) {
+			await rejects(
+				() => accessTokenAuthenticate(badUsername, otherToken.secret),
+				"401 Unauthorized",
+				{ username: badUsername },
+			);
+		}
+	});
+	it("Will NOT resolve an expired token to its account", async () => {
+		const { id, username } = await accessTokenCreate(sub);
+		equal(await accessTokenExists(username), sub);
+		await accessTokenExpire(sub, id);
+		equal(await accessTokenExists(username), undefined);
+	});
 	it("Can carry extra values onto the created token", async () => {
 		const { id } = await accessTokenCreate(sub, { name: "ci-deploy" });
 		const row = await accessTokenSelect(sub, id);
@@ -487,7 +517,7 @@ const rejects = async (fn, message, cause) => {
 	throw new Error(`Expected ${message}`);
 };
 
-describe("authn-access-token", { concurrency: 1 }, () => {
+describe("@1auth/authn-access-token", { concurrency: 1 }, () => {
 	for (const storeKey of Object.keys(mockStores)) {
 		describe(`using store-${storeKey}`, () => {
 			tests(mockStores[storeKey]);

@@ -3,16 +3,27 @@
 import { deepEqual, equal, ok } from "node:assert/strict";
 import { describe, it, mock } from "node:test";
 
-import notifySqs, { trigger } from "./index.js";
+import { SendMessageCommand, SQSClient } from "@aws-sdk/client-sqs";
+import notifySqs, { getOptions, trigger } from "./index.js";
 
-describe("notify-sqs", () => {
-	it("should configure with custom options", () => {
+describe("@1auth/notify-sqs", () => {
+	it("should create an SQS client when configured, not at import", () => {
+		equal(getOptions().client, undefined);
+		notifySqs();
+		ok(getOptions().client instanceof SQSClient);
 		const mockClient = { send: mock.fn() };
-		notifySqs({
-			client: mockClient,
-			queueUrl: "https://sqs.us-east-1.amazonaws.com/123/test-queue",
-		});
-		ok(true);
+		notifySqs({ client: mockClient });
+		equal(getOptions().client, mockClient);
+	});
+
+	it("should send to a configured queueUrl without looking it up", async () => {
+		const mockSend = mock.fn(async () => ({}));
+		const queueUrl = "https://sqs.us-east-1.amazonaws.com/123/test-queue";
+		notifySqs({ client: { send: mockSend }, queueUrl });
+		await trigger("template-1", "user-123");
+		equal(mockSend.mock.callCount(), 1);
+		ok(mockSend.mock.calls[0].arguments[0] instanceof SendMessageCommand);
+		equal(mockSend.mock.calls[0].arguments[0].input.QueueUrl, queueUrl);
 	});
 
 	it("should send message to SQS with correct params", async () => {
@@ -99,6 +110,34 @@ describe("notify-sqs", () => {
 
 		equal(mockLog.mock.callCount(), 1);
 		ok(mockLog.mock.calls[0].arguments[0].includes("@1auth/notify-sqs"));
+	});
+
+	it("should NOT log the template data, it carries one-time codes", async () => {
+		const mockSend = mock.fn(async () => ({}));
+		const mockLog = mock.fn();
+		const queueUrl = "https://sqs.us-east-1.amazonaws.com/123/test-queue";
+		notifySqs({ client: { send: mockSend }, queueUrl, log: mockLog });
+
+		await trigger(
+			"template-1",
+			"user-123",
+			{ token: "123456", expire: 1 },
+			{ messengers: [{ id: "messenger_1" }] },
+		);
+
+		const logged = mockLog.mock.calls[0].arguments[1];
+		deepEqual(logged, {
+			QueueUrl: queueUrl,
+			id: "template-1",
+			sub: "user-123",
+			data: ["token", "expire"],
+			options: { messengers: [{ id: "messenger_1" }] },
+		});
+		equal(
+			JSON.parse(mockSend.mock.calls[0].arguments[0].input.MessageBody).data
+				.token,
+			"123456",
+		);
 	});
 
 	it("should use default empty data and options", async () => {

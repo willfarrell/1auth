@@ -1,4 +1,4 @@
-import { deepEqual, equal, ok } from "node:assert/strict";
+import { deepEqual, equal, ok, throws } from "node:assert/strict";
 import { describe, it, test } from "node:test";
 import account, {
 	create as accountCreate,
@@ -42,6 +42,7 @@ import emailAddress, {
 	remove as emailAddressRemove,
 	sanitize as emailAddressSanitize,
 	select as emailAddressSelect,
+	token as emailAddressToken,
 	validate as emailAddressValidate,
 	verifyToken as emailAddressVerifyToken,
 } from "./index.js";
@@ -52,7 +53,7 @@ crypto({
 	digestChecksumSalt: randomChecksumSalt(),
 	digestChecksumPepper: randomChecksumPepper(),
 	secretArgon2TimeCost: 1,
-	secretArgon2MemoryCost: 2 ** 3,
+	secretArgon2MemoryCost: 3,
 	secretArgon2Parallelism: 1,
 });
 notify.default({
@@ -545,6 +546,14 @@ const tests = (config) => {
 		equal(messenger?.[0]?.value, messengerValue); // unencrypted
 	});
 
+	it("Names its token after the package", () => {
+		const token = emailAddressToken();
+		equal(token.id, "emailAddress");
+		equal(token.type, "token");
+		equal(token.otp, true);
+		equal(emailAddressToken({ expire: 5 }).expire, 5);
+	});
+
 	// sanitize
 	it("Can sanitize: lowercase", () => {
 		equal(emailAddressSanitize("User@Example.COM"), "user@example.com");
@@ -600,27 +609,34 @@ const tests = (config) => {
 		equal(emailAddressSanitize("user.name@gmail.com"), "username@gmail.com");
 	});
 	it("Can sanitize: alias domains", () => {
-		equal(emailAddressSanitize("user@proton.me"), "user@protonmail.com");
+		for (const domain of ["proton.me", "pm.me", "protonmail.ch"]) {
+			equal(emailAddressSanitize(`user@${domain}`), "user@protonmail.com");
+		}
 	});
 	it("Can sanitize: IDN domain to ASCII", () => {
 		equal(emailAddressSanitize("user@münchen.de"), "user@xn--mnchen-3ya.de");
 	});
 	it("Can NOT sanitize: null", () => {
-		try {
-			emailAddressSanitize(null);
-		} catch (e) {
-			equal(e.message, "400 Bad Request");
-		}
+		throws(() => emailAddressSanitize(null), {
+			message: "400 Bad Request",
+			cause: { value: null },
+		});
 	});
 	it("Can NOT sanitize: non-string", () => {
-		try {
-			emailAddressSanitize(123);
-		} catch (e) {
-			equal(e.message, "400 Bad Request");
-		}
+		throws(() => emailAddressSanitize(123), {
+			message: "400 Bad Request",
+			cause: { value: 123 },
+		});
 	});
 	it("Can sanitize: no domain returns as-is", () => {
 		equal(emailAddressSanitize("nodomain"), "nodomain");
+	});
+	it("Can NOT sanitize: a second `@` away", () => {
+		equal(
+			emailAddressSanitize("victim@x.com@evil.test"),
+			"victim@x.com@evil.test",
+		);
+		equal(emailAddressValidate("victim@x.com@evil.test"), "400 Bad Request");
 	});
 
 	// validate
@@ -629,6 +645,18 @@ const tests = (config) => {
 	});
 	it("Can NOT validate: invalid format", () => {
 		equal(emailAddressValidate("user[at]example.com"), "400 Bad Request");
+	});
+	it("Can validate: dotted local parts and deeper domains", () => {
+		for (const value of [
+			"first.last@example.com",
+			"first.middle.last@example.com",
+			"user@mail.example.com",
+			"user@x.example.com",
+			"user@example.info",
+			"user@my-domain.example",
+		]) {
+			equal(emailAddressValidate(value), true, value);
+		}
 	});
 	it("Can validate: a single character last label", () => {
 		// the final label may be one character, so its trailing group is optional
@@ -685,6 +713,22 @@ const tests = (config) => {
 			sub: subOther,
 		});
 	});
+	it("Can NOT create a messenger on an account w/ a second `@`", async () => {
+		const value = `${messengerValue}@evil.test`;
+		await rejects(() => emailAddressCreate(sub, value), "400 Bad Request", {
+			value,
+			valueSanitized: value,
+		});
+		equal(mocks.notifyClient.mock.calls.length, 0);
+	});
+	it("Will NOT resolve an address with a second `@` as the first", async () => {
+		const messengerId = await emailAddressCreate(sub, messengerValue);
+		const { token } = mocks.notifyClient.mock.calls[0].arguments[0].data;
+		await emailAddressVerifyToken(sub, token, messengerId);
+		const value = `${messengerValue}@evil.test`;
+		equal(await emailAddressExists(value), undefined);
+		equal(await emailAddressLookup(value), undefined);
+	});
 	it("Can NOT create a messenger on an account w/ invalid email", async () => {
 		try {
 			await emailAddressCreate(sub, "username[at]example.org");
@@ -700,10 +744,23 @@ const tests = (config) => {
 		}
 	});
 };
-describe("messenger-email-address", { concurrency: 1 }, () => {
+describe("@1auth/messenger-email-address", { concurrency: 1 }, () => {
 	for (const storeKey of Object.keys(mockStores)) {
 		describe(`using store-${storeKey}`, () => {
 			tests(mockStores[storeKey]);
 		});
 	}
 });
+
+const rejects = async (fn, message, cause) => {
+	try {
+		await fn();
+	} catch (e) {
+		equal(e.message, message);
+		if (cause) {
+			deepEqual(e.cause, cause);
+		}
+		return;
+	}
+	throw new Error(`Expected ${message}`);
+};

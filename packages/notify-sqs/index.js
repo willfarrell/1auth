@@ -7,7 +7,7 @@ import {
 } from "@aws-sdk/client-sqs";
 
 const defaults = {
-	client: new SQSClient(),
+	client: undefined,
 	queueName: "notify-queue",
 	queueUrl: undefined,
 	log: false,
@@ -16,11 +16,9 @@ const options = {};
 
 export default (opt = {}) => {
 	Object.assign(options, defaults, opt);
-	// requires need for AWS access
-	//   options.queueUrl ??= options.client
-	//     .send(new GetQueueUrlCommand({ QueueName: options.queueName }))
-	//     .then((res) => res.QueueUrl)
+	options.client ??= new SQSClient();
 };
+export const getOptions = () => options;
 
 export const trigger = async (id, sub, data = {}, notifyOptions = {}) => {
 	options.queueUrl ??= await options.client
@@ -29,14 +27,16 @@ export const trigger = async (id, sub, data = {}, notifyOptions = {}) => {
 
 	const commandParams = {
 		QueueUrl: options.queueUrl,
-		// MessageGroupId: sub ?? '',
-		// MessageDeduplicationId: `${suffix}_${new Date()
-		//   .toISOString()
-		//   .substring(0, 10)}_update`,
 		MessageBody: JSON.stringify({ id, sub, data, options: notifyOptions }),
 	};
 	if (options.log) {
-		options.log("@1auth/notify-sqs SendMessageCommand", commandParams);
+		options.log("@1auth/notify-sqs SendMessageCommand", {
+			QueueUrl: options.queueUrl,
+			id,
+			sub,
+			data: Object.keys(data),
+			options: notifyOptions,
+		});
 	}
 	await options.client.send(new SendMessageCommand(commandParams));
 };

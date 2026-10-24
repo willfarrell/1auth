@@ -54,7 +54,7 @@ crypto({
 	digestChecksumSalt: randomChecksumSalt(),
 	digestChecksumPepper: randomChecksumPepper(),
 	secretArgon2TimeCost: 1,
-	secretArgon2MemoryCost: 2 ** 3,
+	secretArgon2MemoryCost: 3,
 	secretArgon2Parallelism: 1,
 });
 notify.default({
@@ -216,6 +216,7 @@ const tests = (config) => {
 			equal(options.log, false);
 			equal(options.expire, 12 * 60 * 60);
 			equal(options.limit, 10);
+			equal(options.idleExpire, 30 * 60);
 			deepEqual(options.encryptedFields, ["value"]);
 
 			const generator = sessionRandomId();
@@ -422,6 +423,122 @@ const tests = (config) => {
 			await sessionRemove(sub, id);
 			const session = await sessionLookup(sid, currentDevice);
 			equal(session, undefined);
+		});
+
+		it("Can NOT lookup a session with no `expire`", async () => {
+			const currentDevice = { os: "MacOS" };
+			const { id, sid } = await sessionCreate(sub, currentDevice);
+			const real = await store.select(sessionGetOptions().table, { sub, id });
+			for (const expire of [undefined, null, 0]) {
+				configure({
+					store: { ...store, select: async () => ({ ...real, expire }) },
+				});
+				equal(await sessionLookup(sid, currentDevice), undefined);
+			}
+		});
+
+		describe("idle timeout", () => {
+			const idle = async (t, seconds) => {
+				const currentDevice = { os: "MacOS" };
+				const created = await sessionCreate(sub, currentDevice);
+				const row = await store.select(sessionGetOptions().table, {
+					sub,
+					id: created.id,
+				});
+				equal(typeof row.update, "number");
+				t.mock.timers.enable({
+					apis: ["Date"],
+					now: (row.update + seconds) * 1000,
+				});
+				return { ...created, row, currentDevice };
+			};
+			const updates = () => {
+				const calls = [];
+				configure({
+					store: {
+						...store,
+						update: async (...args) => {
+							calls.push(args);
+							return await store.update(...args);
+						},
+					},
+				});
+				return calls;
+			};
+
+			it("Can lookup a session idle for exactly `idleExpire`", async (t) => {
+				const { sid, currentDevice } = await idle(t, 30 * 60);
+				ok(await sessionLookup(sid, currentDevice));
+			});
+			it("Can NOT lookup a session idle past `idleExpire`", async (t) => {
+				const { sid, currentDevice } = await idle(t, 30 * 60 + 1);
+				equal(await sessionLookup(sid, currentDevice), undefined);
+			});
+			it("Can follow a configured `idleExpire`", async (t) => {
+				configure({ idleExpire: 60 * 60 });
+				const { sid, currentDevice } = await idle(t, 60 * 60);
+				ok(await sessionLookup(sid, currentDevice));
+			});
+			it("Can NOT lookup a session idle past a configured `idleExpire`", async (t) => {
+				configure({ idleExpire: 60 * 60 });
+				const { sid, currentDevice } = await idle(t, 60 * 60 + 1);
+				equal(await sessionLookup(sid, currentDevice), undefined);
+			});
+			it("Can turn the idle timeout off with a falsy `idleExpire`", async (t) => {
+				configure({ idleExpire: 0 });
+				const { sid, currentDevice } = await idle(t, 11 * 60 * 60);
+				ok(await sessionLookup(sid, currentDevice));
+			});
+			it("Can NOT lookup a session with no `update`", async () => {
+				const currentDevice = { os: "MacOS" };
+				const { id, sid } = await sessionCreate(sub, currentDevice);
+				const real = await store.select(sessionGetOptions().table, {
+					sub,
+					id,
+				});
+				configure({
+					store: {
+						...store,
+						select: async () => ({ ...real, update: undefined }),
+					},
+				});
+				equal(await sessionLookup(sid, currentDevice), undefined);
+			});
+			it("Will NOT write `update` on a lookup within the minute", async (t) => {
+				const { sid, currentDevice } = await idle(t, 59);
+				const calls = updates();
+				ok(await sessionLookup(sid, currentDevice));
+				equal(calls.length, 0);
+			});
+			it("Will move `update` to now on a lookup a minute on", async (t) => {
+				const { id, sid, currentDevice } = await idle(t, 60);
+				const calls = updates();
+				const found = await sessionLookup(sid, currentDevice);
+				const now = nowInSeconds();
+				equal(found.update, now);
+				deepEqual(calls, [
+					[sessionGetOptions().table, { sub, id }, { update: now }],
+				]);
+				const row = await store.select(sessionGetOptions().table, { sub, id });
+				equal(row.update, now);
+				const other = await store.select(sessionGetOptions().table, {
+					sub: subOther,
+					id: otherSession.id,
+				});
+				equal(other.update, otherSession.update);
+			});
+			it("Can keep a session alive by using it", async (t) => {
+				const { sid, currentDevice } = await idle(t, 29 * 60);
+				ok(await sessionLookup(sid, currentDevice));
+				t.mock.timers.setTime((nowInSeconds() + 29 * 60) * 1000);
+				ok(await sessionLookup(sid, currentDevice));
+			});
+			it("Will NOT move `update` for a lookup that fails the device check", async (t) => {
+				const { sid } = await idle(t, 60);
+				const calls = updates();
+				equal(await sessionLookup(sid, { os: "Windows" }), undefined);
+				equal(calls.length, 0);
+			});
 		});
 	});
 
@@ -759,6 +876,17 @@ const tests = (config) => {
 			await sessionCheck(sub, { os: "Linux" });
 			equal(mocks.notifyClient.mock.calls.length, 1);
 		});
+		it("Will not match against an expired session", async () => {
+			const { id } = await sessionCreate(sub, { os: "MacOS" });
+			await sessionExpire(sub, id);
+			await sessionCheck(sub, { os: "MacOS" });
+			equal(mocks.notifyClient.mock.calls.length, 1);
+		});
+		it("Will match against a live session", async () => {
+			await sessionCreate(sub, { os: "MacOS" });
+			await sessionCheck(sub, { os: "MacOS" });
+			equal(mocks.notifyClient.mock.calls.length, 0);
+		});
 	});
 
 	describe("`expire`", () => {
@@ -848,7 +976,7 @@ const tests = (config) => {
 			await sessionSelectBinding(id);
 			deepEqual(selects[0], {
 				filters: { id },
-				fields: ["id", "sub", "publicKey", "create", "expire"],
+				fields: ["id", "sub", "publicKey", "create", "update", "expire"],
 			});
 		});
 		it("Can with { id }, without a sub", async () => {
@@ -859,6 +987,7 @@ const tests = (config) => {
 			equal(binding.publicKey, publicKey);
 			ok(binding.create);
 			ok(binding.expire);
+			ok(binding.update);
 		});
 		// `id` travels in the plaintext Sec-Session-Id header, unlike `sid`
 		it("Can NOT leak `value`, `digest` or `encryptionKey`", async () => {
@@ -965,8 +1094,14 @@ const tests = (config) => {
 		const currentDevice = { os: "MacOS" };
 		const { sid } = await sessionCreate(sub, currentDevice);
 		const cookie = sessionSign(sid);
-		const verify = sessionVerify(cookie);
-		ok(verify);
+		equal(sessionVerify(cookie), sid);
+		const [value, signature] = [
+			cookie.slice(0, cookie.lastIndexOf(".")),
+			cookie.slice(cookie.lastIndexOf(".") + 1),
+		];
+		equal(sessionVerify(`${value}x.${signature}`), false);
+		equal(sessionVerify(`${value}.${signature.slice(1)}`), false);
+		equal(sessionVerify(value), false);
 	});
 };
 
@@ -989,7 +1124,7 @@ const rejects = async (fn, message, cause) => {
 	throw new Error(`Expected ${message}`);
 };
 
-describe("session", { concurrency: 1 }, () => {
+describe("@1auth/session", { concurrency: 1 }, () => {
 	for (const storeKey of Object.keys(mockStores)) {
 		describe(`using store-${storeKey}`, () => {
 			tests(mockStores[storeKey]);

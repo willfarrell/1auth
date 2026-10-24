@@ -47,33 +47,39 @@ Generate a random subject identifier.
 
 ### `exists(sub)`
 
-Check if an account exists by subject.
+Check if an account exists by subject. An expired or removed account does not exist.
 
-**Returns:** `boolean`
+**Returns:** the `sub`, or `undefined`
 
 ### `lookup(sub)`
 
-Retrieve and decrypt an account by subject.
+Retrieve and decrypt an account by subject. Throws `404 Not Found` when there is no account, or it is expired or removed.
 
-**Returns:** Decrypted account object or `undefined`
+**Returns:** Decrypted account object
 
 ### `create(values)`
 
 Create a new account. Generates a subject ID, encrypts configured fields, and stores the record.
 
-**Returns:** Created account with `sub` and `id`
+`values` can't set the columns the package owns: `id`, `sub`, `encryptionKey`, `value`, `digest`, `update`, `expire` and `remove` are dropped. `create` is kept, for importing accounts.
+
+**Returns:** the new account's `sub`
 
 ### `update(sub, values)`
 
-Update account metadata. Re-encrypts modified fields.
+Update account metadata. Re-encrypts modified fields. Drops the same owned columns as `create`, and `create` too, so a request body can be passed through.
+
+### `updateIdentifier(sub, { value, digest })`
+
+Set the lookup identifier (the username) and its digest. For sibling packages such as `@1auth/account-username`, which check the digest is free first. The SQL table has a unique index on `digest`, so a second account can't take the same one.
 
 ### `expire(sub)`
 
-Mark an account as expired.
+Mark an account as expired, from this second. Triggers the `account-expire` notification.
 
 ### `remove(sub)`
 
-Delete an account record.
+Mark an account as expired and schedule the row for deletion after `removeExpireOffset` seconds. Triggers the `account-remove` notification.
 
 ### `getOptions()`
 

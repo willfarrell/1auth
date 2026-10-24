@@ -90,6 +90,13 @@ different, verified subject, `create` returns nothing and sends the `-exists` te
 existing owner. The caller cannot tell "taken" from "created", so the API does not answer the
 question *is this address registered here* — which is the question an enumeration attack asks.
 
+**Unverified claims don't block, the first verified one wins.** Another account can claim an
+address that is still unverified, so someone typing your address first can't lock you out of it.
+When one account verifies, every other account's unverified claim on that type and value is
+removed along with its token. Only the verified owner resolves through `exists` and `lookup`. On
+SQL stores a partial unique index on `(type, digest)` allows one verified owner. DynamoDB can't
+enforce that, so two owners verifying in the same instant would both stand.
+
 **`createToken` deletes previous tokens first.** Only the newest token for a messenger can be
 redeemed, so requesting a second one invalidates the first rather than widening the window.
 
@@ -101,11 +108,13 @@ Generate a random messenger ID.
 
 ### `token(options)`
 
-Token configuration — 6-digit numeric OTP with 10 minute expiry by default.
+Token configuration: 6-digit numeric OTP with 10 minute expiry by default, the out-of-band minimum in NIST SP 800-63B-4 Sec. 3.1.3. That minimum assumes the verifier limits failed attempts: `@1auth/authn` removes the token after `otpMaxAttempts` wrong guesses. Rate limit requests in your app as well.
 
 ### `exists(type, value)`
 
-Check if a messenger of the given type and value exists.
+Check if a verified messenger of the given type and value exists.
+
+**Returns:** the owner's `sub`, or `undefined`
 
 ### `count(type, sub)`
 
@@ -113,7 +122,7 @@ Count verified messengers of a type for a subject.
 
 ### `lookup(type, value)`
 
-Find a messenger by type and value.
+Find the verified messenger of a type and value. Unverified claims are ignored.
 
 ### `list(type, sub)`
 

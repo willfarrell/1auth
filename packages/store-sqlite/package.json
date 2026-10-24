@@ -1,12 +1,11 @@
 {
 	"name": "@1auth/store-sqlite",
-	"version": "0.0.0-rc.7",
+	"version": "0.0.0-rc.8",
 	"description": "SQLite storage implementation for lightweight embedded database persistence",
 	"type": "module",
 	"engines": {
-		"node": ">=24"
+		"node": ">=26"
 	},
-	"engineStrict": true,
 	"publishConfig": {
 		"access": "public"
 	},
@@ -54,5 +53,7 @@
 		"url": "https://github.com/willfarrell/1auth/issues"
 	},
 	"homepage": "https://github.com/willfarrell/1auth",
-	"dependencies": {}
+	"dependencies": {
+		"@1auth/store-sql": "0.0.0-rc.8"
+	}
 }

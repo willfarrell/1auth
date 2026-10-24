@@ -4,7 +4,7 @@ on:
   pull_request:
 
 env:
-  NODE_VERSION: 24.x
+  NODE_VERSION: 26.x
 
 permissions:
   contents: read
@@ -13,6 +13,7 @@ jobs:
   types:
     name: Tests (types)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
       - name: Harden runner

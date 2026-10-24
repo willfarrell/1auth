@@ -124,6 +124,7 @@ export const create = async (client, table = name) => {
 								"verify",
 								"expire",
 								"lastused",
+								"attempts",
 							],
 						},
 					},
@@ -133,6 +134,10 @@ export const create = async (client, table = name) => {
 							{
 								AttributeName: "digest",
 								KeyType: "HASH",
+							},
+							{
+								AttributeName: "type",
+								KeyType: "RANGE",
 							},
 						],
 						Projection: {

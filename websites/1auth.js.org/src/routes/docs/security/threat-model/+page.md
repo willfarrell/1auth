@@ -19,9 +19,9 @@ description: 1auth's security goals, threat model, and OWASP ASVS v5.0 Level 3 c
 
 ### Credential stuffing / brute force
 
-**Mitigation:** Timing-safe authentication with minimum duration (`setTimeout`), Argon2id password hashing with configurable cost parameters.
+**Mitigation:** Argon2id hashing with configurable cost parameters, run off the event loop. One-time codes checked with `verify` (for example 6-digit email/SMS codes) are removed after `otpMaxAttempts` failed attempts (default 5).
 
-All authentication responses take a constant minimum time regardless of whether the username exists or the password is correct.
+**Not mitigated by 1auth:** `authenticate` (passwords, recovery codes, access tokens) does not count failed attempts. Per-account and per-IP rate limiting, lockout and CAPTCHA are the application's responsibility, in front of every `authenticate` call. Without it, guessing is bounded only by how fast your servers hash.
 
 ### Session hijacking
 
@@ -37,15 +37,15 @@ Every sensitive field is encrypted before storage. Database compromise does not 
 
 ### Account enumeration
 
-**Mitigation:** Constant-time authentication responses via `setTimeout` to prevent timing side-channels.
+**Mitigation:** A response-time floor (`authenticationDuration`, default 250ms) plus equal work on every path.
 
-Whether a username exists or not, the response time is identical, preventing attackers from determining valid usernames.
+Every `authenticate` call waits out the floor before answering. An unknown username, or a user with nothing to check, still verifies a dummy value of the same credential type, so it costs the same hash as a user with one credential. Candidates are hashed concurrently on the threadpool, so a user with several (recovery codes) takes about `ceil(candidates / UV_THREADPOOL_SIZE)` hash times. The floor hides the difference only while it exceeds that worst case. Under enough load hashes queue and take longer, and a long enough measurement can see it. Keep the floor above your worst case, and rate limit (see above).
 
 ### Token replay
 
-**Mitigation:** OTP tokens are expired/removed after single use.
+**Mitigation:** One-time credentials are removed on use, and only the request that removed the row succeeds.
 
-Verification tokens (email, recovery codes) are consumed on use and cannot be replayed.
+Verification tokens, recovery codes and webauthn challenges are consumed on use and cannot be replayed, including by parallel requests racing with the same value.
 
 ## Trust boundaries
 

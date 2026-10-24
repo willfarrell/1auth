@@ -9,7 +9,8 @@ on:
       - main
 
 env:
-  NODE_VERSION: 24.x
+  NODE_VERSION: 26.x
+
   DOMAIN_NAME: 1auth.js.org
 
 permissions:
@@ -19,8 +20,9 @@ jobs:
   website:
     name: Publish website
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
-      contents: write
+      contents: read
 
     steps:
       - name: Harden runner
@@ -37,6 +39,8 @@ jobs:
             objects.githubusercontent.com:443
             registry.npmjs.org:443
             release-assets.githubusercontent.com:443
+            sparrow.cloudflare.com:443
+            workers.cloudflare.com:443
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
