@@ -1,6 +1,6 @@
 {
 	"name": "@1auth/authn-access-token",
-	"version": "0.0.0-rc.8",
+	"version": "0.0.0-rc.9",
 	"description": "Access token authentication for API and service-to-service communication",
 	"type": "module",
 	"engines": {
@@ -14,11 +14,14 @@
 	"sideEffects": false,
 	"exports": {
 		".": {
+			"types": "./index.d.ts",
 			"import": "./index.js"
 		}
 	},
+	"types": "./index.d.ts",
 	"files": [
-		"index.js"
+		"index.js",
+		"index.d.ts"
 	],
 	"scripts": {
 		"test": "npm run test:unit",
@@ -51,7 +54,7 @@
 	},
 	"homepage": "https://github.com/willfarrell/1auth",
 	"dependencies": {
-		"@1auth/authn": "0.0.0-rc.8",
-		"@1auth/crypto": "0.0.0-rc.8"
+		"@1auth/authn": "0.0.0-rc.9",
+		"@1auth/crypto": "0.0.0-rc.9"
 	}
 }

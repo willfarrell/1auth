@@ -1,6 +1,6 @@
 {
 	"name": "@1auth/store-sql",
-	"version": "0.0.0-rc.8",
+	"version": "0.0.0-rc.9",
 	"description": "Generic SQL storage implementation for any client exposing a query method",
 	"type": "module",
 	"engines": {
@@ -14,14 +14,17 @@
 	"sideEffects": false,
 	"exports": {
 		".": {
+			"types": "./index.d.ts",
 			"import": "./index.js"
 		},
 		"./table/*": {
 			"import": "./table/*"
 		}
 	},
+	"types": "./index.d.ts",
 	"files": [
 		"index.js",
+		"index.d.ts",
 		"table"
 	],
 	"scripts": {

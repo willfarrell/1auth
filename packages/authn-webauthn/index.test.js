@@ -26,6 +26,7 @@ import accountUsername, {
 } from "@1auth/account-username";
 import authn, {
 	getOptions as authnGetOptions,
+	select as authnSelect,
 	update as authnUpdate,
 } from "@1auth/authn";
 import * as mockAuthnDynamoDBTable from "@1auth/authn/table/dynamodb.js";
@@ -965,6 +966,27 @@ const tests = (config) => {
 			return { id, otherId };
 		};
 
+		it("Can return the id of each challenge it stores", async () => {
+			const { id } = await registered();
+			const { id: otherId } = await registered(otherRegistrationResponse);
+			const { id: challengeIds } = await webauthnCreateChallenge(sub);
+			const sourceOf = async (challengeId) =>
+				(await authnSelect(webauthnGetOptions().challenge, sub, challengeId))
+					?.sourceId;
+
+			equal(challengeIds.length, 2);
+			deepEqual(
+				(await Promise.all(challengeIds.map(sourceOf))).sort(),
+				[id, otherId].sort(),
+			);
+			// revoking a credential removes the challenge its id points at, only that one
+			await webauthnRemove(sub, id);
+			deepEqual(
+				(await Promise.all(challengeIds.map(sourceOf))).filter(Boolean),
+				[otherId],
+			);
+		});
+
 		for (const [name, revoke] of [
 			["expire", webauthnExpire],
 			["remove", webauthnRemove],
@@ -1106,7 +1128,7 @@ const tests = (config) => {
 			);
 		});
 
-		// The real path returns the id authnCreateList wrote; a decoy has no account
+		// The real path returns the ids authnCreateList wrote; a decoy has no account
 		// to write against, so no id is the proof nothing was stored.
 		it("Will NOT persist anything for a decoy", async () => {
 			const decoy = await webauthnCreateChallenge(undefined, {

@@ -424,20 +424,35 @@ describe("@1auth/authn", () => {
 	});
 
 	describe("`createList`", () => {
-		it("Can create several credentials at once", async () => {
-			const res = await authnCreateList(plain(), sub, [
+		it("Can create several credentials at once, resolving one id per row", async () => {
+			const ids = await authnCreateList(plain(), sub, [
 				{ value: "a" },
 				{ value: "b" },
 			]);
-			ok(res.id);
-			// the first row's fields are echoed back alongside the insert result
-			equal(res.type, "test-secret");
-			notEqual(res.value, "a");
-			const list = await authnList(plain(), sub);
-			deepEqual(list.map(({ value }) => value).sort(), ["a", "b"]);
-			// each row got its own encryption key
-			const [first, second] = list;
-			notEqual(first.id, second.id);
+			equal(ids.length, 2);
+			const values = await Promise.all(
+				ids.map(async (id) => (await authnSelect(plain(), sub, id)).value),
+			);
+			deepEqual([...values].sort(), ["a", "b"]);
+			// each id removes its own row and leaves the other
+			ok(await authnRemove(plain(), sub, ids[0]));
+			deepEqual(
+				(await authnList(plain(), sub)).map(({ value }) => value),
+				[values[1]],
+			);
+		});
+		it("Can resolve ids from a store whose insertList returns bare ids", async () => {
+			// store-dynamodb resolves the ids themselves, the SQL stores resolve rows
+			configure({
+				store: {
+					...storeSQLite,
+					insertList: async (table, rows) =>
+						(await storeSQLite.insertList(table, rows)).map(({ id }) => id),
+				},
+			});
+			const ids = await authnCreateList(plain(), sub, [{ value: "a" }]);
+			equal(ids.length, 1);
+			equal((await authnSelect(plain(), sub, ids[0])).value, "a");
 		});
 		it("Will throw without a sub", async () => {
 			await rejects(

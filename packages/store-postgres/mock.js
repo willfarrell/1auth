@@ -15,16 +15,12 @@ const pgClient = new Pool({
 });
 export const log = () => {};
 export const storeClient = {
+	// pg's own `{ rows }` result, so the store's default query is what unwraps it
 	query: async (sql, parameters) => {
-		return await pgClient
-			.query(sql, parameters)
-			.then((res) => {
-				return res.rows;
-			})
-			.catch((e) => {
-				console.error(e, { cause: { sql, parameters } });
-				throw e;
-			});
+		return await pgClient.query(sql, parameters).catch((e) => {
+			console.error(e, { cause: { sql, parameters } });
+			throw e;
+		});
 	},
 	after: () => pgClient.end(),
 };

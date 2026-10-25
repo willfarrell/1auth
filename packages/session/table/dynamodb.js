@@ -56,10 +56,8 @@ const ready = async (client, table) => {
 	});
 };
 
-// `dbsc` adds the id-only index @1auth/session-dbsc needs. It is opt-in because
-// every session write pays for every index it qualifies for, and a session row
-// always has an `id` -- so a deployment not running DBSC would pay for a GSI
-// nothing ever queries.
+// Includes the id-only GSI @1auth/session-dbsc needs by default, which adds a GSI write to every session write.
+// Pass `{ dbsc: false }` to leave it out when not running @1auth/session-dbsc.
 export const create = async (client, table = name, { dbsc = true } = {}) => {
 	// The container is persistent and keeps leftover tables from killed runs. A
 	// stale schema fails an entire run at once, so start from a clean slate.
@@ -98,15 +96,8 @@ export const create = async (client, table = name, { dbsc = true } = {}) => {
 					},
 				],
 				GlobalSecondaryIndexes: [
-					// ONLY needed by @1auth/session-dbsc: `selectBinding` is reached
-					// from a refresh, which carries the Sec-Secure-Session-Id header and
-					// no `sub`, so it cannot use the base table's key.
-					// Every session write pays for every GSI it qualifies for, and a
-					// session row always has an `id`, so drop this index if you are not
-					// running DBSC -- nothing else queries by `id` alone.
-					// Reached only from a DBSC refresh, which carries the
-					// Sec-Secure-Session-Id header and no `sub`, so it cannot use the
-					// base table's key. Opt-in: see `dbsc` on create().
+					// Only @1auth/session-dbsc queries this: a DBSC refresh has the session id but no `sub`.
+					// Included by default, see `dbsc` on create() to leave it out.
 					...(dbsc
 						? [
 								{

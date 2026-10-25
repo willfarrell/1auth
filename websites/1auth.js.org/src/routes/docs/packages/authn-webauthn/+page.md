@@ -233,7 +233,7 @@ registered once, on any account (WebAuthn §7.1 step 22): a second registration 
 
 ### `createChallenge(sub, {username})`
 
-Generate an authentication challenge for an existing credential. An account with no
+Generate an authentication challenge for an existing credential. Returns `{ id, secret }`, where `secret` goes to the browser and `id` is an array with one stored challenge id per credential. An account with no
 credentials, and with `username` an unknown account, gets a decoy instead: the same shape,
 nothing stored, and no `id`. Use `count(sub)` to decide whether to offer WebAuthn at all.
 

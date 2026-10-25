@@ -38,10 +38,10 @@ store.default({
 ## Client contract
 
 ```javascript
-client.query(sql, parameters) // => rows[]
+client.query(sql, parameters) // => { rows }
 ```
 
-`query` always resolves to an **array of rows** — `pg`'s `result.rows`, not the result object.
+`query` resolves `pg`'s result object, and the store reads its `rows`. A `pg` `Pool` or `Client` works as the client as is. A wrapper that resolves a bare array of rows no longer works; return the result object instead.
 
 ## API
 
