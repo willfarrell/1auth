@@ -32,6 +32,7 @@ import crypto, {
 	symmetricDecryptKey,
 	symmetricEncrypt,
 	symmetricEncryptFields,
+	symmetricEncryptionAlgorithmOf,
 	symmetricGenerateEncryptionKey,
 	symmetricRotation,
 	symmetricSignatureSign,
@@ -124,6 +125,19 @@ describe("symmetric", () => {
 			symmetricDecrypt("packet", { sub: "sub_1", encryptedKey: "1:key" }),
 		).type.toBe<string>();
 		expect(symmetricDecrypt(null, { sub: "sub_1" })).type.toBe<null>();
+	});
+
+	test("algorithm ids", () => {
+		expect(
+			symmetricEncrypt("data", {
+				sub: "sub_1",
+				encryptionAlgorithm: "aes-256-gcm",
+				hashAlgorithm: "sha3-384",
+			}),
+		).type.toBe<string>();
+		expect(symmetricEncryptionAlgorithmOf("packet")).type.toBe<
+			string | undefined
+		>();
 	});
 
 	test("field helpers return records", () => {

@@ -28,7 +28,6 @@ export function makeRequestHash(request: {
 
 export type AuthenticatorType = "securityKey" | "localDevice" | "remoteDevice";
 
-/** Extends the `@1auth/authn` options it is configured from. */
 export interface WebAuthnOptions extends AuthnOptions {
 	notify: Notify;
 	/** Template id prefix, set per instance when running more than one. */

@@ -46,6 +46,8 @@ import crypto, {
 	symmetricDecryptKey,
 	symmetricEncrypt,
 	symmetricEncryptFields,
+	symmetricEncryptionAlgorithmOf,
+	symmetricEncryptionAlgorithmSeparator,
 	symmetricGenerateEncryptionKey,
 	symmetricRandomEncryptionKey,
 	symmetricRandomSignatureSecret,
@@ -66,6 +68,21 @@ const testOptions = {
 	digestChecksumPepper: "x7yUpaFphJU4hLDzL7dSUxpMkPuYOn2s0uz2pIVwYWQ=", // randomChecksumPepper()
 };
 crypto(testOptions);
+
+const unnamedPacket = (signed, signOptions = {}) => {
+	const data = symmetricSignatureVerify(signed, signOptions);
+	return symmetricSignatureSign(
+		data.substring(data.indexOf(symmetricEncryptionAlgorithmSeparator) + 1),
+		signOptions,
+	);
+};
+const unnamedKey = (encryptedKey, signOptions) => {
+	const separatorIndex = encryptedKey.indexOf(encryptionKeyProviderSeparator);
+	return (
+		encryptedKey.substring(0, separatorIndex + 1) +
+		unnamedPacket(encryptedKey.substring(separatorIndex + 1), signOptions)
+	);
+};
 
 /*
 ASVS v5.0 (bits)
@@ -544,9 +561,9 @@ describe("@1auth/crypto", () => {
 					// whose signature fails, and it is carried for debugging. The
 					// provider prefix is stripped before the packet gets that far.
 					cause: {
-						signedEncryptedDataPacket: encryptedKey.split(
-							encryptionKeyProviderSeparator,
-						)[1],
+						signedEncryptedDataPacket: encryptedKey.substring(
+							encryptedKey.indexOf(encryptionKeyProviderSeparator) + 1,
+						),
 					},
 				},
 			);
@@ -561,8 +578,10 @@ describe("@1auth/crypto", () => {
 			const { encryptedKey, encryptionKey } =
 				symmetricGenerateEncryptionKey(sub);
 			// exactly what every row held before providers were introduced
-			const legacyKey = encryptedKey.substring(
-				encryptedKey.indexOf(encryptionKeyProviderSeparator) + 1,
+			const legacyKey = unnamedPacket(
+				encryptedKey.substring(
+					encryptedKey.indexOf(encryptionKeyProviderSeparator) + 1,
+				),
 			);
 			ok(!legacyKey.includes(encryptionKeyProviderSeparator));
 
@@ -575,9 +594,12 @@ describe("@1auth/crypto", () => {
 			const sub = "sub_000000";
 			const { encryptedKey, encryptionKey } =
 				symmetricGenerateEncryptionKey(sub);
-			const payload = encryptedKey.substring(
-				encryptedKey.indexOf(encryptionKeyProviderSeparator) + 1,
+			const payload = unnamedPacket(
+				encryptedKey.substring(
+					encryptedKey.indexOf(encryptionKeyProviderSeparator) + 1,
+				),
 			);
+			ok(!payload.includes(encryptionKeyProviderSeparator));
 			const emptyNamed = symmetricRandomEncryptionKey();
 			registerEncryptionKeyProvider("", { decrypt: () => emptyNamed });
 			try {
@@ -712,6 +734,195 @@ describe("@1auth/crypto", () => {
 		});
 	});
 
+	describe("symmetric encryption algorithm ids", () => {
+		const sub = "sub_000000";
+		it("Should name the cipher a packet was written with", () => {
+			const { encryptionKey, encryptedKey } =
+				symmetricGenerateEncryptionKey(sub);
+			const encrypted = symmetricEncrypt("1auth", { encryptionKey, sub });
+			ok(encrypted.startsWith(`C20P${symmetricEncryptionAlgorithmSeparator}`));
+			equal(symmetricEncryptionAlgorithmOf(encrypted), "chacha20-poly1305");
+			equal(symmetricEncryptionAlgorithmOf(encryptedKey), "chacha20-poly1305");
+		});
+		it("Should authenticate the cipher name with the signature", () => {
+			const { encryptionKey } = symmetricGenerateEncryptionKey(sub);
+			const encrypted = symmetricEncrypt("1auth", { encryptionKey, sub });
+			const swapped = encrypted.replace("C20P", "A256GCM");
+			throws(() => symmetricDecrypt(swapped, { encryptionKey, sub }), {
+				message: "Signature incorrect",
+			});
+		});
+		it("Should read a packet written before algorithm ids with the configured cipher", () => {
+			const { encryptionKey } = symmetricGenerateEncryptionKey(sub);
+			const named = symmetricEncrypt("1auth", { encryptionKey, sub });
+			const legacy = unnamedPacket(named);
+			equal(named.length - legacy.length, "C20P:".length);
+			equal(symmetricEncryptionAlgorithmOf(legacy), undefined);
+			equal(symmetricDecrypt(legacy, { encryptionKey, sub }), "1auth");
+		});
+		it("Should read every named packet with its own cipher, whatever is configured", () => {
+			const { encryptionKey } = symmetricGenerateEncryptionKey(sub);
+			const gcm = symmetricEncrypt("1auth", {
+				encryptionKey,
+				sub,
+				encryptionAlgorithm: "aes-256-gcm",
+			});
+			equal(symmetricEncryptionAlgorithmOf(gcm), "aes-256-gcm");
+			equal(symmetricDecrypt(gcm, { encryptionKey, sub }), "1auth");
+			equal(
+				symmetricDecrypt(gcm, {
+					encryptionKey,
+					sub,
+					encryptionAlgorithm: "chacha20-poly1305",
+				}),
+				"1auth",
+			);
+		});
+		it("Should match a cipher name regardless of case", () => {
+			const { encryptionKey } = symmetricGenerateEncryptionKey(sub);
+			const gcm = symmetricEncrypt("1auth", {
+				encryptionKey,
+				sub,
+				encryptionAlgorithm: "AES-256-GCM",
+			});
+			equal(symmetricEncryptionAlgorithmOf(gcm), "aes-256-gcm");
+			equal(symmetricDecrypt(gcm, { encryptionKey, sub }), "1auth");
+		});
+		it("Should refuse a cipher it has no id for", () => {
+			const { encryptionKey } = symmetricGenerateEncryptionKey(sub);
+			throws(
+				() =>
+					symmetricEncrypt("1auth", {
+						encryptionKey,
+						sub,
+						encryptionAlgorithm: "aes-128-gcm",
+					}),
+				{
+					message: "Unsupported symmetricEncryptionAlgorithm",
+					cause: { encryptionAlgorithm: "aes-128-gcm" },
+				},
+			);
+			try {
+				throws(
+					() =>
+						crypto({
+							...testOptions,
+							symmetricEncryptionAlgorithm: "aes-256-cbc",
+						}),
+					{ message: "Unsupported symmetricEncryptionAlgorithm" },
+				);
+			} finally {
+				crypto(testOptions);
+			}
+		});
+		it("Should only read a cipher name, not any text before a separator", () => {
+			equal(symmetricEncryptionAlgorithmOf(undefined), undefined);
+			equal(symmetricEncryptionAlgorithmOf("kms1:blob"), undefined);
+			equal(
+				symmetricEncryptionAlgorithmOf("chacha20-poly1305:packet.sig"),
+				undefined,
+			);
+			equal(symmetricEncryptionAlgorithmOf("toString:packet.sig"), undefined);
+		});
+		it("Should name no cipher for a value with no signature", () => {
+			equal(symmetricEncryptionAlgorithmOf("C20P:packet"), undefined);
+			equal(symmetricEncryptionAlgorithmOf("1:C20P:packet"), undefined);
+		});
+		it("Should sign and verify with a hash given per call", () => {
+			const { encryptionKey } = symmetricGenerateEncryptionKey(sub);
+			const encrypted = symmetricEncrypt("1auth", {
+				encryptionKey,
+				sub,
+				hashAlgorithm: "sha256",
+			});
+			throws(() => symmetricDecrypt(encrypted, { encryptionKey, sub }), {
+				message: "Signature incorrect",
+			});
+			equal(
+				symmetricDecrypt(encrypted, {
+					encryptionKey,
+					sub,
+					hashAlgorithm: "sha256",
+				}),
+				"1auth",
+			);
+		});
+		it("Should rotate unnamed packets onto a new cipher and hash", () => {
+			const fields = ["name"];
+			const { encryptionKey, encryptedKey } =
+				symmetricGenerateEncryptionKey(sub);
+			const values = { name: "pii", create: "2000-01-01" };
+			const named = symmetricEncryptFields(
+				values,
+				{ encryptionKey, sub },
+				fields,
+			);
+			const legacy = {
+				...named,
+				name: unnamedPacket(named.name),
+				encryptionKey: unnamedKey(encryptedKey),
+			};
+			try {
+				crypto({
+					...testOptions,
+					symmetricEncryptionAlgorithm: "aes-256-gcm",
+					symmetricSignatureHashAlgorithm: "sha512",
+				});
+				throws(() =>
+					symmetricDecryptFields(
+						legacy,
+						{ encryptedKey: legacy.encryptionKey, sub },
+						fields,
+					),
+				);
+				const rotated = symmetricRotation(
+					legacy,
+					{
+						sub,
+						encryptionAlgorithm: "chacha20-poly1305",
+						hashAlgorithm: "sha3-384",
+					},
+					fields,
+					{ sub },
+					fields,
+				);
+				equal(symmetricEncryptionAlgorithmOf(rotated.name), "aes-256-gcm");
+				equal(
+					symmetricEncryptionAlgorithmOf(rotated.encryptionKey),
+					"aes-256-gcm",
+				);
+				const decrypted = symmetricDecryptFields(
+					rotated,
+					{ encryptedKey: rotated.encryptionKey, sub },
+					fields,
+				);
+				decrypted.encryptionKey = undefined;
+				deepEqual(decrypted, { ...values, encryptionKey: undefined });
+			} finally {
+				crypto(testOptions);
+			}
+		});
+		it("Should carry a per call hash through a wrapped key on encrypt", () => {
+			const fields = ["name"];
+			const { encryptedKey } = symmetricGenerateEncryptionKey(sub, {
+				hashAlgorithm: "sha256",
+			});
+			const encrypted = symmetricEncryptFields(
+				{ name: "pii" },
+				{ encryptedKey, sub, hashAlgorithm: "sha256" },
+				fields,
+			);
+			equal(
+				symmetricDecrypt(encrypted.name, {
+					encryptedKey,
+					sub,
+					hashAlgorithm: "sha256",
+				}),
+				"pii",
+			);
+		});
+	});
+
 	describe("symmetric signatures", () => {
 		it("Should be able to sign using a encryption key and verify using encryption key", async () => {
 			const data = "1auth";
@@ -814,7 +1025,7 @@ describe("@1auth/crypto", () => {
 			});
 			throws(
 				() => symmetricDecrypt(encrypted, { encryptionKey, sub: "sub_000001" }),
-				{ message: "Unsupported state or unable to authenticate data" },
+				{ code: "ERR_OSSL_BAD_DECRYPT" },
 			);
 		});
 		it("Should honour a non-default decoding and encoding", () => {
@@ -1240,6 +1451,123 @@ describe("@1auth/crypto", () => {
 			values.encryptionKey = undefined;
 			decryptedValues.encryptionKey = undefined;
 			deepEqual(decryptedValues, values);
+		});
+		const rotateOnce = (sub, transform) => {
+			const oldFields = ["oldName"];
+			const newFields = ["newName"];
+			const oldOptions = {
+				encryptionKey: symmetricRandomEncryptionKey(),
+				signatureSecret: symmetricRandomSignatureSecret(),
+				sub,
+			};
+			const newOptions = {
+				encryptionKey: symmetricRandomEncryptionKey(),
+				signatureSecret: symmetricRandomSignatureSecret(),
+				hashAlgorithm: "sha512",
+				sub,
+			};
+			const { encryptionKey, encryptedKey } = symmetricGenerateEncryptionKey(
+				sub,
+				oldOptions,
+			);
+			const oldEncryptedValues = {
+				...symmetricEncryptFields(
+					{ oldName: "pii", newName: "pii", create: "2000-01-01" },
+					{ ...oldOptions, encryptionKey },
+					oldFields,
+				),
+				encryptionKey: encryptedKey,
+			};
+			const args = [oldOptions, oldFields, newOptions, newFields, transform];
+			return {
+				args,
+				oldEncryptedValues,
+				rotated: symmetricRotation(oldEncryptedValues, ...args),
+			};
+		};
+		it("Should return a row already on the new options as the same object", async () => {
+			let transformed = 0;
+			const { args, rotated } = rotateOnce("sub_000000", (data) => {
+				transformed += 1;
+				return data;
+			});
+
+			equal(symmetricRotation(rotated, ...args), rotated);
+			equal(transformed, 1);
+		});
+		it("Should NOT skip another subject's rotated row", async () => {
+			const { args, rotated } = rotateOnce("sub_000000");
+			const [oldOptions, oldFields, newOptions, newFields] = args;
+
+			throws(
+				() =>
+					symmetricRotation(
+						rotated,
+						{ ...oldOptions, sub: "sub_111111" },
+						oldFields,
+						{ ...newOptions, sub: "sub_111111" },
+						newFields,
+					),
+				{ message: "Signature incorrect" },
+			);
+		});
+		it("Should NOT skip a rotated row holding a field spliced from another row", async () => {
+			const sub = "sub_000000";
+			const { args, oldEncryptedValues, rotated } = rotateOnce(sub);
+			// same subject and options, so the field's signature verifies and only
+			// the row key it was not encrypted under can reject it
+			const other = symmetricRotation(oldEncryptedValues, ...args);
+			const spliced = { ...rotated, newName: other.newName };
+			const [, , { signatureSecret, hashAlgorithm }] = args;
+			ok(
+				symmetricSignatureVerify(spliced.newName, {
+					signatureSecret,
+					hashAlgorithm,
+				}),
+			);
+
+			throws(() => symmetricRotation(spliced, ...args), {
+				message: "Signature incorrect",
+			});
+		});
+		it("Should throw the old options' error for a row neither side can read", async () => {
+			const sub = "sub_000000";
+			const fields = ["name"];
+			const oldOptions = {
+				signatureSecret: symmetricRandomSignatureSecret(),
+				sub,
+			};
+			const newOptions = {
+				encryptionKey: symmetricRandomEncryptionKey(),
+				signatureSecret: symmetricRandomSignatureSecret(),
+				sub,
+			};
+			// signed for the new options under a key neither side holds, so the
+			// old options fail the signature and the new ones fail to decrypt
+			const { encryptionKey, encryptedKey } = symmetricGenerateEncryptionKey(
+				sub,
+				{ ...newOptions, encryptionKey: symmetricRandomEncryptionKey() },
+			);
+			const row = {
+				...symmetricEncryptFields(
+					{ name: "pii" },
+					{ ...newOptions, encryptionKey },
+					fields,
+				),
+				encryptionKey: encryptedKey,
+			};
+			throws(
+				() => symmetricDecryptKey(encryptedKey, newOptions),
+				(error) => {
+					notEqual(error.message, "Signature incorrect");
+					return true;
+				},
+			);
+
+			throws(
+				() => symmetricRotation(row, oldOptions, fields, newOptions, fields),
+				{ message: "Signature incorrect" },
+			);
 		});
 	});
 

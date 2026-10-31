@@ -1,6 +1,6 @@
 {
 	"name": "@1auth/authn-access-token",
-	"version": "0.0.0-rc.9",
+	"version": "0.0.0-rc.10",
 	"description": "Access token authentication for API and service-to-service communication",
 	"type": "module",
 	"engines": {

@@ -1,6 +1,6 @@
 {
 	"name": "@1auth/session-dbsc",
-	"version": "0.0.0-rc.9",
+	"version": "0.0.0-rc.10",
 	"description": "Device Bound Session Credentials (DBSC) for @1auth/session",
 	"type": "module",
 	"engines": {

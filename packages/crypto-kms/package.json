@@ -1,6 +1,6 @@
 {
 	"name": "@1auth/crypto-kms",
-	"version": "0.0.0-rc.9",
+	"version": "0.0.0-rc.10",
 	"description": "AWS KMS encryption key provider, keeps the key-encryption key inside an isolated security module",
 	"type": "module",
 	"engines": {

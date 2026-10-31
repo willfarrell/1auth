@@ -146,7 +146,6 @@ export const createList = async (credentialOptions, sub, list) => {
 		list.map((values) => createCredential(credentialOptions, sub, values)),
 	);
 	const res = await options.store.insertList(options.table, rows);
-	// SQL stores resolve `RETURNING id` rows, store-dynamodb resolves bare ids
 	return res.map((row) => row.id ?? row);
 };
 

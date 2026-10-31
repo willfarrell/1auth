@@ -11,7 +11,6 @@ import type { RandomConfigOptions } from "@1auth/crypto";
 /** One time use, hashed with argon2, 128 bits of entropy by default. */
 export function secret(params?: RandomConfigOptions): CredentialOptions;
 
-/** Extends the `@1auth/authn` options it is configured from. */
 export interface RecoveryCodesOptions extends AuthnOptions {
 	notify: Notify;
 	/** Template id prefix, set per instance when running more than one. */

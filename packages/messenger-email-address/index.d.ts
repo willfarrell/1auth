@@ -7,7 +7,6 @@ import type { MessengerOptions, Row } from "@1auth/messenger";
 /** `@1auth/messenger` token with the `emailAddress` id. */
 export function token(params?: RandomConfigOptions): CredentialOptions;
 
-/** Extends the `@1auth/messenger` options it is configured from. */
 export interface EmailAddressOptions extends MessengerOptions {
 	/** Domains where dots in the local part are ignored. */
 	optionalDotDomains: string[];

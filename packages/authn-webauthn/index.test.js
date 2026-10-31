@@ -979,7 +979,6 @@ const tests = (config) => {
 				(await Promise.all(challengeIds.map(sourceOf))).sort(),
 				[id, otherId].sort(),
 			);
-			// revoking a credential removes the challenge its id points at, only that one
 			await webauthnRemove(sub, id);
 			deepEqual(
 				(await Promise.all(challengeIds.map(sourceOf))).filter(Boolean),
@@ -1128,8 +1127,6 @@ const tests = (config) => {
 			);
 		});
 
-		// The real path returns the ids authnCreateList wrote; a decoy has no account
-		// to write against, so no id is the proof nothing was stored.
 		it("Will NOT persist anything for a decoy", async () => {
 			const decoy = await webauthnCreateChallenge(undefined, {
 				username: "nobody",

@@ -1,6 +1,6 @@
 {
 	"name": "@1auth/account",
-	"version": "0.0.0-rc.9",
+	"version": "0.0.0-rc.10",
 	"description": "User account management with encrypted storage and lifecycle operations",
 	"type": "module",
 	"engines": {
