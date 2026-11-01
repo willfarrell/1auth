@@ -65,6 +65,7 @@ export default (opt = {}) => {
 		options.symmetricEncryptionKey,
 	);
 	options.symmetricEncryptionEncoding ??= options.defaultEncoding;
+	symmetricEncryptionAlgorithmId(options.symmetricEncryptionAlgorithm);
 	options.symmetricSignatureHashAlgorithm ??= options.defaultHashAlgorithm;
 	if (!options.symmetricSignatureSecret) {
 		throw new Error(
@@ -421,6 +422,50 @@ const randomIV = () => {
 	return randomBytes(ivLength); // 96 bits
 };
 
+export const symmetricEncryptionAlgorithmSeparator = ":";
+// Ids are JOSE names: RFC 7518 5.1, draft-amringer-jose-chacha.
+const symmetricEncryptionAlgorithmIds = Object.assign(Object.create(null), {
+	"aes-256-gcm": "A256GCM",
+	"chacha20-poly1305": "C20P",
+});
+const symmetricEncryptionAlgorithmNames = Object.assign(
+	Object.create(null),
+	Object.fromEntries(
+		Object.entries(symmetricEncryptionAlgorithmIds).map(([name, id]) => [
+			id,
+			name,
+		]),
+	),
+);
+
+const symmetricEncryptionAlgorithmId = (encryptionAlgorithm) => {
+	const id =
+		symmetricEncryptionAlgorithmIds[String(encryptionAlgorithm).toLowerCase()];
+	if (!id) {
+		throw new Error("Unsupported symmetricEncryptionAlgorithm", {
+			cause: { encryptionAlgorithm },
+		});
+	}
+	return id;
+};
+
+const parseEncryptedDataPacket = (encryptedDataPacket, encryptionAlgorithm) => {
+	const separatorIndex = encryptedDataPacket.indexOf(
+		symmetricEncryptionAlgorithmSeparator,
+	);
+	const name =
+		symmetricEncryptionAlgorithmNames[
+			encryptedDataPacket.substring(0, separatorIndex)
+		];
+	if (!name) {
+		return { encryptionAlgorithm, packet: encryptedDataPacket };
+	}
+	return {
+		encryptionAlgorithm: name,
+		packet: encryptedDataPacket.substring(separatorIndex + 1),
+	};
+};
+
 // *** Encryption key providers *** //
 // Wrapped keys store as `<provider>:<payload>` and read by prefix, not config,
 // so providers change with no migration. Name = package suffix + version:
@@ -458,7 +503,10 @@ const parseEncryptedKey = (encryptedKey) => {
 
 // The in-process provider, and the format every pre-prefix row was written in.
 registerEncryptionKeyProvider(encryptionKeyProviderDefault, {
-	generate: (sub, { encryptionKey, signatureSecret } = {}) => {
+	generate: (
+		sub,
+		{ encryptionKey, signatureSecret, encryptionAlgorithm, hashAlgorithm } = {},
+	) => {
 		encryptionKey ??= options.symmetricEncryptionKey;
 		signatureSecret ??= options.symmetricSignatureSecret;
 
@@ -467,10 +515,16 @@ registerEncryptionKeyProvider(encryptionKeyProviderDefault, {
 			encryptionKey,
 			signatureSecret,
 			sub,
+			encryptionAlgorithm,
+			hashAlgorithm,
 		});
 		return { encryptionKey: rowEncryptionKey, encryptedKey: rowEncryptedKey };
 	},
-	decrypt: (payload, sub, { encryptionKey, signatureSecret } = {}) => {
+	decrypt: (
+		payload,
+		sub,
+		{ encryptionKey, signatureSecret, encryptionAlgorithm, hashAlgorithm } = {},
+	) => {
 		encryptionKey ??= options.symmetricEncryptionKey;
 		signatureSecret ??= options.symmetricSignatureSecret;
 
@@ -480,11 +534,27 @@ registerEncryptionKeyProvider(encryptionKeyProviderDefault, {
 				signatureSecret,
 				sub,
 				encoding: options.symmetricEncryptionEncoding,
+				encryptionAlgorithm,
+				hashAlgorithm,
 			}),
 			options.symmetricEncryptionEncoding,
 		);
 	},
 });
+
+export const symmetricEncryptionAlgorithmOf = (signedEncryptedDataPacket) => {
+	if (typeof signedEncryptedDataPacket !== "string") return undefined;
+	let data = signedEncryptedDataPacket.substring(
+		0,
+		signedEncryptedDataPacket.lastIndexOf("."),
+	);
+	const providerPrefix = `${encryptionKeyProviderDefault}${encryptionKeyProviderSeparator}`;
+	if (data.startsWith(providerPrefix)) {
+		data = data.substring(providerPrefix.length);
+	}
+	const { encryptionAlgorithm } = parseEncryptedDataPacket(data);
+	return encryptionAlgorithm;
+};
 
 export const symmetricGenerateEncryptionKey = (sub, providerOptions = {}) => {
 	const name =
@@ -508,13 +578,21 @@ const missingEncryptionKey = "@1auth/crypto encryption key is missing";
 // sub add context to encryption
 export const symmetricEncryptFields = (
 	values,
-	{ encryptedKey, encryptionKey, signatureSecret, sub },
+	{
+		encryptedKey,
+		encryptionKey,
+		signatureSecret,
+		sub,
+		encryptionAlgorithm,
+		hashAlgorithm,
+	},
 	fields,
 ) => {
 	if (encryptedKey) {
 		encryptionKey ??= symmetricDecryptKey(encryptedKey, {
 			signatureSecret,
 			sub,
+			hashAlgorithm,
 		});
 	}
 	if (!fields?.length) return values;
@@ -527,6 +605,8 @@ export const symmetricEncryptFields = (
 			encryptionKey,
 			signatureSecret,
 			sub,
+			encryptionAlgorithm,
+			hashAlgorithm,
 		});
 	}
 	return encryptedValues;
@@ -534,12 +614,23 @@ export const symmetricEncryptFields = (
 
 export const symmetricEncrypt = (
 	data,
-	{ encryptedKey, encryptionKey, signatureSecret, sub, decoding, encoding, iv },
+	{
+		encryptedKey,
+		encryptionKey,
+		signatureSecret,
+		sub,
+		decoding,
+		encoding,
+		iv,
+		encryptionAlgorithm,
+		hashAlgorithm,
+	},
 ) => {
 	if (encryptedKey) {
 		encryptionKey ??= symmetricDecryptKey(encryptedKey, {
 			signatureSecret,
 			sub,
+			hashAlgorithm,
 		});
 	}
 	if (!data) return data;
@@ -547,34 +638,49 @@ export const symmetricEncrypt = (
 		throw new Error(missingEncryptionKey, { cause: { sub } });
 	}
 	encoding ??= options.symmetricEncryptionEncoding;
+	encryptionAlgorithm ??= options.symmetricEncryptionAlgorithm;
+	const encryptionAlgorithmId =
+		symmetricEncryptionAlgorithmId(encryptionAlgorithm);
 	iv ??= randomIV();
-	const cipher = createCipheriv(
-		options.symmetricEncryptionAlgorithm,
-		encryptionKey,
-		iv,
-	);
+	const cipher = createCipheriv(encryptionAlgorithm, encryptionKey, iv);
 	cipher.setAAD(associatedData(sub));
 	const encryptedData =
 		cipher.update(data, decoding, encoding) + cipher.final(encoding);
 	const authTag = cipher.getAuthTag();
 
 	const encryptedDataPacket =
-		iv.toString(encoding) + authTag.toString(encoding) + encryptedData;
+		encryptionAlgorithmId +
+		symmetricEncryptionAlgorithmSeparator +
+		iv.toString(encoding) +
+		authTag.toString(encoding) +
+		encryptedData;
 
 	// Encrypt-then-MAC: HMAC signature wraps the AEAD ciphertext so that
 	// signature secrets can be rotated independently without re-encryption.
-	return symmetricSignatureSign(encryptedDataPacket, { signatureSecret });
+	return symmetricSignatureSign(encryptedDataPacket, {
+		signatureSecret,
+		hashAlgorithm,
+	});
 };
 
 export const symmetricDecryptFields = (
 	encryptedValues,
-	{ encryptedKey, encryptionKey, signatureSecret, sub },
+	{
+		encryptedKey,
+		encryptionKey,
+		signatureSecret,
+		sub,
+		encryptionAlgorithm,
+		hashAlgorithm,
+	},
 	fields,
 ) => {
 	if (encryptedKey) {
 		encryptionKey ??= symmetricDecryptKey(encryptedKey, {
 			signatureSecret,
 			sub,
+			encryptionAlgorithm,
+			hashAlgorithm,
 		});
 	}
 	if (!encryptionKey || !fields?.length) return encryptedValues;
@@ -584,6 +690,8 @@ export const symmetricDecryptFields = (
 			encryptionKey,
 			signatureSecret,
 			sub,
+			encryptionAlgorithm,
+			hashAlgorithm,
 		});
 	}
 	return values;
@@ -591,20 +699,42 @@ export const symmetricDecryptFields = (
 
 export const symmetricDecryptKey = (
 	encryptedKey,
-	{ sub, encryptionKey, signatureSecret } = {},
+	{
+		sub,
+		encryptionKey,
+		signatureSecret,
+		encryptionAlgorithm,
+		hashAlgorithm,
+	} = {},
 ) => {
 	const { provider, payload } = parseEncryptedKey(encryptedKey);
-	return provider.decrypt(payload, sub, { encryptionKey, signatureSecret });
+	return provider.decrypt(payload, sub, {
+		encryptionKey,
+		signatureSecret,
+		encryptionAlgorithm,
+		hashAlgorithm,
+	});
 };
 
 export const symmetricDecrypt = (
 	signedEncryptedDataPacket,
-	{ encryptedKey, encryptionKey, signatureSecret, sub, decoding, encoding },
+	{
+		encryptedKey,
+		encryptionKey,
+		signatureSecret,
+		sub,
+		decoding,
+		encoding,
+		encryptionAlgorithm,
+		hashAlgorithm,
+	},
 ) => {
 	if (encryptedKey) {
 		encryptionKey ??= symmetricDecryptKey(encryptedKey, {
 			signatureSecret,
 			sub,
+			encryptionAlgorithm,
+			hashAlgorithm,
 		});
 	}
 	if (!encryptionKey || !signedEncryptedDataPacket)
@@ -612,18 +742,23 @@ export const symmetricDecrypt = (
 	decoding ??= options.symmetricEncryptionEncoding;
 
 	// remove signature when successful
-	const encryptedDataPacket = symmetricSignatureVerify(
-		signedEncryptedDataPacket,
-		{
-			signatureSecret,
-		},
-	);
+	const signedData = symmetricSignatureVerify(signedEncryptedDataPacket, {
+		signatureSecret,
+		hashAlgorithm,
+	});
 
-	if (encryptedDataPacket === false) {
+	if (signedData === false) {
 		throw new Error("Signature incorrect", {
 			cause: { signedEncryptedDataPacket },
 		});
 	}
+	const {
+		encryptionAlgorithm: packetEncryptionAlgorithm,
+		packet: encryptedDataPacket,
+	} = parseEncryptedDataPacket(
+		signedData,
+		encryptionAlgorithm ?? options.symmetricEncryptionAlgorithm,
+	);
 	const iv = Buffer.from(
 		encryptedDataPacket.substring(0, symmetricEncryptionEncodingLengths.iv),
 		decoding,
@@ -643,7 +778,7 @@ export const symmetricDecrypt = (
 	);
 
 	const decipher = createDecipheriv(
-		options.symmetricEncryptionAlgorithm,
+		packetEncryptionAlgorithm,
 		encryptionKey,
 		iv,
 	);
@@ -690,12 +825,11 @@ export const symmetricSignatureVerify = (
 	return safeEqual(signedData, signedDataExpected) && data;
 };
 
-// Allow rotation of global encryption key, global signature secret, and row encryption key
 export const symmetricRotation = (
 	oldEncryptedValues,
-	oldOptions, // { encryptionKey, signatureSecret, sub, decoding, encoding }, // old
+	oldOptions,
 	oldFields,
-	newOptions, // { encryptionKey, signatureSecret, sub, decoding, encoding }, // new
+	newOptions,
 	newFields,
 	transform = (data) => {
 		return data;
@@ -710,25 +844,33 @@ export const symmetricRotation = (
 	// Don't use structuredClone, converts Buffer to Uint8Array ...
 	const oldOptionsClone = { ...oldOptions };
 	const newOptionsClone = { ...(newOptions ?? oldOptions) };
+	const rotatedFields = newFields ?? oldFields;
 
-	// decrypt old encryption key
 	const { encryptionKey: oldEncryptedKey } = oldEncryptedValuesClone;
 	oldEncryptedValuesClone.encryptionKey = undefined;
 
-	const oldEncryptionKey = symmetricDecryptKey(
-		oldEncryptedKey,
-		oldOptionsClone,
-	);
-	oldOptionsClone.encryptionKey = oldEncryptionKey;
-
-	// decrypt
-	const data = transform(
+	const decrypt = (rowOptions, fields) =>
 		symmetricDecryptFields(
 			oldEncryptedValuesClone,
-			{ ...oldOptionsClone, encryptionKey: oldEncryptionKey },
-			oldFields,
-		),
-	);
+			{
+				...rowOptions,
+				encryptionKey: symmetricDecryptKey(oldEncryptedKey, rowOptions),
+			},
+			fields,
+		);
+
+	let decrypted;
+	try {
+		decrypted = decrypt(oldOptionsClone, oldFields);
+	} catch (error) {
+		try {
+			decrypt(newOptionsClone, rotatedFields);
+		} catch {
+			throw error;
+		}
+		return oldEncryptedValues;
+	}
+	const data = transform(decrypted);
 
 	// rotate encryptionKey
 	const { encryptionKey: newEncryptionKey, encryptedKey: newEncryptedKey } =
@@ -739,7 +881,7 @@ export const symmetricRotation = (
 	const newEncryptedValues = symmetricEncryptFields(
 		data,
 		newOptionsClone,
-		newFields ?? oldFields,
+		rotatedFields,
 	);
 	newEncryptedValues.encryptionKey = newEncryptedKey;
 

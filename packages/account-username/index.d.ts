@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MIT
 import type { AccountOptions, Notify, Row } from "@1auth/account";
 
-/** Extends the `@1auth/account` options it is configured from. */
 export interface AccountUsernameOptions extends AccountOptions {
 	notify: Notify;
 	/** Template id prefix, set per instance when running more than one. */

@@ -60,13 +60,19 @@ per-row key, and that row key encrypts the fields.
   │ iv (12B) ‖ authTag (16B) ‖ ciphertext    │──►whole packet
   └──────────────────────────────────────────┘        │
                                                       ▼
-                          stored value:  <packet>.<signature>
+            stored value:  <algorithm id>:<packet>.<signature>
 ```
 
 **Why the extra hop.** Rotating `symmetricEncryptionKey` re-encrypts one small row key per row
 rather than every field, and a row key compromise is scoped to that row. `sub` is the AEAD
 associated data, so a row key lifted from one account cannot decrypt another's — the ciphertext
 is bound to the subject it belongs to.
+
+**Algorithm ids.** Every packet names the cipher that wrote it with a JOSE id, `C20P:` for `chacha20-poly1305` or `A256GCM:` for `aes-256-gcm`, inside the signed data, so the id is authenticated before it picks a cipher. The ids are short because every stored value carries one; size columns for 5 to 8 more characters than before. Any other `symmetricEncryptionAlgorithm` is refused at configure time. A named packet always reads with its own cipher, so changing `symmetricEncryptionAlgorithm` leaves existing rows readable while new writes use the new cipher. A packet written before `0.0.0-rc.10` names none and reads with the `encryptionAlgorithm` passed to the call, else the configured one. Name every stored packet first (`symmetricRotation` with the same cipher on both sides) before changing the configured cipher, or the unnamed ones become unreadable. `symmetricEncryptionAlgorithmOf(value)` reads the name off a stored value without verifying it, for a sweep deciding which rows still need work.
+
+The signature hash is not named in the packet: the HMAC has to verify before anything inside it is trusted. Rotate `symmetricSignatureHashAlgorithm` like `symmetricSignatureSecret`, passing the old `hashAlgorithm` to `symmetricRotation`.
+
+**Batched rotation.** `symmetricRotation` can be rerun over a table. A row the old options cannot read but the new ones can is returned as the same object, without running `transform`, so compare the result to the input to skip the write and count it. A run that skips every row most likely has old and new swapped. A row both sides can read, such as a row key only rotation, is rotated again, so keep `transform` idempotent. A row neither side reads throws the old options' error. Before retiring an old key, secret, or hash, read every row with only the new options. That pass also catches rows written mid batch by instances still on the old configuration.
 
 **Encrypt-then-MAC.** The signature covers the finished AEAD packet, so `symmetricSignatureSecret`
 can be rotated on its own without touching the ciphertext, and a tampered packet is rejected
@@ -134,7 +140,8 @@ does not stall other requests. Concurrent hashes are bounded by `UV_THREADPOOL_S
 - `symmetricDecrypt(encrypted, key)` — Decrypt a value
 - `symmetricEncryptFields(fields, values, key)` — Encrypt specific fields in an object. Throws when fields are named but no encryption key resolves
 - `symmetricDecryptFields(fields, values, key)` — Decrypt specific fields in an object
-- `symmetricRotation(encrypted, oldKey, newKey)` — Re-encrypt with a new key
+- `symmetricRotation(encrypted, oldKey, newKey)` — Re-encrypt with a new key. Old and new options also take `encryptionAlgorithm` and `hashAlgorithm`. Safe to rerun, see batched rotation above
+- `symmetricEncryptionAlgorithmOf(value)` - Read the cipher a stored value names, unverified, `undefined` when it names none
 
 ### Symmetric signatures
 

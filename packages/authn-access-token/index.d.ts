@@ -14,7 +14,6 @@ export function username(params?: RandomConfigOptions): RandomConfigObject;
 /** Secret half, hashed with argon2 and expiring after 30 days by default. */
 export function secret(params?: RandomConfigOptions): CredentialOptions;
 
-/** Extends the `@1auth/authn` options it is configured from. */
 export interface AccessTokenOptions extends AuthnOptions {
 	notify: Notify;
 	/** Template id prefix, set per instance when running more than one. */

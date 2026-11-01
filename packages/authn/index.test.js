@@ -434,7 +434,6 @@ describe("@1auth/authn", () => {
 				ids.map(async (id) => (await authnSelect(plain(), sub, id)).value),
 			);
 			deepEqual([...values].sort(), ["a", "b"]);
-			// each id removes its own row and leaves the other
 			ok(await authnRemove(plain(), sub, ids[0]));
 			deepEqual(
 				(await authnList(plain(), sub)).map(({ value }) => value),
@@ -442,7 +441,6 @@ describe("@1auth/authn", () => {
 			);
 		});
 		it("Can resolve ids from a store whose insertList returns bare ids", async () => {
-			// store-dynamodb resolves the ids themselves, the SQL stores resolve rows
 			configure({
 				store: {
 					...storeSQLite,

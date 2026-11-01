@@ -5,7 +5,6 @@ import { createSqlStore } from "@1auth/store-sql";
 const store = createSqlStore({
 	id: "postgres",
 	placeholder: "$",
-	// pg resolves `{ rows, ... }`, so a Pool or Client works as the client
 	query: (client, sql, parameters) =>
 		client.query(sql, parameters).then((res) => res.rows),
 });

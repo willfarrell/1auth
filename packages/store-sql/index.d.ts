@@ -83,7 +83,6 @@ export const removeList: SqlStore["removeList"];
 export const getPlaceholder: SqlStore["getPlaceholder"];
 export const makeSqlParts: SqlStore["makeSqlParts"];
 
-// --- builders --- //
 export function log(
 	options: Pick<SqlStoreOptions, "id" | "log">,
 	method: string,

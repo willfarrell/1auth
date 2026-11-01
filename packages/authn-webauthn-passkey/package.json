@@ -1,6 +1,6 @@
 {
 	"name": "@1auth/authn-webauthn-passkey",
-	"version": "0.0.0-rc.9",
+	"version": "0.0.0-rc.10",
 	"description": "PassKey preset for @1auth/authn-webauthn",
 	"type": "module",
 	"engines": {
@@ -55,6 +55,6 @@
 	},
 	"homepage": "https://github.com/willfarrell/1auth",
 	"dependencies": {
-		"@1auth/authn-webauthn": "0.0.0-rc.9"
+		"@1auth/authn-webauthn": "0.0.0-rc.10"
 	}
 }

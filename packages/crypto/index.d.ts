@@ -42,7 +42,7 @@ export interface CryptoOptions {
 	defaultHashAlgorithm: string;
 }
 
-/** Throws when a required secret is missing or the pepper is under 32 bytes. */
+/** Throws when a required secret is missing, the pepper is under 32 bytes, or `symmetricEncryptionAlgorithm` is not `aes-256-gcm` or `chacha20-poly1305`. */
 declare function crypto(opt?: Partial<CryptoOptions>): void;
 export default crypto;
 
@@ -54,13 +54,11 @@ export function makeOptionsBuffer(
 ): Buffer;
 export function makeOptionsBuffer<T>(value: T, encoding?: BufferEncoding): T;
 
-// *** Helpers *** //
 export function entropyToCharacterLength(
 	bits: number,
 	characterPoolSize: number,
 ): number;
 
-// *** Random generators *** //
 export const charactersNumeric: string;
 export const charactersAlphaUpper: string;
 export const charactersAlphaLower: string;
@@ -72,7 +70,6 @@ export function randomCharacters(length: number, characters?: string): string;
 export function randomAlphaNumeric(characterLength: number): string;
 export function randomNumeric(characterLength: number): string;
 
-// *** configs *** //
 export interface RandomConfigOptions {
 	id?: string;
 	prefix?: string;
@@ -93,7 +90,6 @@ export function makeRandomConfigObject(
 	params?: RandomConfigOptions,
 ): RandomConfigObject;
 
-// *** Digests *** //
 export interface ChecksumOptions {
 	hashAlgorithm?: string;
 	encoding?: BinaryToTextEncoding;
@@ -133,7 +129,6 @@ export function createSeasonedDigest(
 	options?: SeasonedChecksumOptions,
 ): string;
 
-// *** Hashing *** //
 export interface Argon2Options {
 	algorithm?: Argon2Algorithm;
 	version?: number;
@@ -175,15 +170,23 @@ export function verifyArgon2(
 export const createSecretHash: typeof createArgon2;
 export const verifySecretHash: typeof verifyArgon2;
 
-// *** Symmetric Encryption *** //
 export function symmetricRandomEncryptionKey(): Buffer;
 
-// *** Encryption key providers *** //
+/** Packets store as `<id>:<packet>.<signature>`, id `C20P` or `A256GCM`. */
+export const symmetricEncryptionAlgorithmSeparator: string;
+/** Unverified. The cipher name a field packet or in-process wrapped key carries, else `undefined`. */
+export function symmetricEncryptionAlgorithmOf(
+	signedEncryptedDataPacket: unknown,
+): string | undefined;
+
 export const encryptionKeyProviderSeparator: string;
 
 export interface EncryptionKeyProviderOptions {
 	encryptionKey?: Secret;
 	signatureSecret?: Secret;
+	/** Cipher to write with, or to read a packet that names none with. */
+	encryptionAlgorithm?: string;
+	hashAlgorithm?: string;
 	[key: string]: unknown;
 }
 
@@ -224,6 +227,10 @@ export interface SymmetricKeyOptions {
 	signatureSecret?: Secret;
 	/** Bound into the ciphertext as associated data. */
 	sub?: string;
+	/** Cipher to write with, or to read a packet that names none with. */
+	encryptionAlgorithm?: string;
+	/** HMAC hash of the signature over the packet. */
+	hashAlgorithm?: string;
 }
 
 export interface SymmetricEncryptOptions extends SymmetricKeyOptions {
@@ -263,7 +270,11 @@ export function symmetricDecryptKey(
 	encryptedKey: string,
 	options?: Pick<
 		SymmetricKeyOptions,
-		"sub" | "encryptionKey" | "signatureSecret"
+		| "sub"
+		| "encryptionKey"
+		| "signatureSecret"
+		| "encryptionAlgorithm"
+		| "hashAlgorithm"
 	>,
 ): Buffer;
 
@@ -277,7 +288,6 @@ export function symmetricDecrypt<T extends null | undefined>(
 	options: SymmetricDecryptOptions,
 ): T;
 
-// *** Symmetric Signatures *** //
 export interface SignatureOptions {
 	hashAlgorithm?: string;
 	signatureSecret?: Secret;
@@ -300,6 +310,7 @@ export interface SymmetricRotationOptions extends EncryptionKeyProviderOptions {
 	encryptionKeyProvider?: string;
 }
 
+/** A row only `newOptions` can read is returned as the same object, without `transform`, so a batch can be rerun. A row both sides read is rotated again. A row neither side reads throws the `oldOptions` error. */
 export function symmetricRotation(
 	oldEncryptedValues: Record<string, any>,
 	oldOptions: SymmetricRotationOptions,
@@ -309,7 +320,6 @@ export function symmetricRotation(
 	transform?: (data: Record<string, any>) => Record<string, any>,
 ): Record<string, any>;
 
-// *** Asymmetric Signatures *** //
 export function makeAsymmetricKeys(): Promise<{
 	publicKey: string;
 	privateKey: string;
@@ -328,7 +338,6 @@ export function verifyAsymmetricSignature(
 
 export function nowInSeconds(): number;
 
-// *** Argument guards *** //
 /** Throws `401 Unauthorized` unless `sub` is a non-empty string. */
 export function assertSub(
 	sub: unknown,
