@@ -1025,7 +1025,8 @@ describe("@1auth/crypto", () => {
 			});
 			throws(
 				() => symmetricDecrypt(encrypted, { encryptionKey, sub: "sub_000001" }),
-				{ code: "ERR_OSSL_BAD_DECRYPT" },
+				// OpenSSL 3 and 4 word the auth tag failure differently
+				/bad decrypt|unable to authenticate data/,
 			);
 		});
 		it("Should honour a non-default decoding and encoding", () => {

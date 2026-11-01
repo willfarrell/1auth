@@ -588,7 +588,7 @@ const tests = (config) => {
 		const token = authnDB[0];
 		equal(token.type, "WebAuthn-token");
 		equal(token.otp, true);
-		equal(token.value.length, 321);
+		equal(token.value.length, 326);
 		ok(token.expire);
 
 		await overrideCreateChallenge(sub, token);
@@ -609,7 +609,7 @@ const tests = (config) => {
 		const secret = authnDB[0];
 		equal(secret.type, "WebAuthn-secret");
 		equal(secret.otp, false);
-		equal(secret.value.length, 1741);
+		equal(secret.value.length, 1746);
 		ok(!secret.expire);
 
 		count = await webauthnCount(sub);
@@ -633,7 +633,7 @@ const tests = (config) => {
 		const challenge = authnDB[1];
 		equal(challenge.type, "WebAuthn-challenge");
 		equal(challenge.otp, true);
-		equal(challenge.value.length, 353);
+		equal(challenge.value.length, 358);
 		ok(challenge.expire);
 
 		// Override authentication challenge
