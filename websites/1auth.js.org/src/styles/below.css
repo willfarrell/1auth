@@ -20,5 +20,7 @@
 @import "@willfarrell-ds/vanilla/classes/.grid.css";
 @import "@willfarrell-ds/vanilla/classes/.group.css";
 @import "@willfarrell-ds/vanilla/classes/.icon.css";
+@import "@willfarrell-ds/vanilla/classes/[aria-keyshortcuts].css";
+@import "@willfarrell-ds/vanilla/classes/[popover].css";
 @import "@willfarrell-ds/vanilla/components/ds-card.css";
 @import "@willfarrell-ds/vanilla/components/ds-codeblock-actions.css";
