@@ -63,7 +63,7 @@ Two lifetimes, but only one of them is stored:
 | `dbscCookieExpire` | Proof-of-possession window, on `__Host-Http-dbsc` | The bound cookie, enforced by the browser | 5min, then the browser refreshes |
 | `session.expire` | Absolute cap on the login | The `sessions` row, and `__Host-Http-sid` | `create + session.expire`, and neither value ever moves |
 
-The idle timeout is neither of these: it is `@1auth/session`'s `idleExpire` (30min by
+The idle timeout is neither of these: it is `@1auth/session`'s `idleExpire` (15min by
 default), read from the row's `update` on every `lookup`. A refresh keeps the bound cookie
 alive but does not count as use; the next ordinary request does.
 

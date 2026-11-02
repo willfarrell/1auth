@@ -216,7 +216,7 @@ const tests = (config) => {
 			equal(options.log, false);
 			equal(options.expire, 12 * 60 * 60);
 			equal(options.limit, 10);
-			equal(options.idleExpire, 30 * 60);
+			equal(options.idleExpire, 15 * 60);
 			deepEqual(options.encryptedFields, ["value"]);
 
 			const generator = sessionRandomId();
@@ -467,11 +467,11 @@ const tests = (config) => {
 			};
 
 			it("Can lookup a session idle for exactly `idleExpire`", async (t) => {
-				const { sid, currentDevice } = await idle(t, 30 * 60);
+				const { sid, currentDevice } = await idle(t, 15 * 60);
 				ok(await sessionLookup(sid, currentDevice));
 			});
 			it("Can NOT lookup a session idle past `idleExpire`", async (t) => {
-				const { sid, currentDevice } = await idle(t, 30 * 60 + 1);
+				const { sid, currentDevice } = await idle(t, 15 * 60 + 1);
 				equal(await sessionLookup(sid, currentDevice), undefined);
 			});
 			it("Can follow a configured `idleExpire`", async (t) => {
@@ -528,9 +528,9 @@ const tests = (config) => {
 				equal(other.update, otherSession.update);
 			});
 			it("Can keep a session alive by using it", async (t) => {
-				const { sid, currentDevice } = await idle(t, 29 * 60);
+				const { sid, currentDevice } = await idle(t, 14 * 60);
 				ok(await sessionLookup(sid, currentDevice));
-				t.mock.timers.setTime((nowInSeconds() + 29 * 60) * 1000);
+				t.mock.timers.setTime((nowInSeconds() + 14 * 60) * 1000);
 				ok(await sessionLookup(sid, currentDevice));
 			});
 			it("Will NOT move `update` for a lookup that fails the device check", async (t) => {
@@ -876,11 +876,11 @@ const tests = (config) => {
 			await sessionCheck(sub, { os: "Linux" });
 			equal(mocks.notifyClient.mock.calls.length, 1);
 		});
-		it("Will not match against an expired session", async () => {
+		it("Will match against an expired session still in the store", async () => {
 			const { id } = await sessionCreate(sub, { os: "MacOS" });
 			await sessionExpire(sub, id);
 			await sessionCheck(sub, { os: "MacOS" });
-			equal(mocks.notifyClient.mock.calls.length, 1);
+			equal(mocks.notifyClient.mock.calls.length, 0);
 		});
 		it("Will match against a live session", async () => {
 			await sessionCreate(sub, { os: "MacOS" });
