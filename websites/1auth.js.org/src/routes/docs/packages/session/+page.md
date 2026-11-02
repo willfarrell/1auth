@@ -20,7 +20,7 @@ session({
   store,
   notify,
   expire: 12 * 60 * 60, // absolute cap, the default (OWASP ASVS)
-  idleExpire: 30 * 60, // idle timeout, the default (OWASP ASVS 7.3.1)
+  idleExpire: 15 * 60, // idle timeout, the default (OWASP ASVS 7.3.1)
   limit: 10 // live sessions per account, the default
 })
 ```
@@ -34,7 +34,7 @@ session({
 | `table` | `object` | — | Table schema definition |
 | `encryptedFields` | `string[]` | `["value"]` | Fields to encrypt |
 | `expire` | `number` | `43200` (12h) | Absolute session lifetime in seconds, set at `create` and never extended — `rotate()` deliberately leaves it alone, so a session that keeps refreshing still ends. A row with no `expire` never resolves |
-| `idleExpire` | `number` | `1800` (30min) | Idle timeout in seconds. `lookup` refuses a session whose `update` is further back than this, and moves `update` to now on a successful lookup, at most once a minute. Keep it well above 60, since a session can be up to a minute staler than it looks. A falsy value turns the idle timeout off |
+| `idleExpire` | `number` | `900` (15min) | Idle timeout in seconds. `lookup` refuses a session whose `update` is further back than this, and moves `update` to now on a successful lookup, at most once a minute. Keep it well above 60, since a session can be up to a minute staler than it looks. A falsy value turns the idle timeout off |
 | `limit` | `number` | `10` | Live sessions one account may hold. At the maximum, `create()` expires the oldest live session and keeps the new one. A falsy value turns the cap off |
 | `idGenerate` | `object` | — | ID generation config |
 | `randomId` | `object` | — | Random ID options (prefix: `session_`) |

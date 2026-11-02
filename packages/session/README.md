@@ -51,13 +51,13 @@ The count is read, not locked. No store here offers an atomic counter across an 
 
 ## Idle timeout
 
-`lookup()` refuses a session unused for longer than `idleExpire` seconds, `1800` (30 minutes) by default, as OWASP ASVS 7.3.1 asks. Each successful lookup counts as use and moves the row's `update` forward, at most once a minute, so an active session costs one write a minute rather than one per request.
+`lookup()` refuses a session unused for longer than `idleExpire` seconds, `900` (15 minutes) by default, as OWASP ASVS 7.3.1 asks. Each successful lookup counts as use and moves the row's `update` forward, at most once a minute, so an active session costs one write a minute rather than one per request.
 
 ```javascript
 session({
   store,
   notify,
-  idleExpire: 30 * 60 // 0, or any falsy value, turns the idle timeout off
+  idleExpire: 15 * 60 // 0, or any falsy value, turns the idle timeout off
 })
 ```
 

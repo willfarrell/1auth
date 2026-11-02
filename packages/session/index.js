@@ -56,7 +56,7 @@ const defaults = {
 	randomId: randomId(),
 	randomSessionId: randomSessionId(),
 	expire: 12 * 60 * 60,
-	idleExpire: 30 * 60,
+	idleExpire: 15 * 60,
 	limit: 10, // concurrent live sessions per sub, falsy turns the cap off
 	encryptedFields: ["value"],
 	encode: (value) => JSON.stringify(sortKeys(value ?? {})),
@@ -274,13 +274,12 @@ export const rotate = async (sub, id, value, values = {}) => {
 };
 
 // Before creating a new session, check if metadata is new
+// Expired rows count: the store TTL is the "known device" window, and a sign out or idle timeout must not make the same device new again
 export const check = async (sub, value = {}) => {
 	assertSub(sub);
 	const encodedValue = options.encode(value);
 	const sessions = await options.store.selectList(options.table, { sub });
-	const now = nowInSeconds();
 	for (const session of sessions) {
-		if (!(now <= session.expire)) continue;
 		const decryptedValue = symmetricDecrypt(session.value, {
 			sub,
 			encryptedKey: session.encryptionKey,
