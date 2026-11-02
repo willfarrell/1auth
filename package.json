@@ -1,6 +1,6 @@
 {
 	"name": "@1auth/monorepo",
-	"version": "0.0.0-rc.10",
+	"version": "0.0.0-rc.11",
 	"description": "",
 	"private": true,
 	"type": "module",
@@ -47,7 +47,7 @@
 		"release:approve": "npm query '.workspace:not([private])' | jq -r '.[].name' | xargs -n1 -I{} npm stage list {} --json | jq -r --arg v \"$npm_package_version\" '.[] | select(.version == $v) | \"\\(.packageName)@\\(.version) \\(.id)\"' | xargs -n2 -o sh -c 'echo \"Approving $0\"; npm stage approve \"$1\"'",
 		"release:license:add": "node .github/license.mjs add",
 		"release:license:remove": "node .github/license.mjs remove",
-		"release:sync": "npm version $npm_package_version --workspaces --allow-same-version && node -e \"const fs = process.getBuiltinModule('node:fs'); const v = process.env.npm_package_version; for (const d of fs.readdirSync('packages')) { const f = 'packages/' + d + '/package.json'; if (!fs.existsSync(f)) continue; const p = JSON.parse(fs.readFileSync(f, 'utf8')); for (const k of ['dependencies', 'devDependencies', 'peerDependencies']) for (const n in p[k]) if (n.startsWith('@1auth/')) p[k][n] = v; fs.writeFileSync(f, JSON.stringify(p, null, '\\t') + '\\n'); fs.copyFileSync('LICENSE', 'packages/' + d + '/LICENSE') }\" && npm install",
+		"release:sync": "npm version $npm_package_version --workspaces --no-workspaces-update --allow-same-version && node .github/release-sync.mjs --copy-license && npm install",
 		"release:tag": "git tag -s -m $npm_package_version $npm_package_version && git push --tags"
 	},
 	"repository": {
