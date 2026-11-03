@@ -20,6 +20,15 @@ export default (opt = {}) => {
 };
 export const getOptions = () => options;
 
+// A messenger's `value` is the decrypted address, as sensitive as `data`
+const redact = ({ messengers, ...notifyOptions }) => {
+	if (!messengers) return notifyOptions;
+	return {
+		...notifyOptions,
+		messengers: messengers.map(({ value: _value, ...messenger }) => messenger),
+	};
+};
+
 export const trigger = async (id, sub, data = {}, notifyOptions = {}) => {
 	options.queueUrl ??= await options.client
 		.send(new GetQueueUrlCommand({ QueueName: options.queueName }))
@@ -35,7 +44,7 @@ export const trigger = async (id, sub, data = {}, notifyOptions = {}) => {
 			id,
 			sub,
 			data: Object.keys(data),
-			options: notifyOptions,
+			options: redact(notifyOptions),
 		});
 	}
 	await options.client.send(new SendMessageCommand(commandParams));

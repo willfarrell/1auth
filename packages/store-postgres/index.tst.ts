@@ -30,7 +30,7 @@ describe("store", () => {
 
 	test("reads and writes", () => {
 		expect(update("test", { id: "1" }, { value: "x" })).type.toBe<
-			Promise<void>
+			Promise<boolean>
 		>();
 		expect(getPlaceholder(1)).type.toBe<string>();
 		expect(

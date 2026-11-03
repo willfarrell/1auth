@@ -87,6 +87,12 @@ describe("binding", () => {
 			Promise<{ id: string; bound: string; config: DbscSessionConfig }>
 		>();
 		expect(refresh).type.not.toBeCallableWith("session_1");
+		// a proof without an audience is always refused, so it can not type check
+		expect(register).type.not.toBeCallableWith("sid_1", "a.b.c");
+		expect(register).type.not.toBeCallableWith("sid_1", "a.b.c", {});
+		expect(refresh).type.not.toBeCallableWith("session_1", "a.b.c", {});
+		expect(verifyProof).type.not.toBeCallableWith("a.b.c");
+		expect(verifyProof).type.not.toBeCallableWith("a.b.c", { sessionId: "s" });
 	});
 
 	test("session passthroughs", () => {

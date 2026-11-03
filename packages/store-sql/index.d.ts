@@ -51,7 +51,8 @@ export interface SqlStore {
 	insert: (table: string, values?: Row) => Promise<unknown>;
 	/** Resolves the `RETURNING id` rows. */
 	insertList: (table: string, rows?: Row[]) => Promise<Row[]>;
-	update: (table: string, filters?: Filters, values?: Row) => Promise<void>;
+	/** Resolves whether a row matched. A `null` filter matches `IS NULL`. */
+	update: (table: string, filters?: Filters, values?: Row) => Promise<boolean>;
 	/** Resolves whether a row was deleted. */
 	remove: (table: string, filters?: Filters) => Promise<boolean>;
 	removeList: (table: string, filters?: Filters) => Promise<boolean>;

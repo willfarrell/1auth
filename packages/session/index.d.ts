@@ -20,7 +20,8 @@ export interface Store {
 	): Promise<Row[]>;
 	insert(table: string, values?: Row): Promise<unknown>;
 	insertList(table: string, rows?: Row[]): Promise<unknown>;
-	update(table: string, filters?: Filters, values?: Row): Promise<void>;
+	/** Resolves whether a row matched every filter. */
+	update(table: string, filters?: Filters, values?: Row): Promise<boolean>;
 	remove(table: string, filters?: Filters): Promise<boolean>;
 	removeList(table: string, filters?: Filters): Promise<unknown>;
 }
@@ -100,7 +101,16 @@ export default configure;
 export function getOptions(): SessionOptions;
 
 /** Resolves the live session for `sid` when the device metadata matches. */
-export function lookup(sid: string, value?: unknown): Promise<Row | undefined>;
+export function lookup(
+	sid: string,
+	value?: unknown,
+	options?: {
+		/** Slide the idle timeout forward. Default `true`; pass `false` and call `touch` once your own checks pass. */
+		touch?: boolean;
+	},
+): Promise<Row | undefined>;
+/** Slides the idle timeout of a session `lookup` resolved, writing at most once a minute. */
+export function touch(session: Row): Promise<Row>;
 /** Resolves the session with its decrypted, decoded `value`. */
 export function select(sub: string, id: string): Promise<Row | undefined>;
 /** Only `id`, `sub`, `publicKey`, `create`, `update` and `expire`. */
@@ -119,7 +129,7 @@ export function rotate(
 	value: unknown,
 	values?: Row,
 ): Promise<RotatedSession>;
-/** Notifies `<notifyId>-new-device` when no live session has matching metadata. */
+/** Notifies `<notifyId>-new-device` when no session row, live or expired, has matching metadata. */
 export function check(sub: string, value?: unknown): Promise<void>;
 export function expire(sub: string, id: string): Promise<void>;
 export function remove(sub: string, id: string): Promise<void>;

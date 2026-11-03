@@ -335,7 +335,9 @@ export const verifyProof = async (
  * @param value device metadata, compared as @1auth/session does
  */
 export const lookup = async (sid, bound, value = {}) => {
-	const found = await session.lookup(sid, value);
+	// The idle timeout only slides for a request that passes the checks below,
+	// or a stolen `sid` alone could hold a bound session open by polling
+	const found = await session.lookup(sid, value, { touch: false });
 	if (!found) return;
 	// An unbound row is `sid` alone: either registration has not happened yet, or
 	// the browser does not do DBSC at all. Once a key IS bound the bound cookie is
@@ -350,10 +352,10 @@ export const lookup = async (sid, bound, value = {}) => {
 		) {
 			return;
 		}
-		return found;
+		return await session.touch(found);
 	}
 	if (!boundTokenVerify(bound, found.id)) return;
-	return found;
+	return await session.touch(found);
 };
 
 export const select = async (sub, id) => await session.select(sub, id);

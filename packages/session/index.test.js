@@ -43,6 +43,7 @@ import session, {
 	select as sessionSelect,
 	selectBinding as sessionSelectBinding,
 	sign as sessionSign,
+	touch as sessionTouch,
 	verify as sessionVerify,
 } from "./index.js";
 import * as mockSessionDynamoDBTable from "./table/dynamodb.js";
@@ -533,6 +534,30 @@ const tests = (config) => {
 				t.mock.timers.setTime((nowInSeconds() + 14 * 60) * 1000);
 				ok(await sessionLookup(sid, currentDevice));
 			});
+			it("Will NOT move `update` on a lookup told not to touch, until `touch`", async (t) => {
+				// a caller with checks of its own (DBSC) must not slide the idle
+				// timeout for a request it is about to refuse
+				const { id, sid, currentDevice } = await idle(t, 60);
+				const calls = updates();
+				const found = await sessionLookup(sid, currentDevice, { touch: false });
+				ok(found);
+				equal(calls.length, 0);
+				const now = nowInSeconds();
+				equal(await sessionTouch(found), found);
+				equal(found.update, now);
+				deepEqual(calls, [
+					[sessionGetOptions().table, { sub, id }, { update: now }],
+				]);
+			});
+			it("Will NOT write `update` on a touch within the minute", async (t) => {
+				const { sid, currentDevice } = await idle(t, 59);
+				const found = await sessionLookup(sid, currentDevice, { touch: false });
+				const calls = updates();
+				const { update } = found;
+				await sessionTouch(found);
+				equal(calls.length, 0);
+				equal(found.update, update);
+			});
 			it("Will NOT move `update` for a lookup that fails the device check", async (t) => {
 				const { sid } = await idle(t, 60);
 				const calls = updates();
@@ -844,8 +869,80 @@ const tests = (config) => {
 			await sessionCreate(sub, { os: "MacOS" });
 			deepEqual(selects[0], {
 				filters: { sub },
-				fields: ["id", "create", "expire"],
+				fields: ["id", "create", "update", "expire"],
 			});
+		});
+		it("Will not count an idle expired session toward the limit", async () => {
+			configure({ limit: 2 });
+			const currentDevice = { os: "MacOS" };
+			// the oldest session is the one in use
+			const first = await sessionCreate(sub, currentDevice);
+			await backdate(first, 60);
+			const second = await sessionCreate(sub, currentDevice);
+			// idle past `idleExpire`: `lookup` already refuses it, so it is dead
+			await store.update(
+				sessionGetOptions().table,
+				{ sub, id: second.id },
+				{ update: nowInSeconds() - sessionGetOptions().idleExpire - 1 },
+			);
+			equal(await sessionLookup(second.sid, currentDevice), undefined);
+
+			const third = await sessionCreate(sub, currentDevice);
+			ok(await sessionLookup(first.sid, currentDevice));
+			ok(await sessionLookup(third.sid, currentDevice));
+		});
+		it("Will count a session idle for exactly `idleExpire` toward the limit", async (t) => {
+			configure({ limit: 2 });
+			const currentDevice = { os: "MacOS" };
+			const first = await sessionCreate(sub, currentDevice);
+			await backdate(first, 60);
+			const second = await sessionCreate(sub, currentDevice);
+			const now = nowInSeconds();
+			await store.update(
+				sessionGetOptions().table,
+				{ sub, id: second.id },
+				{ update: now - sessionGetOptions().idleExpire },
+			);
+			t.mock.timers.enable({ apis: ["Date"], now: now * 1000 });
+			await sessionCreate(sub, currentDevice);
+			t.mock.timers.reset();
+			// `second` was still live, so the oldest went
+			equal(await sessionLookup(first.sid, currentDevice), undefined);
+		});
+		it("Will count idle sessions when the idle timeout is off", async () => {
+			configure({ limit: 2, idleExpire: 0 });
+			const currentDevice = { os: "MacOS" };
+			const first = await sessionCreate(sub, currentDevice);
+			await backdate(first, 60);
+			const second = await sessionCreate(sub, currentDevice);
+			await store.update(
+				sessionGetOptions().table,
+				{ sub, id: second.id },
+				{ update: 1 },
+			);
+			await sessionCreate(sub, currentDevice);
+			equal(await sessionLookup(first.sid, currentDevice), undefined);
+			ok(await sessionLookup(second.sid, currentDevice));
+		});
+		it("Will count a row the store returns without `update` as live", async () => {
+			// a DynamoDB `sub` index made before `update` was projected leaves it
+			// off; the cap has to keep working on `expire` alone there
+			configure({
+				limit: 2,
+				store: {
+					...store,
+					selectList: async (table, filters, fields) =>
+						(await store.selectList(table, filters, fields)).map(
+							({ update, ...row }) => row,
+						),
+				},
+			});
+			const currentDevice = { os: "MacOS" };
+			const first = await sessionCreate(sub, currentDevice);
+			await backdate(first, 60);
+			await sessionCreate(sub, currentDevice);
+			await sessionCreate(sub, currentDevice);
+			equal(await sessionLookup(first.sid, currentDevice), undefined);
 		});
 		it("Will expire by oldest `create`, not by the order the store lists", async () => {
 			configure({ limit: 2 });

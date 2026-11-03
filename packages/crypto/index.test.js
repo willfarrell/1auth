@@ -359,6 +359,21 @@ describe("@1auth/crypto", () => {
 				message: /log2 exponent/,
 			});
 		});
+		it("createSecretHash() refuses a version node cannot hash with", async () => {
+			// node's argon2 is always v=19 (0x13); writing any other version into the
+			// PHC string labels the hash as something it is not
+			for (const version of [16, 0x10, 20, "19"]) {
+				await rejects(createSecretHash("1auth", { version }), {
+					name: "RangeError",
+					message: `argon2 version must be 19, received ${version}`,
+					cause: { version },
+				});
+			}
+			equal(
+				decodeArgon2(await createSecretHash("1auth", { version: 19 })).version,
+				19,
+			);
+		});
 		it("createSecretHash() returns hash that can be verified", async () => {
 			const message = "1auth";
 			const derivedKey = await createSecretHash(message);
@@ -917,6 +932,27 @@ describe("@1auth/crypto", () => {
 				crypto(testOptions);
 			}
 		});
+		it("Should unwrap a default key on encrypt whatever hash it writes with", () => {
+			// the per call hash is the one to write with; the row key was wrapped
+			// under its own, which the write hash says nothing about
+			const sub = "sub_000000";
+			const { encryptionKey, encryptedKey } =
+				symmetricGenerateEncryptionKey(sub);
+			const encrypted = symmetricEncrypt("pii", {
+				encryptedKey,
+				sub,
+				hashAlgorithm: "sha256",
+			});
+			equal(symmetricSignatureHashAlgorithmOf(encrypted), "sha256");
+			equal(symmetricDecrypt(encrypted, { encryptionKey, sub }), "pii");
+			const fields = symmetricEncryptFields(
+				{ name: "pii" },
+				{ encryptedKey, sub, hashAlgorithm: "sha512" },
+				["name"],
+			);
+			equal(symmetricSignatureHashAlgorithmOf(fields.name), "sha512");
+			equal(symmetricDecrypt(fields.name, { encryptionKey, sub }), "pii");
+		});
 		it("Should carry a per call hash through a wrapped key on encrypt", () => {
 			const fields = ["name"];
 			const { encryptedKey } = symmetricGenerateEncryptionKey(sub, {
@@ -1179,6 +1215,79 @@ describe("@1auth/crypto", () => {
 				() => symmetricDecrypt(encrypted, { encryptionKey, sub: "sub_000001" }),
 				// OpenSSL 3 and 4 word the auth tag failure differently
 				/bad decrypt|unable to authenticate data/,
+			);
+		});
+		for (const encoding of ["hex", "base64url"]) {
+			it(`Should read back a packet written in ${encoding}`, () => {
+				const sub = "sub_000000";
+				const { encryptionKey } = symmetricGenerateEncryptionKey(sub);
+				const encrypted = symmetricEncrypt("1auth", {
+					encryptionKey,
+					sub,
+					encoding,
+				});
+				equal(
+					symmetricDecrypt(encrypted, {
+						encryptionKey,
+						sub,
+						decoding: encoding,
+					}),
+					"1auth",
+				);
+			});
+		}
+		it("Should refuse to read a packet in an encoding that cannot carry it", () => {
+			const sub = "sub_000000";
+			const { encryptionKey } = symmetricGenerateEncryptionKey(sub);
+			const encrypted = symmetricEncrypt("1auth", { encryptionKey, sub });
+			throws(
+				() =>
+					symmetricDecrypt(encrypted, {
+						encryptionKey,
+						sub,
+						decoding: "utf8",
+					}),
+				{
+					name: "RangeError",
+					message: "@1auth/crypto decoding must be base64, base64url or hex",
+					cause: { decoding: "utf8" },
+				},
+			);
+			// `toString` is on every plain object, the table must not find it
+			throws(
+				() =>
+					symmetricDecrypt(encrypted, {
+						encryptionKey,
+						sub,
+						decoding: "toString",
+					}),
+				{ name: "RangeError" },
+			);
+		});
+		it("Should name the missing sub instead of failing inside Buffer", () => {
+			const { encryptionKey } = symmetricGenerateEncryptionKey("sub_000000");
+			const encrypted = symmetricEncrypt("1auth", {
+				encryptionKey,
+				sub: "sub_000000",
+			});
+			const expected = {
+				name: "TypeError",
+				message:
+					"@1auth/crypto sub is required, it is bound as associated data",
+			};
+			throws(() => symmetricEncrypt("1auth", { encryptionKey }), expected);
+			throws(() => symmetricDecrypt(encrypted, { encryptionKey }), expected);
+			throws(
+				() => symmetricEncrypt("1auth", { encryptionKey, sub: null }),
+				expected,
+			);
+			// an empty sub is still a sub: the pepper is wrapped against ""
+			equal(
+				symmetricDecrypt(
+					symmetricEncrypt("1auth", { encryptionKey, sub: "" }),
+					{ encryptionKey, sub: "" },
+				),
+				"1auth",
 			);
 		});
 		it("Should honour a non-default decoding and encoding", () => {
@@ -1768,6 +1877,98 @@ describe("@1auth/crypto", () => {
 						cause: { length: 31 },
 					},
 				);
+			} finally {
+				restore();
+			}
+		});
+		for (const length of [16, 31, 33, 48]) {
+			it(`Should fail when symmetricEncryptionKey is ${length} bytes`, () => {
+				// both supported ciphers take exactly a 256 bit key; anything else
+				// would pass here and fail on the first encrypt instead
+				try {
+					throws(
+						() =>
+							crypto({
+								...secrets,
+								symmetricEncryptionKey: randomBytes(length),
+							}),
+						{
+							name: "RangeError",
+							message: new RegExp(`must be 32 bytes, received ${length}`),
+							cause: { length },
+						},
+					);
+				} finally {
+					restore();
+				}
+			});
+		}
+		it("Should fail when symmetricEncryptionEncoding cannot carry bytes", () => {
+			// utf8 mangles the IV and auth tag, and latin1 can write the `:` and
+			// `.` the packet is split on
+			for (const symmetricEncryptionEncoding of ["utf8", "latin1", "ucs2"]) {
+				try {
+					throws(() => crypto({ ...secrets, symmetricEncryptionEncoding }), {
+						name: "RangeError",
+						message: /symmetricEncryptionEncoding/,
+						cause: { symmetricEncryptionEncoding },
+					});
+				} finally {
+					restore();
+				}
+			}
+		});
+		it("Should round trip under every allowed symmetricEncryptionEncoding", () => {
+			const sub = "sub_000000";
+			for (const symmetricEncryptionEncoding of [
+				"base64",
+				"base64url",
+				"hex",
+			]) {
+				try {
+					crypto({ ...secrets, symmetricEncryptionEncoding });
+					const { encryptionKey, encryptedKey } =
+						symmetricGenerateEncryptionKey(sub);
+					equal(
+						symmetricDecryptKey(encryptedKey, { sub }).equals(encryptionKey),
+						true,
+					);
+					const encrypted = symmetricEncrypt("1auth", { encryptionKey, sub });
+					equal(symmetricDecrypt(encrypted, { encryptionKey, sub }), "1auth");
+				} finally {
+					restore();
+				}
+			}
+		});
+		it("Should fail when symmetricSignatureSecret is shorter than 32 bytes", () => {
+			// the HMAC key behind Encrypt-then-MAC; a short one weakens every packet
+			try {
+				throws(
+					() =>
+						crypto({ ...secrets, symmetricSignatureSecret: randomBytes(31) }),
+					{
+						name: "RangeError",
+						message:
+							/symmetricSignatureSecret must be at least 32 bytes, received 31/,
+						cause: { length: 31 },
+					},
+				);
+				// base64 of "secret": six bytes that read like a secret
+				throws(
+					() => crypto({ ...secrets, symmetricSignatureSecret: "c2VjcmV0" }),
+					{
+						name: "RangeError",
+						cause: { length: 6 },
+					},
+				);
+			} finally {
+				restore();
+			}
+		});
+		it("Should accept a symmetricSignatureSecret of 32 bytes or more", () => {
+			try {
+				crypto({ ...secrets, symmetricSignatureSecret: randomBytes(32) });
+				crypto({ ...secrets, symmetricSignatureSecret: randomBytes(64) });
 			} finally {
 				restore();
 			}

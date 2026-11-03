@@ -1,6 +1,10 @@
 // Copyright 2003 - 2026 will Farrell, and 1Auth contributors.
 // SPDX-License-Identifier: MIT
-import { registerEncryptionKeyProvider } from "@1auth/crypto";
+import {
+	encryptionKeyProviderSeparator,
+	registerEncryptionKeyProvider,
+	symmetricDecryptKey,
+} from "@1auth/crypto";
 import {
 	DecryptCommand,
 	GenerateDataKeyCommand,
@@ -50,8 +54,16 @@ export const generateEncryptionKey = async (sub) => {
 	};
 };
 
+// Wrapped in process by @1auth/crypto. Unprefixed rows still go to KMS: a
+// pepper from `aws kms encrypt` carries no prefix either.
+const inProcessPrefix = `1${encryptionKeyProviderSeparator}`;
+
 export const decryptEncryptionKey = async (encryptedKey, sub) => {
 	if (!encryptedKey) return;
+	// A row written before the switch to KMS reads until it is next written
+	if (encryptedKey.startsWith(inProcessPrefix)) {
+		return symmetricDecryptKey(encryptedKey, { sub });
+	}
 	const commandParams = {
 		// optional for a symmetric key, but it makes KMS reject a blob minted
 		// under any other key, including one an attacker controls

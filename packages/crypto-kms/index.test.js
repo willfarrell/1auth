@@ -149,6 +149,21 @@ describe("@1auth/crypto-kms", () => {
 		deepEqual(Buffer.from(input.CiphertextBlob), Buffer.from([7]));
 	});
 
+	it("Should unwrap an in-process key without calling KMS", async () => {
+		// rows written before the switch to KMS keep decrypting until rewritten
+		const send = mock.fn();
+		cryptoKms({ client: { send }, keyId });
+		const { encryptionKey, encryptedKey } =
+			symmetricGenerateEncryptionKey("sub_1");
+		ok(encryptedKey.startsWith("1:"));
+
+		deepEqual(await decryptEncryptionKey(encryptedKey, "sub_1"), encryptionKey);
+		equal(send.mock.callCount(), 0);
+		// still bound to its subject
+		await rejects(() => decryptEncryptionKey(encryptedKey, "sub_2"));
+		equal(send.mock.callCount(), 0);
+	});
+
 	it("Should hand back nothing for a row with no wrapped key", async () => {
 		cryptoKms({ client: fakeKms(), keyId });
 		equal(await decryptEncryptionKey(undefined, "sub_1"), undefined);

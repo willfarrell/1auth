@@ -402,14 +402,24 @@ export const createInstance = () => {
 			options.challenge,
 			sub,
 			undefined,
-			["id", "create"],
+			["id", "create", "encryptionKey", "value"],
 		);
-		const stale = previousChallenges
-			.sort((a, b) => b.create - a.create)
-			.slice(options.challengeKeep);
-		for (const prev of stale) {
-			await authnRemove(options.challenge, sub, prev.id);
+		// One challenge is a row per credential, so `challengeKeep` counts
+		// challenges: evicting by row would cut part of one open in another tab
+		const sets = new Map();
+		for (const { id, create, value } of previousChallenges) {
+			const { expectedChallenge } = options.challenge.decode(value);
+			const set = sets.get(expectedChallenge) ?? { create, ids: [] };
+			set.ids.push(id);
+			sets.set(expectedChallenge, set);
 		}
+		const stale = [...sets.values()]
+			.sort((a, b) => b.create - a.create)
+			.slice(options.challengeKeep)
+			.flatMap((set) => set.ids);
+		await Promise.all(
+			stale.map((id) => authnRemove(options.challenge, sub, id)),
+		);
 
 		const now = nowInSeconds();
 
@@ -464,19 +474,20 @@ export const createInstance = () => {
 		const challenges = await authnList(options.challenge, sub, { sourceId }, [
 			"id",
 		]);
-		for (const { id } of challenges) {
-			await authnRemove(options.challenge, sub, id);
-		}
+		await Promise.all(
+			challenges.map(({ id }) => authnRemove(options.challenge, sub, id)),
+		);
 	};
 
+	// Only a credential that was there is worth telling the account about
 	const expire = async (sub, id) => {
-		await authnExpire(options.secret, sub, id);
+		if (!(await authnExpire(options.secret, sub, id))) return;
 		await removeChallenges(sub, id);
 		await options.notify.trigger(`${options.notifyId}-expire`, sub);
 	};
 
 	const remove = async (sub, id) => {
-		await authnRemove(options.secret, sub, id);
+		if (!(await authnRemove(options.secret, sub, id))) return;
 		await removeChallenges(sub, id);
 		await options.notify.trigger(`${options.notifyId}-remove`, sub);
 	};

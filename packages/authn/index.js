@@ -65,6 +65,9 @@ export const count = async (credentialOptions, sub) => {
 export const list = async (credentialOptions, sub, params, fields) => {
 	assertSub(sub);
 	const type = makeType(credentialOptions);
+	// The expiry filter below needs `expire`, so read it even when the caller's
+	// projection leaves it out, and hand it back only if they asked
+	const withoutExpire = fields?.length && !fields.includes("expire");
 	const items = await options.store.selectList(
 		options.table,
 		{
@@ -72,7 +75,7 @@ export const list = async (credentialOptions, sub, params, fields) => {
 			sub,
 			type,
 		},
-		fields,
+		withoutExpire ? [...fields, "expire"] : fields,
 	);
 	const now = nowInSeconds();
 	const list = [];
@@ -80,6 +83,9 @@ export const list = async (credentialOptions, sub, params, fields) => {
 		const item = items[i];
 		if (item.expire && item.expire < now) {
 			continue;
+		}
+		if (withoutExpire) {
+			delete item.expire;
 		}
 		const { encryptionKey: encryptedKey } = item;
 		item.encryptionKey = undefined;
@@ -322,13 +328,14 @@ export const authenticate = async (
 	return sub;
 };
 
-export const verifySecret = async (_credentialOptions, sub, id) => {
+export const verifySecret = async (credentialOptions, sub, id) => {
 	assertSub(sub, { id });
 	assertId(id, { sub });
 	const now = nowInSeconds();
+	const type = makeType(credentialOptions);
 	await options.store.update(
 		options.table,
-		{ sub, id },
+		{ sub, id, type },
 		{ update: now, verify: now },
 	);
 };
@@ -364,6 +371,11 @@ export const verify = async (credentialOptions, sub, input) => {
 			continue;
 		}
 		const { id, otp } = credential;
+		let attempt;
+		if (otp) {
+			attempt = await claimAttempt(credentialOptions, sub, credential);
+			if (!attempt) continue;
+		}
 		try {
 			const { value, values } = await decryptCredential(
 				credentialOptions,
@@ -377,8 +389,8 @@ export const verify = async (credentialOptions, sub, input) => {
 			}
 		}
 		if (!valid) {
-			if (otp) {
-				await failedAttempt(credentialOptions, sub, credential);
+			if (attempt >= options.otpMaxAttempts) {
+				await remove(credentialOptions, sub, id);
 			}
 			continue;
 		}
@@ -408,21 +420,31 @@ export const verify = async (credentialOptions, sub, input) => {
 	return { ...credential, ...valid };
 };
 
-const failedAttempt = async (credentialOptions, sub, { id, attempts }) => {
-	attempts = (attempts ?? 0) + 1;
-	if (attempts >= options.otpMaxAttempts) {
+// Spends one of a one-time credential's attempts before its guess is checked,
+// resolving the attempt number, or nothing when this request may not check it.
+// The write is a compare-and-swap on the count this request read, so requests
+// racing on the same count get one guess between them, not one each.
+const claimAttempt = async (credentialOptions, sub, { id, attempts }) => {
+	const attempt = (attempts ?? 0) + 1;
+	if (attempt > options.otpMaxAttempts) {
 		await remove(credentialOptions, sub, id);
 		return;
 	}
-	await options.store.update(options.table, { sub, id }, { attempts });
+	const claimed = await options.store.update(
+		options.table,
+		{ sub, id, attempts: attempts ?? null },
+		{ attempts: attempt },
+	);
+	if (claimed) return attempt;
 };
 
-export const expire = async (_credentialOptions, sub, id, values = {}) => {
+export const expire = async (credentialOptions, sub, id, values = {}) => {
 	assertSub(sub, { id });
 	assertId(id, { sub });
-	await options.store.update(
+	const type = makeType(credentialOptions);
+	return await options.store.update(
 		options.table,
-		{ sub, id },
+		{ sub, id, type },
 		{ ...values, expire: nowInSeconds() - 1 },
 	);
 };

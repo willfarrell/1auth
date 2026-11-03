@@ -1666,6 +1666,26 @@ const tests = (config) => {
 		it("Will return nothing for an unknown sid", async () => {
 			equal(await dbscLookup("sid_doesnotexist", "tok"), undefined);
 		});
+		it("Will NOT keep a bound session alive for a request it refuses", async (t) => {
+			// a stolen `sid` without the bound cookie must not hold the victim's
+			// session open by polling: the idle timeout only slides for a request
+			// that gets through
+			const { session: opened, bound } = await register(
+				makeProof(makeDevice()),
+				{ aud: registerUrl },
+			);
+			const { update } = await session.selectBinding(opened.id);
+			t.mock.timers.enable({ apis: ["Date"], now: (update + 120) * 1000 });
+			try {
+				equal(await dbscLookup(opened.sid, undefined), undefined);
+				equal(await dbscLookup(opened.sid, "not-a-token"), undefined);
+				equal((await session.selectBinding(opened.id)).update, update);
+				ok(await dbscLookup(opened.sid, bound));
+				equal((await session.selectBinding(opened.id)).update, update + 120);
+			} finally {
+				t.mock.timers.reset();
+			}
+		});
 		it("Will return nothing for a bound session without a valid bound cookie", async () => {
 			const device = makeDevice();
 			const { session: opened } = await register(makeProof(device), {
@@ -1686,11 +1706,18 @@ const tests = (config) => {
 			equal(binding.id, id);
 			ok(!binding.publicKey);
 		});
-		it("Can resolve an unbound session from `sid` alone", async () => {
+		it("Can resolve an unbound session from `sid` alone", async (t) => {
 			// no publicKey on the row: either registration has not happened yet, or
 			// the browser does not do DBSC. Either way `sid` is the whole credential.
-			const { sid } = await session.create(sub, {});
-			ok(await dbscLookup(sid, undefined));
+			const { id, sid, create } = await session.create(sub, {});
+			t.mock.timers.enable({ apis: ["Date"], now: (create + 120) * 1000 });
+			try {
+				ok(await dbscLookup(sid, undefined));
+				// an accepted request keeps it alive, as `@1auth/session` would
+				equal((await session.selectBinding(id)).update, create + 120);
+			} finally {
+				t.mock.timers.reset();
+			}
 		});
 		it("Can leave another unbound session untouched by a registration", async () => {
 			const currentDevice = { os: "MacOS" };
@@ -1706,12 +1733,14 @@ const tests = (config) => {
 			const dbscOptions = dbscGetOptions();
 			dbscOptions.require = true;
 			try {
-				const { sid, create } = await session.create(sub, {});
+				const { id, sid, create } = await session.create(sub, {});
 				t.mock.timers.enable({
 					apis: ["Date"],
 					now: (create + dbscOptions.challengeExpire) * 1000,
 				});
 				equal(await dbscLookup(sid, undefined), undefined);
+				// and refusing it does not keep it alive
+				equal((await session.selectBinding(id)).update, create);
 			} finally {
 				t.mock.timers.reset();
 				dbscOptions.require = false;

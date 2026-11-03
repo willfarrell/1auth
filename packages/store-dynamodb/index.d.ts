@@ -41,11 +41,15 @@ export function selectList(
 export function insert(table: string, values?: Row): Promise<unknown>;
 /** At most 100 rows, written in one transaction. Resolves their `id`s. */
 export function insertList(table: string, rows?: Row[]): Promise<unknown[]>;
+/**
+ * Resolves whether an item matched every filter and was written. A `null`
+ * filter matches an attribute that is missing or stored as NULL.
+ */
 export function update(
 	table: string,
 	filters?: Filters,
 	values?: Row,
-): Promise<void>;
+): Promise<boolean>;
 /** Resolves whether an item was deleted. */
 export function remove(table: string, filters?: Filters): Promise<boolean>;
 export function removeList(table: string, filters?: Filters): Promise<void>;

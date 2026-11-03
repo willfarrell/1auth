@@ -67,7 +67,7 @@ describe("default store", () => {
 			Promise<Row[]>
 		>();
 		expect(update("accounts", { sub: "sub_1" }, { value: 1 })).type.toBe<
-			Promise<void>
+			Promise<boolean>
 		>();
 		expect(remove("accounts", { sub: "sub_1" })).type.toBe<Promise<boolean>>();
 		expect(removeList("accounts", { sub: "sub_1" })).type.toBe<

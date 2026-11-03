@@ -330,6 +330,40 @@ const tests = (config) => {
 			);
 		});
 
+		it("Will keep `challengeKeep` challenges, not rows, for an account with several keys", async () => {
+			// one challenge is a row per credential, so counting rows evicted part of
+			// a challenge open in another tab
+			await registered();
+			const table = authnGetOptions().table;
+			const [credential] = await store.selectList(table, {
+				sub,
+				type: "WebAuthn-secret",
+			});
+			for (const id of ["authn_copy_1", "authn_copy_2"]) {
+				await store.insert(table, { ...credential, id });
+			}
+			const challengesBySet = async () => {
+				const sets = new Map();
+				for (const row of await store.selectList(table, { sub })) {
+					if (row.type !== "WebAuthn-challenge") continue;
+					const { expectedChallenge } = JSON.parse(
+						symmetricDecrypt(row.value, {
+							sub,
+							encryptedKey: row.encryptionKey,
+						}),
+					);
+					sets.set(expectedChallenge, (sets.get(expectedChallenge) ?? 0) + 1);
+				}
+				return [...sets.values()];
+			};
+			const { challengeKeep } = webauthnGetOptions();
+			for (let i = 0; i < challengeKeep + 2; i++) {
+				await webauthnCreateChallenge(sub);
+			}
+			// pruning runs before the new one is written, so `challengeKeep` stay
+			// beside it, and every one of them can still be answered by any key
+			deepEqual(await challengesBySet(), Array(challengeKeep + 1).fill(3));
+		});
 		it("Will evict the oldest challenge, not whichever comes back last", async () => {
 			await registered();
 			for (let i = 0; i < 4; i++) await webauthnCreateChallenge(sub);
@@ -1114,11 +1148,14 @@ const tests = (config) => {
 		const [token] = await store.selectList(authnGetOptions().table, { sub });
 		await overrideCreateChallenge(sub, token);
 		await webauthnVerify(sub, registrationResponse, { name: "PassKey" });
+		// the token was spent by verify; the credential is what there is to remove
+		const [credential] = await store.selectList(authnGetOptions().table, {
+			sub,
+			type: "WebAuthn-secret",
+		});
 
-		await webauthnRemove(sub, token.id);
-		let authnDB = await store.selectList(authnGetOptions().table, { sub });
-		equal(authnDB.length, 1);
-		authnDB = authnDB.filter((item) => !!item.expire);
+		await webauthnRemove(sub, credential.id);
+		const authnDB = await store.selectList(authnGetOptions().table, { sub });
 		equal(authnDB.length, 0);
 
 		// notify
@@ -1262,11 +1299,15 @@ const tests = (config) => {
 		await overrideCreateChallenge(sub, token);
 		await webauthnVerify(sub, registrationResponse, { name: "PassKey" }, false);
 
+		const notified = mocks.notifyClient.mock.calls.length;
 		await webauthnRemove("sub_1111111", secret.id);
+		await webauthnExpire("sub_1111111", secret.id);
 		const authnDB = await store.selectList(authnGetOptions().table, { sub });
 
 		ok(authnDB);
 		equal(authnDB.length, 1);
+		// nothing changed, so nobody is told it did
+		equal(mocks.notifyClient.mock.calls.length, notified);
 	});
 
 	describe("with custom options", () => {
@@ -1788,14 +1829,31 @@ const tests = (config) => {
 				asked("selectList", ["expire"], (filters) => !!filters.digest),
 				"duplicate check",
 			);
-			ok(asked("selectList", ["encryptionKey", "value"]), "excludeCredentials");
-			ok(asked("selectList", ["id", "create"]), "stale challenges");
+			// authn.list adds `expire` to filter out revoked credentials
 			ok(
-				asked("selectList", ["id", "encryptionKey", "value"]),
+				asked("selectList", ["encryptionKey", "value", "expire"]),
+				"excludeCredentials",
+			);
+			ok(
+				asked("selectList", [
+					"id",
+					"create",
+					"encryptionKey",
+					"value",
+					"expire",
+				]),
+				"stale challenges",
+			);
+			ok(
+				asked("selectList", ["id", "encryptionKey", "value", "expire"]),
 				"allowCredentials",
 			);
 			ok(
-				asked("selectList", ["id"], (filters) => filters.sourceId === id),
+				asked(
+					"selectList",
+					["id", "expire"],
+					(filters) => filters.sourceId === id,
+				),
 				"challenges of a removed credential",
 			);
 			ok(

@@ -52,7 +52,7 @@ describe("store", () => {
 			Promise<unknown[]>
 		>();
 		expect(update("test", { sub: "sub_1", id: "1" }, { value: "x" })).type.toBe<
-			Promise<void>
+			Promise<boolean>
 		>();
 		expect(remove("test", { sub: "sub_1", id: "1" })).type.toBe<
 			Promise<boolean>

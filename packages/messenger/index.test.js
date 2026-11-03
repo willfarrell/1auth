@@ -891,10 +891,22 @@ const tests = (config) => {
 		const { token } = mocks.notifyClient.mock.calls[0].arguments[0].data;
 		selects.length = 0;
 		selectLists.length = 0;
+		// a wrong code is refused before anything of the account's is read
+		await rejects(
+			() => messengerVerifyToken(messengerType, sub, "000000", messengerId),
+			"401 Unauthorized",
+		);
+		deepEqual(selects, []);
+		deepEqual(selectLists, []);
 		await messengerVerifyToken(messengerType, sub, token, messengerId);
 		deepEqual(selects, [
 			{ filters: { sub, id: messengerId }, fields: ["digest"] },
 		]);
+		// the account's other verified messengers are told by id, nothing decrypted
+		deepEqual(selectLists[0], {
+			filters: { sub, type: messengerType },
+			fields: ["id", "verify"],
+		});
 		deepEqual(selectLists.at(-1), {
 			filters: { type: messengerType, digest },
 			fields: ["id", "sub", "verify"],

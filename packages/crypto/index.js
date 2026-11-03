@@ -50,7 +50,6 @@ const defaults = {
 	defaultEncoding: "base64",
 	defaultHashAlgorithm: "sha3-384",
 };
-const symmetricEncryptionEncodingLengths = {};
 const options = {};
 export default (opt = {}) => {
 	Object.assign(options, defaults, opt);
@@ -64,7 +63,25 @@ export default (opt = {}) => {
 	options.symmetricEncryptionKey = makeOptionsBuffer(
 		options.symmetricEncryptionKey,
 	);
+	// Both supported ciphers take exactly 256 bits; anything else would pass
+	// here and fail on the first encrypt instead.
+	if (options.symmetricEncryptionKey.length !== 32) {
+		throw new RangeError(
+			`@1auth/crypto symmetricEncryptionKey must be 32 bytes, received ${options.symmetricEncryptionKey.length}. Use symmetricRandomEncryptionKey().`,
+			{ cause: { length: options.symmetricEncryptionKey.length } },
+		);
+	}
 	options.symmetricEncryptionEncoding ??= options.defaultEncoding;
+	if (!symmetricEncryptionEncodings.has(options.symmetricEncryptionEncoding)) {
+		throw new RangeError(
+			"@1auth/crypto symmetricEncryptionEncoding must be base64, base64url or hex",
+			{
+				cause: {
+					symmetricEncryptionEncoding: options.symmetricEncryptionEncoding,
+				},
+			},
+		);
+	}
 	symmetricEncryptionAlgorithmId(options.symmetricEncryptionAlgorithm);
 	options.symmetricSignatureHashAlgorithm ??= options.defaultHashAlgorithm;
 	symmetricSignatureHashAlgorithmId(options.symmetricSignatureHashAlgorithm);
@@ -76,6 +93,14 @@ export default (opt = {}) => {
 	options.symmetricSignatureSecret = makeOptionsBuffer(
 		options.symmetricSignatureSecret,
 	);
+	// The Encrypt-then-MAC key; shorter than the 256 bits every other secret
+	// takes weakens every packet's signature.
+	if (options.symmetricSignatureSecret.length < 32) {
+		throw new RangeError(
+			`@1auth/crypto symmetricSignatureSecret must be at least 32 bytes, received ${options.symmetricSignatureSecret.length}. Use symmetricRandomSignatureSecret().`,
+			{ cause: { length: options.symmetricSignatureSecret.length } },
+		);
+	}
 	options.symmetricSignatureEncoding ??= options.defaultEncoding;
 	options.asymmetricSignatureHashAlgorithm ??= options.defaultHashAlgorithm;
 	options.asymmetricSignatureEncoding ??= options.defaultEncoding;
@@ -105,14 +130,6 @@ export default (opt = {}) => {
 	}
 	options.digestChecksumHashAlgorithm ??= options.defaultHashAlgorithm;
 	options.digestChecksumEncoding ??= options.defaultEncoding;
-
-	// Encoded lengths for parsing ciphertext packets (IV = 12 bytes, authTag = 16 bytes)
-	const encodedLength = (byteLength) =>
-		Buffer.alloc(byteLength).toString(options.symmetricEncryptionEncoding)
-			.length;
-	symmetricEncryptionEncodingLengths.iv = encodedLength(ivLength);
-	symmetricEncryptionEncodingLengths.ivAndAuthTag =
-		symmetricEncryptionEncodingLengths.iv + encodedLength(authTagLength);
 };
 
 export const makeOptionsBuffer = (
@@ -294,6 +311,17 @@ export const assertMemoryCost = (memoryCost) => {
 	}
 };
 
+// node's argon2 has no version parameter: every hash it makes is v=19 (0x13)
+const argon2Version = 19;
+const assertVersion = (version) => {
+	if (version !== argon2Version) {
+		throw new RangeError(
+			`argon2 version must be ${argon2Version}, received ${version}`,
+			{ cause: { version } },
+		);
+	}
+};
+
 // NOTE: the PHC string spec defines `m=` as memory in KiB, but we write the
 // exponent. Every stored hash encodes it this way, so correcting it is a format
 // migration (decode both forms, rehash on next verify), not an edit.
@@ -360,6 +388,7 @@ export const createArgon2 = async (
 	parallelism ??= options.secretArgon2Parallelism;
 	nonceLength ??= options.secretArgon2NonceLength;
 	hashLength ??= options.secretArgon2HashLength;
+	assertVersion(version);
 	assertMemoryCost(memoryCost);
 
 	const nonce = randomBytes(nonceLength);
@@ -413,7 +442,37 @@ const authTagLength = 16;
 const ivLength = 12;
 // The subject is bound into the ciphertext as associated data. Buffer.from
 // decodes utf8 by default, which is what every stored packet was written with.
-const associatedData = (sub) => Buffer.from(sub);
+const associatedData = (sub) => {
+	if (sub == null) {
+		throw new TypeError(
+			"@1auth/crypto sub is required, it is bound as associated data",
+		);
+	}
+	return Buffer.from(sub);
+};
+
+// The packet is split on `:` and `.`, and the IV and auth tag are cut by
+// length, so only encodings that carry arbitrary bytes in neither are safe.
+const symmetricEncryptionEncodings = new Set(["base64", "base64url", "hex"]);
+// Encoded widths of the IV and auth tag, per encoding a packet is read in
+const symmetricEncryptionEncodingLengths = Object.create(null);
+for (const encoding of symmetricEncryptionEncodings) {
+	const iv = Buffer.alloc(ivLength).toString(encoding).length;
+	symmetricEncryptionEncodingLengths[encoding] = {
+		iv,
+		ivAndAuthTag: iv + Buffer.alloc(authTagLength).toString(encoding).length,
+	};
+}
+const encodingLengths = (encoding) => {
+	const lengths = symmetricEncryptionEncodingLengths[encoding];
+	if (!lengths) {
+		throw new RangeError(
+			"@1auth/crypto decoding must be base64, base64url or hex",
+			{ cause: { decoding: encoding } },
+		);
+	}
+	return lengths;
+};
 
 export const symmetricRandomEncryptionKey = () => {
 	return randomBytes(32); // 256 bits
@@ -643,11 +702,11 @@ export const symmetricEncryptFields = (
 	},
 	fields,
 ) => {
+	// Not the write cipher or hash: the row key was wrapped under its own
 	if (encryptedKey) {
 		encryptionKey ??= symmetricDecryptKey(encryptedKey, {
 			signatureSecret,
 			sub,
-			hashAlgorithm,
 		});
 	}
 	if (!fields?.length) return values;
@@ -681,11 +740,11 @@ export const symmetricEncrypt = (
 		hashAlgorithm,
 	},
 ) => {
+	// Not the write cipher or hash: the row key was wrapped under its own
 	if (encryptedKey) {
 		encryptionKey ??= symmetricDecryptKey(encryptedKey, {
 			signatureSecret,
 			sub,
-			hashAlgorithm,
 		});
 	}
 	if (!data) return data;
@@ -825,21 +884,17 @@ export const symmetricDecrypt = (
 		parseHashAlgorithmPacket(signedData).packet,
 		encryptionAlgorithm ?? options.symmetricEncryptionAlgorithm,
 	);
+	const lengths = encodingLengths(decoding);
 	const iv = Buffer.from(
-		encryptedDataPacket.substring(0, symmetricEncryptionEncodingLengths.iv),
+		encryptedDataPacket.substring(0, lengths.iv),
 		decoding,
 	);
 	const authTag = Buffer.from(
-		encryptedDataPacket.substring(
-			symmetricEncryptionEncodingLengths.iv,
-			symmetricEncryptionEncodingLengths.ivAndAuthTag,
-		),
+		encryptedDataPacket.substring(lengths.iv, lengths.ivAndAuthTag),
 		decoding,
 	);
 	const encryptedData = Buffer.from(
-		encryptedDataPacket.substring(
-			symmetricEncryptionEncodingLengths.ivAndAuthTag,
-		),
+		encryptedDataPacket.substring(lengths.ivAndAuthTag),
 		decoding,
 	);
 

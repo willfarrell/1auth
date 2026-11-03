@@ -268,7 +268,7 @@ const tests = (store, mocks) => {
 				{ sub: "sub_000", id: 1 },
 				{ value: "z" },
 			);
-			strictEqual(result, undefined);
+			strictEqual(result, false);
 			deepStrictEqual(await store.selectList(table, { sub: "sub_000" }), []);
 			strictEqual(
 				await store.select(table, { sub: "sub_000", id: 1 }),
@@ -294,14 +294,64 @@ const tests = (store, mocks) => {
 				{ sub: "sub_000", id: 1, value: "z" },
 				{ value: "y" },
 			);
-			strictEqual(result, undefined);
+			strictEqual(result, false);
 			deepStrictEqual(await valuesOf(), ["a"]);
-			await store.update(
-				table,
-				{ sub: "sub_000", id: 1, value: "a" },
-				{ value: "y" },
+			strictEqual(
+				await store.update(
+					table,
+					{ sub: "sub_000", id: 1, value: "a" },
+					{ value: "y" },
+				),
+				true,
 			);
 			deepStrictEqual(await valuesOf(), ["y"]);
+		});
+		it("Should report a matched update, so a caller can compare and swap", async () => {
+			await store.insert(table, rows[0]);
+			strictEqual(
+				await store.update(table, { sub: "sub_000", id: 1 }, { value: "y" }),
+				true,
+			);
+			// only one of two writers holding the same read wins
+			const swap = () =>
+				store.update(
+					table,
+					{ sub: "sub_000", id: 1, value: "y" },
+					{ value: "x" },
+				);
+			deepStrictEqual(
+				await Promise.all([swap(), swap()]).then((r) => r.sort()),
+				[false, true],
+			);
+			deepStrictEqual(await valuesOf(), ["x"]);
+		});
+		it("Should match a missing value with a null filter, on every store", async () => {
+			// `expire` is never written on the first row, so it has none
+			const expire = nowInSeconds() + 100;
+			await store.insert(table, rows[0]);
+			await store.insert(table, { ...rows[1], expire });
+			const noExpire = { sub: "sub_000", expire: null };
+			deepStrictEqual(
+				(await store.selectList(table, noExpire)).map((row) => row.id),
+				[1],
+			);
+			strictEqual((await store.select(table, { ...noExpire, id: 1 }))?.id, 1);
+			strictEqual(await store.select(table, { ...noExpire, id: 2 }), undefined);
+			strictEqual(
+				await store.update(table, { ...noExpire, id: 2 }, { value: "q" }),
+				false,
+			);
+			strictEqual(
+				await store.update(table, { ...noExpire, id: 1 }, { expire }),
+				true,
+			);
+			// it has one now, so the same swap misses
+			strictEqual(
+				await store.update(table, { ...noExpire, id: 1 }, { value: "q" }),
+				false,
+			);
+			strictEqual(await store.remove(table, { ...noExpire, id: 1 }), false);
+			deepStrictEqual(await valuesOf(), ["a", "b"]);
 		});
 		it("Should not remove a row when a non-key filter does not match", async () => {
 			await store.insert(table, rows[0]);

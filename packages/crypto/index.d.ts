@@ -131,7 +131,8 @@ export function createSeasonedDigest(
 
 export interface Argon2Options {
 	algorithm?: Argon2Algorithm;
-	version?: number;
+	/** Only 19: node's argon2 always hashes v=19, so anything else throws a `RangeError`. */
+	version?: 19;
 	parallelism?: number;
 	/** log2 exponent between 3 and 31, not KiB. */
 	memoryCost?: number;
@@ -229,7 +230,7 @@ export interface SymmetricKeyOptions {
 	encryptedKey?: string;
 	encryptionKey?: Secret;
 	signatureSecret?: Secret;
-	/** Bound into the ciphertext as associated data. */
+	/** Bound into the ciphertext as associated data. Required to encrypt or decrypt; throws a `TypeError` when missing. */
 	sub?: string;
 	/** Cipher to write with, or to read a packet that names none with. */
 	encryptionAlgorithm?: string;

@@ -269,18 +269,17 @@ export const verifyToken = async (type, sub, token, sourceId) => {
 	if (!sourceId || typeof sourceId !== "string") {
 		throw new Error("404 Not Found", { cause: { sub, sourceId } });
 	}
-	const messengers = await list(type, sub).then((items) => {
-		const messengers = [];
-		for (let i = items.length; i--; ) {
-			const messenger = items[i];
-			if (!messenger.verify) {
-				continue;
-			}
-			messengers.push({ id: messenger.id });
-		}
-		return messengers;
-	});
 	await authnVerify({ ...options.token, sourceId }, sub, token);
+	// The account's messengers already verified, before this one joins them, to
+	// tell them one was added. Ids only: nothing here needs decrypting.
+	const messengers = (
+		await options.store.selectList(options.table, { sub, type }, [
+			"id",
+			"verify",
+		])
+	)
+		.filter((messenger) => messenger.verify)
+		.map(({ id }) => ({ id }));
 	const messenger = await options.store.select(
 		options.table,
 		{ sub, id: sourceId },
@@ -311,14 +310,23 @@ export const verifyToken = async (type, sub, token, sourceId) => {
 		}
 		throw e;
 	}
-	for (const claim of claims) {
-		if (claim.verify || claim.sub === sub) continue;
-		await authnGetOptions().store.remove(authnGetOptions().table, {
-			sub: claim.sub,
-			sourceId: claim.id,
-		});
-		await options.store.remove(options.table, { id: claim.id, sub: claim.sub });
-	}
+	// other accounts' unverified claims on this value are dead now, tokens and all
+	await Promise.all(
+		claims
+			.filter((claim) => !claim.verify && claim.sub !== sub)
+			.map((claim) =>
+				Promise.all([
+					authnGetOptions().store.remove(authnGetOptions().table, {
+						sub: claim.sub,
+						sourceId: claim.id,
+					}),
+					options.store.remove(options.table, {
+						id: claim.id,
+						sub: claim.sub,
+					}),
+				]),
+			),
+	);
 	if (messengers.length) {
 		await options.notify.trigger(
 			`${options.notifyId}-${type}-create`,

@@ -84,7 +84,10 @@ const selectIds = async (sub) => {
 export const update = async (sub) => {
 	const id = await selectIds(sub);
 	const secrets = await createSecrets(sub, options.count);
-	await authnRemoveList(options.secret, sub, id);
+	// an account with no codes yet has nothing to replace
+	if (id.length) {
+		await authnRemoveList(options.secret, sub, id);
+	}
 
 	await options.notify.trigger(`${options.notifyId}-update`, sub);
 	return secrets;
@@ -92,7 +95,8 @@ export const update = async (sub) => {
 
 export const remove = async (sub, id) => {
 	if (id) {
-		await authnRemove(options.secret, sub, id);
+		// only a code that was there is worth telling the account about
+		if (!(await authnRemove(options.secret, sub, id))) return;
 	} else {
 		await authnRemoveList(options.secret, sub, await selectIds(sub));
 	}
