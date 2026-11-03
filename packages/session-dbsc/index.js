@@ -36,6 +36,7 @@ const defaults = {
 	id,
 	log: false,
 	require: false,
+	algorithms: ["ES256"], // offered and accepted at registration, RS256 is opt-in (ASVS 5.0 11.2.3, 11.6.1); a bound key keeps refreshing under its own
 	challengeExpire: 1 * 60,
 	challengeTable: "dbsc_challenges",
 	registerPath: "/dbsc/register",
@@ -90,6 +91,17 @@ export default (opt = {}) => {
 	Object.assign(forwardedOptions, forwarded);
 	session.default(forwardedOptions);
 	Object.assign(options, defaults, own);
+	if (
+		!Array.isArray(options.algorithms) ||
+		!options.algorithms.length ||
+		!options.algorithms.every(
+			(alg) => typeof alg === "string" && Object.hasOwn(algorithms, alg),
+		)
+	) {
+		throw new Error("500 Internal Server Error", {
+			cause: { algorithms: options.algorithms },
+		});
+	}
 	assertCookie("sidCookieName", "sidCookieAttributes");
 	assertCookie("dbscCookieName", "dbscCookieAttributes");
 	if (options.scope?.include_site && hostOnlyCookie(options.dbscCookieName)) {
@@ -172,7 +184,7 @@ export const boundTokenVerify = (value, sessionId) =>
 
 // Response header that tells the browser to start a bound session
 export const registrationHeader = ({ authorization } = {}) => {
-	let header = `(${Object.keys(algorithms).join(" ")});path="${options.registerPath}";challenge="${challenge()}"`;
+	let header = `(${options.algorithms.join(" ")});path="${options.registerPath}";challenge="${challenge()}"`;
 	if (authorization) {
 		header += `;authorization="${authorization}"`;
 	}
@@ -258,6 +270,10 @@ export const verifyProof = async (
 			? algorithms[header.alg]
 			: undefined;
 	if (header?.typ !== "dbsc+jwt" || !algorithm) throw unauthorized();
+	// Registration only: a session bound before `algorithms` narrowed keeps refreshing until it expires
+	if (!sessionId && !options.algorithms.includes(header.alg)) {
+		throw unauthorized();
+	}
 	if (payload?.aud !== undefined) {
 		if (typeof payload.aud !== "string" || !safeEqual(payload.aud, aud)) {
 			throw unauthorized();

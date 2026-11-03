@@ -60,7 +60,7 @@ per-row key, and that row key encrypts the fields.
   │ iv (12B) ‖ authTag (16B) ‖ ciphertext    │──►whole packet
   └──────────────────────────────────────────┘        │
                                                       ▼
-            stored value:  <algorithm id>:<packet>.<signature>
+            stored value:  [<hash id>:]<cipher id>:<packet>.<signature>
 ```
 
 **Why the extra hop.** Rotating `symmetricEncryptionKey` re-encrypts one small row key per row
@@ -70,7 +70,7 @@ is bound to the subject it belongs to.
 
 **Algorithm ids.** Every packet names the cipher that wrote it with a JOSE id, `C20P:` for `chacha20-poly1305` or `A256GCM:` for `aes-256-gcm`, inside the signed data, so the id is authenticated before it picks a cipher. The ids are short because every stored value carries one; size columns for 5 to 8 more characters than before. Any other `symmetricEncryptionAlgorithm` is refused at configure time. A named packet always reads with its own cipher, so changing `symmetricEncryptionAlgorithm` leaves existing rows readable while new writes use the new cipher. A packet written before `0.0.0-rc.10` names none and reads with the `encryptionAlgorithm` passed to the call, else the configured one. Name every stored packet first (`symmetricRotation` with the same cipher on both sides) before changing the configured cipher, or the unnamed ones become unreadable. `symmetricEncryptionAlgorithmOf(value)` reads the name off a stored value without verifying it, for a sweep deciding which rows still need work.
 
-The signature hash is not named in the packet: the HMAC has to verify before anything inside it is trusted. Rotate `symmetricSignatureHashAlgorithm` like `symmetricSignatureSecret`, passing the old `hashAlgorithm` to `symmetricRotation`.
+**Hash ids.** A packet whose HMAC is not `sha3-384` names the hash ahead of the cipher: `HS256:`, `HS384:`, `HS512:` (JOSE, RFC 7518 3.2), or `HS3-256:`, `HS3-512:` for SHA-3. The id is read before the HMAC is checked, which is safe because the id is inside the signed data and every hash it can pick is a keyed HMAC of at least 256 bits, so rewriting it means forging a MAC. Any other `symmetricSignatureHashAlgorithm` is refused at configure time. `sha3-384`, the default, writes no id, so a default packet stays byte for byte the shape `0.0.0-rc.10` reads and costs no column space. A packet with no hash id reads with the `hashAlgorithm` passed to the call, else the configured one. To change `symmetricSignatureHashAlgorithm`, configure the new one with a new `symmetricSignatureSecret` or key and pass the old `hashAlgorithm` to `symmetricRotation`. Readers on `0.0.0-rc.10` cannot read a hash-named packet, so move every reader before configuring a hash other than `sha3-384`. `symmetricSignatureHashAlgorithmOf(value)` reads the hash name, unverified, `undefined` for `sha3-384` and for older packets.
 
 **Batched rotation.** `symmetricRotation` can be rerun over a table. A row the old options cannot read but the new ones can is returned as the same object, without running `transform`, so compare the result to the input to skip the write and count it. A run that skips every row most likely has old and new swapped. A row both sides can read, such as a row key only rotation, is rotated again, so keep `transform` idempotent. A row neither side reads throws the old options' error. Before retiring an old key, secret, or hash, read every row with only the new options. That pass also catches rows written mid batch by instances still on the old configuration.
 
@@ -142,6 +142,7 @@ does not stall other requests. Concurrent hashes are bounded by `UV_THREADPOOL_S
 - `symmetricDecryptFields(fields, values, key)` — Decrypt specific fields in an object
 - `symmetricRotation(encrypted, oldKey, newKey)` — Re-encrypt with a new key. Old and new options also take `encryptionAlgorithm` and `hashAlgorithm`. Safe to rerun, see batched rotation above
 - `symmetricEncryptionAlgorithmOf(value)` - Read the cipher a stored value names, unverified, `undefined` when it names none
+- `symmetricSignatureHashAlgorithmOf(value)` - Read the HMAC hash a stored value names, unverified, `undefined` for `sha3-384` and for older packets
 
 ### Symmetric signatures
 

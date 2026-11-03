@@ -716,6 +716,115 @@ const tests = (config) => {
 		}
 	});
 
+	describe("`supportedAlgorithmIDs`", () => {
+		// Leaves the key out to restore the default, an explicit undefined would override it
+		const configure = (opt = {}) =>
+			webauthn({
+				name: webauthnName,
+				origin: webauthnOrigin,
+				log: (...args) => mocks.log(...args),
+				...opt,
+			});
+		const register = async (type) => {
+			const credential = makeCredential(type);
+			await webauthnCreate(sub);
+			const [token] = await store.selectList(authnGetOptions().table, {
+				sub,
+				type: "WebAuthn-token",
+			});
+			await overrideCreateChallenge(sub, token);
+			return { credential, token };
+		};
+		const authenticate = async (credential) => {
+			await webauthnCreateChallenge(sub);
+			const [challenge] = await store.selectList(authnGetOptions().table, {
+				sub,
+				type: "WebAuthn-challenge",
+			});
+			await overrideGetChallenge(sub, challenge);
+			return await webauthnAuthenticate(
+				username,
+				credential.authenticationResponse,
+			);
+		};
+
+		it("Ships ML-DSA-44, EdDSA and ES256 by default, no RS256", async () => {
+			deepEqual(webauthnGetOptions().supportedAlgorithmIDs, [-48, -8, -7]);
+			const { secret } = await webauthnCreate(sub);
+			deepEqual(
+				secret.pubKeyCredParams.map(({ alg }) => alg),
+				[-48, -8, -7],
+			);
+		});
+
+		it("Can offer only the configured algorithms", async () => {
+			configure({ supportedAlgorithmIDs: [-7] });
+			try {
+				const { secret } = await webauthnCreate(sub);
+				deepEqual(
+					secret.pubKeyCredParams.map(({ alg }) => alg),
+					[-7],
+				);
+			} finally {
+				configure();
+			}
+		});
+
+		it("Will refuse an RS256 registration by default", async () => {
+			const { credential, token } = await register("rsa");
+			await rejects(
+				() =>
+					webauthnVerify(sub, credential.registrationResponse, {
+						name: "PassKey",
+					}),
+				{ message: "401 Unauthorized" },
+			);
+			// authn.verify reports 401, so ask the token config for the reason
+			const stored = await store.select(authnGetOptions().table, {
+				sub,
+				id: token.id,
+			});
+			const value = JSON.parse(
+				symmetricDecrypt(stored.value, {
+					sub,
+					encryptedKey: stored.encryptionKey,
+				}),
+			);
+			await rejects(
+				() => webauthnToken().verify(credential.registrationResponse, value),
+				/Unexpected public key alg "-257"/,
+			);
+		});
+
+		it("Can register and authenticate an ML-DSA-44 credential by default", async () => {
+			const { credential } = await register("ml-dsa-44");
+			await webauthnVerify(
+				sub,
+				credential.registrationResponse,
+				{ name: "PassKey" },
+				false,
+			);
+			equal(await authenticate(credential), sub);
+		});
+
+		it("Can authenticate an RS256 credential registered while RS256 was opted into", async () => {
+			configure({ supportedAlgorithmIDs: [-48, -8, -7, -257] });
+			let credential;
+			try {
+				({ credential } = await register("rsa"));
+				await webauthnVerify(
+					sub,
+					credential.registrationResponse,
+					{ name: "PassKey" },
+					false,
+				);
+			} finally {
+				configure();
+			}
+			equal(await authenticate(credential), sub);
+		});
+	});
+
 	it("Can create WebAuthn on an account without a username", async () => {
 		const subWithoutUsername = await accountCreate();
 
@@ -1927,6 +2036,124 @@ const registrationResponseSecurityKey = {
 		transports: ["usb"],
 	},
 	authenticatorAttachment: "cross-platform",
+};
+
+// `fmt: none` credentials: RS256 is the shape a TPM-backed Windows Hello key registers with
+const credentialKeys = {
+	rsa: () => {
+		const { publicKey, privateKey } = generateKeyPairSync("rsa", {
+			modulusLength: 2048,
+		});
+		const { n, e } = publicKey.export({ format: "jwk" });
+		return {
+			privateKey,
+			hashAlgorithm: "sha256",
+			coseKey: new Map([
+				[1, 3],
+				[3, -257],
+				[-1, new Uint8Array(Buffer.from(n, "base64url"))],
+				[-2, new Uint8Array(Buffer.from(e, "base64url"))],
+			]),
+		};
+	},
+	// ML-DSA-44 public key is the last 1312 bytes of its SPKI
+	"ml-dsa-44": () => {
+		const { publicKey, privateKey } = generateKeyPairSync("ml-dsa-44");
+		const pub = publicKey
+			.export({ format: "der", type: "spki" })
+			.subarray(-1312);
+		return {
+			privateKey,
+			hashAlgorithm: null,
+			coseKey: new Map([
+				[1, 7],
+				[3, -48],
+				[-1, new Uint8Array(pub)],
+			]),
+		};
+	},
+};
+const makeCredential = (type) => {
+	const { privateKey, hashAlgorithm, coseKey } = credentialKeys[type]();
+	const id = Buffer.alloc(16, 9);
+	const rpIdHash = createHash("sha256").update("localhost").digest();
+	const counter = (value) => {
+		const buffer = Buffer.alloc(4);
+		buffer.writeUInt32BE(value);
+		return buffer;
+	};
+	const idLength = Buffer.alloc(2);
+	idLength.writeUInt16BE(id.length);
+	// flags UP | UV | AT
+	const authData = Buffer.concat([
+		rpIdHash,
+		Buffer.from([0x45]),
+		counter(0),
+		Buffer.alloc(16),
+		idLength,
+		id,
+		Buffer.from(isoCBOR.encode(coseKey)),
+	]);
+	const clientData = (type, challenge) =>
+		Buffer.from(
+			JSON.stringify({ type, challenge, origin: webauthnOrigin }),
+		).toString("base64url");
+	const registrationResponse = {
+		id: id.toString("base64url"),
+		rawId: id.toString("base64url"),
+		response: {
+			attestationObject: isoBase64URL.fromBuffer(
+				isoCBOR.encode(
+					new Map([
+						["fmt", "none"],
+						["attStmt", new Map()],
+						["authData", new Uint8Array(authData)],
+					]),
+				),
+			),
+			clientDataJSON: clientData(
+				"webauthn.create",
+				registrationOptionsOverride.challenge,
+			),
+			transports: ["internal"],
+		},
+		type: "public-key",
+		clientExtensionResults: {},
+		authenticatorAttachment: "platform",
+	};
+	// flags UP | UV
+	const assertionData = Buffer.concat([
+		rpIdHash,
+		Buffer.from([0x05]),
+		counter(1),
+	]);
+	const clientDataJSON = clientData(
+		"webauthn.get",
+		authenticationOptionsOverride.challenge,
+	);
+	const signature = asymmetricSign(
+		hashAlgorithm,
+		Buffer.concat([
+			assertionData,
+			createHash("sha256")
+				.update(Buffer.from(clientDataJSON, "base64url"))
+				.digest(),
+		]),
+		privateKey,
+	);
+	const authenticationResponse = {
+		id: id.toString("base64url"),
+		rawId: id.toString("base64url"),
+		response: {
+			authenticatorData: assertionData.toString("base64url"),
+			clientDataJSON,
+			signature: signature.toString("base64url"),
+		},
+		type: "public-key",
+		clientExtensionResults: {},
+		authenticatorAttachment: "platform",
+	};
+	return { registrationResponse, authenticationResponse };
 };
 
 const authenticationOptionsOverride = {

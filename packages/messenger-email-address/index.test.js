@@ -690,15 +690,19 @@ const tests = (config) => {
 		const exists = emailAddressExists("username@protonmail.com");
 		ok(exists);
 	});
-	it("Can NOT create a messenger on an account when already connected to anther account", async () => {
+	it("Can NOT claim a messenger on an account when already connected to anther account", async () => {
 		const subOther = "sub_111111";
 		const messengerIdOther = await emailAddressCreate(subOther, messengerValue);
 		const { token } = mocks.notifyClient.mock.calls[0].arguments[0].data;
 		await emailAddressVerifyToken(subOther, token, messengerIdOther);
 
+		// an unverified row and an id like a free address, but no code is mailed
 		const messengerIdNew = await emailAddressCreate(sub, messengerValue);
 
-		equal(messengerIdNew, undefined);
+		ok(messengerIdNew);
+		equal(mocks.notifyClient.mock.calls.length, 2);
+		equal(await emailAddressCount(sub), 0);
+		equal(await emailAddressExists(messengerValue), subOther);
 		const notify = mocks.notifyClient.mock.calls[1].arguments[0];
 		deepEqual(notify, {
 			data: {},

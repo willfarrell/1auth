@@ -197,6 +197,28 @@ const tests = (config) => {
 		}
 	});
 
+	it("Can NOT read or write messengers with ({sub:undefined})", async () => {
+		const id = "messenger_000000";
+		const calls = [
+			(badSub) => messengerList(messengerType, badSub),
+			(badSub) => messengerSelect(messengerType, badSub, id),
+			(badSub) =>
+				messengerCreate(messengerType, badSub, {
+					value: messengerValue,
+					digest: createSeasonedDigest(messengerValue),
+				}),
+			(badSub) => messengerCreateToken(messengerType, badSub, id),
+			(badSub) => messengerVerifyToken(messengerType, badSub, "000000", id),
+			(badSub) => messengerRemove(messengerType, badSub, id),
+		];
+		for (const call of calls) {
+			for (const badSub of [undefined, "", 0, 1234, null, {}]) {
+				await rejects(() => call(badSub), "401 Unauthorized", { sub: badSub });
+			}
+		}
+		equal(mocks.notifyClient.mock.calls.length, 0);
+	});
+
 	describe("config", () => {
 		it("Names its table, ids and token type after the package id", async () => {
 			// the shipped defaults, not the ones this suite configures over them
@@ -901,36 +923,410 @@ const tests = (config) => {
 		);
 	});
 
-	it("Can NOT create a messenger already verified by another account", async () => {
+	// ASVS 6.3.8: a taken value must answer the requester the way a free one does
+	const verifiedByOther = async (subOther = "sub_111111") => {
+		const otherId = await messengerCreate(messengerType, subOther, {
+			value: messengerValue,
+			digest: createSeasonedDigest(messengerValue),
+		});
+		const { token } = mocks.notifyClient.mock.calls.at(-1).arguments[0].data;
+		await messengerVerifyToken(messengerType, subOther, token, otherId);
+		mocks.notifyClient.mock.resetCalls();
+		return { subOther, otherId };
+	};
+
+	it("Will store an unverified messenger, unmailed, for a value another account verified", async () => {
+		const { subOther, otherId } = await verifiedByOther();
+
+		const messengerId = await messengerCreate(messengerType, sub, {
+			value: messengerValue,
+			digest: createSeasonedDigest(messengerValue),
+		});
+		ok(messengerId.startsWith("messenger_"));
+
+		// the account that holds the value is told, the one claiming it gets no code
+		deepEqual(
+			mocks.notifyClient.mock.calls.map((call) => call.arguments[0]),
+			[
+				{
+					id: `messenger-${messengerType}-exists`,
+					sub: subOther,
+					data: {},
+					options: { messengers: [{ id: otherId }] },
+				},
+			],
+		);
+
+		const row = await store.select(messengerGetOptions().table, {
+			sub,
+			id: messengerId,
+		});
+		ok(row);
+		ok(!row.verify);
+		deepEqual(
+			(await messengerList(messengerType, sub)).map(({ id, value }) => ({
+				id,
+				value,
+			})),
+			[{ id: messengerId, value: messengerValue }],
+		);
+
+		// the pending row can not sign in or count as a factor
+		equal(await messengerCount(messengerType, sub), 0);
+		equal(await messengerCount(messengerType, subOther), 1);
+		equal(await messengerExists(messengerType, messengerValue), subOther);
+		equal((await messengerLookup(messengerType, messengerValue)).sub, subOther);
+		equal(await messengerSelect(messengerType, sub, messengerId), undefined);
+	});
+
+	it("Will answer a taken value with the same shape as a free one", async () => {
+		const subFree = "sub_222222";
+		const freeId = await messengerCreate(messengerType, subFree, {
+			value: "@free.00",
+			digest: createSeasonedDigest("@free.00"),
+		});
+		await verifiedByOther();
+		const takenId = await messengerCreate(messengerType, sub, {
+			value: messengerValue,
+			digest: createSeasonedDigest(messengerValue),
+		});
+		equal(typeof takenId, typeof freeId);
+		equal(takenId.length, freeId.length);
+
+		const fields = async (sub, id) =>
+			Object.keys(
+				await store.select(messengerGetOptions().table, { sub, id }),
+			).sort();
+		deepEqual(await fields(sub, takenId), await fields(subFree, freeId));
+		const tokenFields = async (sub, sourceId) =>
+			Object.keys(
+				await store.select(authnGetOptions().table, { sub, sourceId }),
+			).sort();
+		deepEqual(
+			await tokenFields(sub, takenId),
+			await tokenFields(subFree, freeId),
+		);
+	});
+
+	it("Will answer the same again when the requester re-submits a taken value", async () => {
+		const { subOther } = await verifiedByOther();
+		const values = {
+			value: messengerValue,
+			digest: createSeasonedDigest(messengerValue),
+		};
+		const messengerId = await messengerCreate(messengerType, sub, values);
+		equal(await messengerCreate(messengerType, sub, values), messengerId);
+		deepEqual(
+			mocks.notifyClient.mock.calls.map(({ arguments: [{ id, sub }] }) => ({
+				id,
+				sub,
+			})),
+			[
+				{ id: `messenger-${messengerType}-exists`, sub: subOther },
+				{ id: `messenger-${messengerType}-exists`, sub: subOther },
+			],
+		);
+		equal((await messengerList(messengerType, sub)).length, 1);
+	});
+
+	it("Will NOT mail a code on resend while another account holds the value verified", async () => {
+		await verifiedByOther();
+		const messengerId = await messengerCreate(messengerType, sub, {
+			value: messengerValue,
+			digest: createSeasonedDigest(messengerValue),
+		});
+		mocks.notifyClient.mock.resetCalls();
+
+		const tokenId = await messengerCreateToken(messengerType, sub, messengerId);
+		equal(typeof tokenId, "string");
+		equal(mocks.notifyClient.mock.calls.length, 0);
+	});
+
+	it("Will mail a resend when no other account holds that value verified", async () => {
+		const subOther = "sub_111111";
+		// another value verified elsewhere, and an unverified claim on this one
+		const otherValue = "@other.00";
+		const otherId = await messengerCreate(messengerType, subOther, {
+			value: otherValue,
+			digest: createSeasonedDigest(otherValue),
+		});
+		await messengerVerifyToken(
+			messengerType,
+			subOther,
+			mocks.notifyClient.mock.calls[0].arguments[0].data.token,
+			otherId,
+		);
+		await messengerCreate("other", subOther, {
+			value: messengerValue,
+			digest: createSeasonedDigest(messengerValue),
+		});
+		await messengerCreate(messengerType, "sub_222222", {
+			value: messengerValue,
+			digest: createSeasonedDigest(messengerValue),
+		});
+		const messengerId = await messengerCreate(messengerType, sub, {
+			value: messengerValue,
+			digest: createSeasonedDigest(messengerValue),
+		});
+		await messengerVerifyToken(
+			messengerType,
+			sub,
+			mocks.notifyClient.mock.calls.at(-1).arguments[0].data.token,
+			messengerId,
+		);
+		mocks.notifyClient.mock.resetCalls();
+
+		// its own verified row is not held against it
+		await messengerCreateToken(messengerType, sub, messengerId);
+		deepEqual(
+			mocks.notifyClient.mock.calls.map(({ arguments: [{ id, sub }] }) => ({
+				id,
+				sub,
+			})),
+			[{ id: `messenger-${messengerType}-verify`, sub }],
+		);
+	});
+
+	it("Will read only the digest and claims a resend needs", async () => {
+		const selects = [];
+		const selectLists = [];
+		configure({
+			store: {
+				...store,
+				select: async (table, filters, fields) => {
+					selects.push({ filters, fields });
+					return await store.select(table, filters, fields);
+				},
+				selectList: async (table, filters, fields) => {
+					selectLists.push({ filters, fields });
+					return await store.selectList(table, filters, fields);
+				},
+			},
+		});
+		const digest = createSeasonedDigest(messengerValue);
+		const messengerId = await messengerCreate(messengerType, sub, {
+			value: messengerValue,
+			digest,
+		});
+		selects.length = 0;
+		selectLists.length = 0;
+		await messengerCreateToken(messengerType, sub, messengerId);
+		deepEqual(selects, [
+			{
+				filters: { sub, id: messengerId, type: messengerType },
+				fields: ["digest"],
+			},
+		]);
+		deepEqual(selectLists, [
+			{
+				filters: { type: messengerType, digest },
+				fields: ["id", "sub", "verify"],
+			},
+		]);
+	});
+
+	it("Can NOT resend for a messenger the account does not hold", async () => {
 		const subOther = "sub_111111";
 		const otherId = await messengerCreate(messengerType, subOther, {
 			value: messengerValue,
 			digest: createSeasonedDigest(messengerValue),
 		});
-		const { token } = mocks.notifyClient.mock.calls[0].arguments[0].data;
-		await messengerVerifyToken(messengerType, subOther, token, otherId);
-
-		equal(
-			await messengerCreate(messengerType, sub, {
-				value: messengerValue,
-				digest: createSeasonedDigest(messengerValue),
+		const otherTypeId = await messengerCreate("other", sub, {
+			value: messengerValue,
+			digest: createSeasonedDigest(messengerValue),
+		});
+		mocks.notifyClient.mock.resetCalls();
+		// unknown, another account's, and this account's under another type
+		for (const sourceId of ["messenger_notfound", otherId, otherTypeId]) {
+			await rejects(
+				() => messengerCreateToken(messengerType, sub, sourceId),
+				"404 Not Found",
+				{ sub, sourceId },
+			);
+		}
+		equal(mocks.notifyClient.mock.calls.length, 0);
+		ok(
+			!(await store.select(authnGetOptions().table, {
+				sub,
+				sourceId: otherId,
+			})),
+		);
+		// the other account's own token is left alone
+		ok(
+			await store.select(authnGetOptions().table, {
+				sub: subOther,
+				sourceId: otherId,
 			}),
-			undefined,
+		);
+	});
+
+	it("Will fail a guess on a taken value like a wrong code", async () => {
+		await verifiedByOther();
+		const takenId = await messengerCreate(messengerType, sub, {
+			value: messengerValue,
+			digest: createSeasonedDigest(messengerValue),
+		});
+		const subFree = "sub_222222";
+		const freeId = await messengerCreate(messengerType, subFree, {
+			value: "@free.00",
+			digest: createSeasonedDigest("@free.00"),
+		});
+		const { token } = mocks.notifyClient.mock.calls.at(-1).arguments[0].data;
+		const wrong = token === "000000" ? "111111" : "000000";
+		await rejects(
+			() => messengerVerifyToken(messengerType, subFree, wrong, freeId),
+			"401 Unauthorized",
+			{ type: "invalid" },
+		);
+		await rejects(
+			() => messengerVerifyToken(messengerType, sub, wrong, takenId),
+			"401 Unauthorized",
+			{ type: "invalid" },
+		);
+	});
+
+	it("Will NOT verify a messenger once another account holds the value verified", async () => {
+		// the owner's verify clears other claims, this is the claim it missed
+		const messengerId = await messengerCreate(messengerType, sub, {
+			value: messengerValue,
+			digest: createSeasonedDigest(messengerValue),
+		});
+		const { token } = mocks.notifyClient.mock.calls[0].arguments[0].data;
+		const subOther = "sub_111111";
+		const otherId = await messengerCreate(messengerType, subOther, {
+			value: messengerValue,
+			digest: createSeasonedDigest(messengerValue),
+		});
+		await store.update(
+			messengerGetOptions().table,
+			{ sub: subOther, id: otherId },
+			{ verify: nowInSeconds() },
 		);
 
-		// the account that holds the value is told, the one claiming it is not
-		equal(mocks.notifyClient.mock.calls.length, 2);
-		deepEqual(mocks.notifyClient.mock.calls[1].arguments[0], {
-			id: `messenger-${messengerType}-exists`,
-			sub: subOther,
-			data: {},
-			options: { messengers: [{ id: otherId }] },
+		// refused before any write, on every store, not left to a unique index
+		const updates = [];
+		configure({
+			store: {
+				...store,
+				update: async (table, filters, values) => {
+					updates.push(filters);
+					return await store.update(table, filters, values);
+				},
+			},
 		});
-
-		// and nothing was stored against the claiming account
-		ok(!(await store.select(messengerGetOptions().table, { sub })));
+		await rejects(
+			() => messengerVerifyToken(messengerType, sub, token, messengerId),
+			"401 Unauthorized",
+			{ type: "invalid" },
+		);
+		configure();
+		deepEqual(updates, []);
 		equal(await messengerCount(messengerType, sub), 0);
-		equal(await messengerCount(messengerType, subOther), 1);
+		equal(await messengerExists(messengerType, messengerValue), subOther);
+		ok(
+			!(
+				await store.select(messengerGetOptions().table, {
+					sub,
+					id: messengerId,
+				})
+			).verify,
+		);
+	});
+
+	it("Will refuse like a wrong code when another account verifies mid-verify (SQL)", async () => {
+		if (!store.makeSqlParts) return;
+		const messengerId = await messengerCreate(messengerType, sub, {
+			value: messengerValue,
+			digest: createSeasonedDigest(messengerValue),
+		});
+		const { token } = mocks.notifyClient.mock.calls[0].arguments[0].data;
+		const subOther = "sub_111111";
+		const otherId = await messengerCreate(messengerType, subOther, {
+			value: messengerValue,
+			digest: createSeasonedDigest(messengerValue),
+		});
+		// the other account's verify lands between the claims check and this update
+		configure({
+			store: {
+				...store,
+				update: async (table, filters, values) => {
+					if (filters.sub === sub && values.verify) {
+						await store.update(
+							table,
+							{ sub: subOther, id: otherId },
+							{ verify: nowInSeconds() },
+						);
+					}
+					return await store.update(table, filters, values);
+				},
+			},
+		});
+		await rejects(
+			() => messengerVerifyToken(messengerType, sub, token, messengerId),
+			"401 Unauthorized",
+			{ type: "invalid" },
+		);
+		configure();
+		equal(await messengerCount(messengerType, sub), 0);
+		equal(await messengerExists(messengerType, messengerValue), subOther);
+	});
+
+	it("Will pass on a store error on verify that is not a lost race", async () => {
+		const messengerId = await messengerCreate(messengerType, sub, {
+			value: messengerValue,
+			digest: createSeasonedDigest(messengerValue),
+		});
+		const { token } = mocks.notifyClient.mock.calls[0].arguments[0].data;
+		configure({
+			store: {
+				...store,
+				update: async () => {
+					throw new Error("store down");
+				},
+			},
+		});
+		await rejects(
+			() => messengerVerifyToken(messengerType, sub, token, messengerId),
+			"store down",
+		);
+	});
+
+	it("Will refuse a sent code once the owner verifies first", async () => {
+		const messengerId = await messengerCreate(messengerType, sub, {
+			value: messengerValue,
+			digest: createSeasonedDigest(messengerValue),
+		});
+		const { token } = mocks.notifyClient.mock.calls[0].arguments[0].data;
+		const { subOther } = await verifiedByOther();
+
+		await rejects(
+			() => messengerVerifyToken(messengerType, sub, token, messengerId),
+			"401 Unauthorized",
+		);
+		equal(await messengerCount(messengerType, sub), 0);
+		equal(await messengerExists(messengerType, messengerValue), subOther);
+	});
+
+	it("Will mail a code again once the owner removes the value", async () => {
+		const { subOther, otherId } = await verifiedByOther();
+		const messengerId = await messengerCreate(messengerType, sub, {
+			value: messengerValue,
+			digest: createSeasonedDigest(messengerValue),
+		});
+		await messengerRemove(messengerType, subOther, otherId);
+		mocks.notifyClient.mock.resetCalls();
+
+		await messengerCreateToken(messengerType, sub, messengerId);
+		const [call] = mocks.notifyClient.mock.calls;
+		equal(call.arguments[0].id, `messenger-${messengerType}-verify`);
+		equal(call.arguments[0].sub, sub);
+		await messengerVerifyToken(
+			messengerType,
+			sub,
+			call.arguments[0].data.token,
+			messengerId,
+		);
+		equal(await messengerExists(messengerType, messengerValue), sub);
 	});
 
 	it("Can remove a verified messenger on an account", async () => {

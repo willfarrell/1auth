@@ -256,6 +256,19 @@ const tests = (config) => {
 		mocks.storeClient.after?.();
 	});
 
+	// RS256 is opt-in, so a caller widens `algorithms` explicitly
+	const withRs256 = async (fn) => {
+		dbsc({
+			algorithms: ["ES256", "RS256"],
+			log: (...args) => mocks.log(...args),
+		});
+		try {
+			return await fn();
+		} finally {
+			dbsc({ log: (...args) => mocks.log(...args) });
+		}
+	};
+
 	const register = async (proof, options = {}) => {
 		const { sid } = await session.create(sub, options.value ?? {});
 		return await dbscRegister(sid, proof, options);
@@ -270,6 +283,7 @@ const tests = (config) => {
 			equal(options.challengeExpire, 1 * 60);
 			equal(options.challengeTable, "dbsc_challenges");
 			equal(options.require, false);
+			deepEqual(options.algorithms, ["ES256"]);
 			equal(options.registerPath, "/dbsc/register");
 			equal(options.refreshPath, "/dbsc/refresh");
 			equal(options.sidCookieName, "__Host-Http-sid");
@@ -296,6 +310,18 @@ const tests = (config) => {
 				cookieAttributes: "Path=/; HttpOnly",
 			});
 			dbsc({});
+		});
+		it("Will refuse an `algorithms` list it cannot verify", () => {
+			for (const algorithms of [
+				[],
+				"ES256",
+				["none"],
+				["toString"],
+				["ES256", "PS256"],
+			]) {
+				throwsConfig(() => dbsc({ algorithms }), { algorithms });
+			}
+			dbsc({ log: (...args) => mocks.log(...args) });
 		});
 		it("Names both lifetimes when the bound cookie outlives the session", () => {
 			const expire = session.getOptions().expire;
@@ -330,9 +356,14 @@ const tests = (config) => {
 	});
 
 	describe("`registrationHeader`", () => {
-		it("Can offer both spec algorithms with a challenge", () => {
+		it("Can offer ES256 alone by default, with a challenge", () => {
 			const header = dbscRegistrationHeader();
-			match(header, /^\(ES256 RS256\);path="[^"]+";challenge="[^"]+"$/);
+			match(header, /^\(ES256\);path="[^"]+";challenge="[^"]+"$/);
+		});
+		it("Can offer both spec algorithms once RS256 is opted into", async () => {
+			await withRs256(() =>
+				match(dbscRegistrationHeader(), /^\(ES256 RS256\);path="/),
+			);
 		});
 		it("Can name the configured register path", () => {
 			match(
@@ -1002,12 +1033,21 @@ const tests = (config) => {
 			equal(binding.publicKey, JSON.stringify({ kty, crv, x, y }));
 		});
 
-		it("Can bind an RS256 device key", async () => {
+		it("Can bind an RS256 device key once RS256 is opted into", async () => {
 			const device = makeDevice("rsa");
-			const { id } = await register(makeProof(device, { alg: "RS256" }), {
-				aud: registerUrl,
-			});
+			const { id } = await withRs256(() =>
+				register(makeProof(device, { alg: "RS256" }), { aud: registerUrl }),
+			);
 			ok(id);
+		});
+
+		it("Will throw on an RS256 key by default", async () => {
+			await rejects(() =>
+				register(makeProof(makeDevice("rsa"), { alg: "RS256" }), {
+					aud: registerUrl,
+				}),
+			);
+			ok((await register(makeProof(makeDevice()), { aud: registerUrl })).id);
 		});
 
 		it("Will NOT store private key members sent in the proof", async () => {
@@ -1104,12 +1144,14 @@ const tests = (config) => {
 			);
 		});
 
-		it("Will throw with a weak RSA key", async () => {
+		it("Will throw with a weak RSA key, even with RS256 opted into", async () => {
 			const device = generateKeyPairSync("rsa", { modulusLength: 1024 });
-			await rejects(() =>
-				register(makeProof(device, { alg: "RS256" }), {
-					aud: registerUrl,
-				}),
+			await withRs256(() =>
+				rejects(() =>
+					register(makeProof(device, { alg: "RS256" }), {
+						aud: registerUrl,
+					}),
+				),
 			);
 		});
 
@@ -1145,6 +1187,19 @@ const tests = (config) => {
 			);
 			equal(refreshed.id, id);
 			ok(refreshed.bound);
+		});
+
+		it("Can refresh an RS256 binding made before `algorithms` dropped it", async () => {
+			const device = makeDevice("rsa");
+			const { id } = await withRs256(() =>
+				register(makeProof(device, { alg: "RS256" }), { aud: registerUrl }),
+			);
+			const { bound } = await dbscRefresh(
+				id,
+				makeProof(device, { alg: "RS256", aud: refreshUrl, sub: id }),
+				{ aud: refreshUrl },
+			);
+			ok(dbscBoundTokenVerify(bound, id));
 		});
 
 		it("Will throw with an invalid session identifier", async () => {

@@ -86,9 +86,12 @@ User                Your app            @1auth/messenger        @1auth/notify
 Two details worth noticing, because both are deliberate:
 
 **A taken address notifies its owner, not the caller.** If the digest already belongs to a
-different, verified subject, `create` returns nothing and sends the `-exists` template to the
-existing owner. The caller cannot tell "taken" from "created", so the API does not answer the
-question *is this address registered here* — which is the question an enumeration attack asks.
+different, verified subject, `create` sends the `-exists` template to the existing owner, then
+stores an unverified row for the caller and returns its id exactly as for a free address. No code
+is mailed for that row, `createToken` sends nothing while the owner holds it, and `verifyToken`
+fails as a wrong code would. The caller cannot tell "taken" from "created", so the API does not
+answer the question *is this address registered here*, which is the question an enumeration
+attack asks (ASVS 6.3.8).
 
 **Unverified claims don't block, the first verified one wins.** Another account can claim an
 address that is still unverified, so someone typing your address first can't lock you out of it.
@@ -134,15 +137,17 @@ Get a specific messenger.
 
 ### `create(type, sub, values)`
 
-Create a new messenger with a verification token. Triggers a notification with the token.
+Create a new messenger with a verification token. Triggers a notification with the token, or the `-exists` notification to the owner when another subject holds the value verified.
+
+**Returns:** the messenger `id`, in both cases
 
 ### `createToken(type, sub, sourceId)`
 
-Generate a new verification token for an existing messenger.
+Generate a new verification token for an existing messenger. Sends nothing while another subject holds the value verified. Throws `404 Not Found` when `sourceId` is not a messenger of this type held by `sub`.
 
 ### `verifyToken(type, sub, token, sourceId)`
 
-Verify a token and mark the messenger as verified.
+Verify a token and mark the messenger as verified. Fails with `401 Unauthorized` while another subject holds the value verified.
 
 ### `remove(type, sub, id)`
 

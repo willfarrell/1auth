@@ -7,6 +7,8 @@ export interface DbscOptions {
 	log: ((...args: unknown[]) => void) | false;
 	/** Unbound sessions only live as long as the registration challenge. */
 	require: boolean;
+	/** Offered and accepted at registration, a subset of `ES256` and `RS256`, default `["ES256"]`. */
+	algorithms: ("ES256" | "RS256")[];
 	/** Seconds a challenge stays valid. */
 	challengeExpire: number;
 	challengeTable: string;

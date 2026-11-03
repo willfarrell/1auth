@@ -103,7 +103,7 @@ Browser                          Your app                    session-dbsc
    │                                │  registrationHeader()              │
    │                                ├───────────────────────────────────►│
    │  200  Set-Cookie: __Host-Http-sid=<sid>                             │
-   │       Secure-Session-Registration: (ES256 RS256);path=...;challenge=...
+   │       Secure-Session-Registration: (ES256);path=...;challenge=...
    │◄───────────────────────────────┤                                    │
    │                                │                                    │
  ┌─┴──────────────────────┐         │   session row exists, publicKey    │
@@ -318,6 +318,7 @@ neither.
 |--------|------|---------|-------------|
 | `store` | `object` | **required** | Passed straight through to `@1auth/session`, along with anything else it owns — configure this package, not both |
 | `require` | `boolean` | `false` | Reject unbound sessions on `lookup`. An unbound row then only resolves for `challengeExpire` after creation — long enough to reach the registration endpoint, nothing more. Leave `false` while browsers without DBSC must be able to stay signed in |
+| `algorithms` | `string[]` | `['ES256']` | Offered in the registration header and accepted at registration. RS256 is left out for ASVS 5.0 Level 3 (11.2.3, 11.6.1); `['ES256', 'RS256']` accepts RSA-only TPMs. A session bound earlier keeps refreshing under its own key until it expires |
 | `challengeExpire` | `number` | `60` (1min) | How long a challenge stays valid |
 | `challengeTable` | `string` | `dbsc_challenges` | Where spent refresh challenges are recorded, so a proof cannot be replayed |
 | `registerPath` | `string` | `/dbsc/register` | Registration endpoint |
@@ -383,7 +384,7 @@ already dies on the same clock.
 
 ### `verifyProof(proof, { aud, sessionId, publicKey })`
 
-Verify a `dbsc+jwt` proof on its own. ES256 and RS256 only.
+Verify a `dbsc+jwt` proof on its own. ES256, or RS256 when `algorithms` names it, at registration; a refresh accepts the algorithm of the stored key.
 
 ### `select(sub, id)` / `list(sub)`
 
@@ -413,7 +414,7 @@ Response body telling the browser to stop maintaining the session.
   `value`, `digest` or `encryptionKey`.
 - Private JWK members are stripped before storage — only `kty`/`crv`/`x`/`y` (EC) and
   `kty`/`n`/`e` (RSA) are kept.
-- ES256 requires P-256; RS256 requires a modulus of at least 2048 bits.
+- ES256 requires P-256. RS256 is off by default; when enabled it requires a modulus of at least 2048 bits.
 - Refresh challenges are bound to the session identifier, so a challenge issued for one
   session cannot be replayed against another. Each is spent on first use (see
   `challengeTable`), so a captured refresh proof cannot be replayed at all.
@@ -427,4 +428,4 @@ Response body telling the browser to stop maintaining the session.
 
 ## Post-quantum
 
-The HMAC signing used internally is post-quantum safe. The device-bound proof, however, is an ES256/RS256 JWT signed by a TPM-held key — Shor-vulnerable, with algorithms fixed by the browser DBSC spec. Signatures are not retroactively forgeable and sessions expire, so this is an ecosystem-paced migration, not a stored-data risk. See the full assessment in [Post-quantum](/docs/security/algorithms#post-quantum).
+The HMAC signing used internally is post-quantum safe. The device-bound proof, however, is an ES256 JWT (RS256 when enabled) signed by a TPM-held key. It is Shor-vulnerable, with algorithms fixed by the browser DBSC spec. Signatures are not retroactively forgeable and sessions expire, so this is an ecosystem-paced migration, not a stored-data risk. See the full assessment in [Post-quantum](/docs/security/algorithms#post-quantum).

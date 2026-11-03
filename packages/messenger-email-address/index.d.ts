@@ -33,7 +33,7 @@ export function create(
 	sub: string,
 	value: string,
 	values?: Row,
-): Promise<string | undefined>;
+): Promise<string>;
 export function remove(sub: string, id: string): Promise<void>;
 export function createToken(sub: string, sourceId: string): Promise<string>;
 export function verifyToken(

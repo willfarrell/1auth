@@ -172,10 +172,14 @@ export const verifySecretHash: typeof verifyArgon2;
 
 export function symmetricRandomEncryptionKey(): Buffer;
 
-/** Packets store as `<id>:<packet>.<signature>`, id `C20P` or `A256GCM`. */
+/** Packets store as `[<hash id>:]<cipher id>:<packet>.<signature>`, cipher id `C20P` or `A256GCM`, hash id `HS256` to `HS3-512`, none for sha3-384. */
 export const symmetricEncryptionAlgorithmSeparator: string;
 /** Unverified. The cipher name a field packet or in-process wrapped key carries, else `undefined`. */
 export function symmetricEncryptionAlgorithmOf(
+	signedEncryptedDataPacket: unknown,
+): string | undefined;
+/** Unverified. The HMAC hash a packet names, `undefined` for sha3-384 and for packets older than hash ids. */
+export function symmetricSignatureHashAlgorithmOf(
 	signedEncryptedDataPacket: unknown,
 ): string | undefined;
 

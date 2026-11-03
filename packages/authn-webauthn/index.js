@@ -125,6 +125,7 @@ export const createInstance = () => {
 		verify = async (response, value) => {
 			const { verified, registrationInfo } = await verifyRegistrationResponse({
 				...value,
+				supportedAlgorithmIDs: options.supportedAlgorithmIDs,
 				response,
 			});
 			if (!verified)
@@ -248,6 +249,7 @@ export const createInstance = () => {
 		challengeKeep: 3,
 		preferredAuthenticatorType: undefined, // 'securityKey' | 'localDevice' | 'remoteDevice' - https://simplewebauthn.dev/docs/packages/server#fine-tuning-the-registration-experience-with-preferredauthenticatortype
 		credentialDeviceType: undefined, // 'multiDevice' | 'singleDevice' - what this instance accepts, independent of the browser hint
+		supportedAlgorithmIDs: [-48, -8, -7], // ML-DSA-44, EdDSA, ES256: no RS256 (ASVS 5.0 11.2.3, 11.6.1); registration only, existing credentials still authenticate
 		// Display name shown in the authenticator prompt. Defaults to where
 		// `@1auth/account-username` puts the username, override when it lives
 		// elsewhere on the account.
@@ -344,6 +346,7 @@ export const createInstance = () => {
 			attestationType: "none",
 			excludeCredentials,
 			preferredAuthenticatorType,
+			supportedAlgorithmIDs: options.supportedAlgorithmIDs,
 			// PassKey
 			authenticatorSelection: {
 				residentKey: options.residentKey,

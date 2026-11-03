@@ -158,6 +158,16 @@ export const select = async (type, sub, id) => {
 	return decryptedValues;
 };
 
+// Another account's verified claim on this digest, if any
+const selectHeld = async (type, sub, digest) => {
+	const claims = await options.store.selectList(
+		options.table,
+		{ type, digest },
+		["id", "sub", "verify"],
+	);
+	return claims.find((claim) => claim.verify && claim.sub !== sub);
+};
+
 export const create = async (type, sub, values) => {
 	assertSub(sub);
 	const messengers = await options.store.selectList(
@@ -165,20 +175,22 @@ export const create = async (type, sub, values) => {
 		{ type, digest: values.digest },
 		["id", "sub", "verify"],
 	);
-	const own = messengers.find((messenger) => messenger.sub === sub);
-	if (own) {
-		await createToken(type, sub, own.id);
-		return own.id;
-	}
-	const valueExists = messengers.find((messenger) => messenger.verify);
-	if (valueExists) {
+	// ASVS 6.3.8: a taken value gets a row and an id like a free one, only the owner is told
+	const held = messengers.find(
+		(messenger) => messenger.verify && messenger.sub !== sub,
+	);
+	if (held) {
 		await options.notify.trigger(
 			`${options.notifyId}-${type}-exists`,
-			valueExists.sub,
+			held.sub,
 			{},
-			{ messengers: [{ id: valueExists.id }] },
+			{ messengers: [{ id: held.id }] },
 		);
-		return;
+	}
+	const own = messengers.find((messenger) => messenger.sub === sub);
+	if (own) {
+		await sendToken(type, sub, own.id, held);
+		return own.id;
 	}
 	const now = nowInSeconds();
 
@@ -204,7 +216,7 @@ export const create = async (type, sub, values) => {
 	}
 	const id = await options.store.insert(options.table, params);
 
-	await createToken(type, sub, id);
+	await sendToken(type, sub, id, held);
 	return id;
 };
 
@@ -213,6 +225,21 @@ export const createToken = async (type, sub, sourceId) => {
 	if (!sourceId || typeof sourceId !== "string") {
 		throw new Error("404 Not Found", { cause: { sub, sourceId } });
 	}
+	// never mint or mail a code for a messenger this account does not hold
+	const messenger = await options.store.select(
+		options.table,
+		{ sub, id: sourceId, type },
+		["digest"],
+	);
+	if (!messenger) {
+		throw new Error("404 Not Found", { cause: { sub, sourceId } });
+	}
+	const held = await selectHeld(type, sub, messenger.digest);
+	return await sendToken(type, sub, sourceId, held);
+};
+
+// The token is stored either way so storage, timing and guessing match a free value
+const sendToken = async (type, sub, sourceId, held) => {
 	// remove previous tokens
 	await authnGetOptions().store.remove(authnGetOptions().table, {
 		sub,
@@ -224,6 +251,7 @@ export const createToken = async (type, sub, sourceId) => {
 		value: token,
 		sourceId,
 	});
+	if (held) return id;
 	await options.notify.trigger(
 		`${options.notifyId}-${type}-verify`,
 		sub,
@@ -261,19 +289,29 @@ export const verifyToken = async (type, sub, token, sourceId) => {
 	if (!messenger) {
 		throw new Error("404 Not Found", { cause: { sub, sourceId } });
 	}
-	await options.store.update(
-		options.table,
-		{ sub, id: sourceId },
-		{ verify: nowInSeconds() },
-	);
 	const claims = await options.store.selectList(
 		options.table,
 		{ type, digest: messenger.digest },
 		["id", "sub", "verify"],
 	);
+	// fails like a wrong code, so a taken value can not be told apart
+	if (claims.some((claim) => claim.verify && claim.sub !== sub)) {
+		throw new Error("401 Unauthorized", { cause: { type: "invalid" } });
+	}
+	try {
+		await options.store.update(
+			options.table,
+			{ sub, id: sourceId },
+			{ verify: nowInSeconds() },
+		);
+	} catch (e) {
+		// lost the race to another account's verify: the SQL unique index refuses the second owner
+		if (await selectHeld(type, sub, messenger.digest)) {
+			throw new Error("401 Unauthorized", { cause: { type: "invalid" } });
+		}
+		throw e;
+	}
 	for (const claim of claims) {
-		// this account's own row was verified just above, but a lagging index
-		// (DynamoDB GSI) can still return it without `verify`
 		if (claim.verify || claim.sub === sub) continue;
 		await authnGetOptions().store.remove(authnGetOptions().table, {
 			sub: claim.sub,
