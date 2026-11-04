@@ -976,10 +976,12 @@ console.log(JSON.stringify(sent));`,
 			});
 
 			it("Should throw when items stay unprocessed", async () => {
+				const sentAt = [];
 				configure({
 					client: {
 						send: async (command) => {
 							sent.push(command);
+							sentAt.push(performance.now());
 							return { UnprocessedItems: command.input.RequestItems };
 						},
 					},
@@ -995,6 +997,12 @@ console.log(JSON.stringify(sent));`,
 						},
 					);
 					deepEqual(batchSizes(), [2, 2, 2, 2, 2, 2]);
+					// Only a lower bound, so a slow runner can't fail it. The 2ms is
+					// slack for timers firing marginally early.
+					[25, 50, 100, 200, 400].forEach((delay, retry) => {
+						const waited = sentAt[retry + 1] - sentAt[retry];
+						ok(waited >= delay - 2, `retry ${retry} waited ${waited}ms`);
+					});
 				} finally {
 					configure();
 				}
