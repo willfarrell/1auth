@@ -330,6 +330,40 @@ const tests = (config) => {
 			);
 		});
 
+		it("Will keep `challengeKeep` challenges, not rows, for an account with several keys", async () => {
+			// one challenge is a row per credential, so counting rows evicted part of
+			// a challenge open in another tab
+			await registered();
+			const table = authnGetOptions().table;
+			const [credential] = await store.selectList(table, {
+				sub,
+				type: "WebAuthn-secret",
+			});
+			for (const id of ["authn_copy_1", "authn_copy_2"]) {
+				await store.insert(table, { ...credential, id });
+			}
+			const challengesBySet = async () => {
+				const sets = new Map();
+				for (const row of await store.selectList(table, { sub })) {
+					if (row.type !== "WebAuthn-challenge") continue;
+					const { expectedChallenge } = JSON.parse(
+						symmetricDecrypt(row.value, {
+							sub,
+							encryptedKey: row.encryptionKey,
+						}),
+					);
+					sets.set(expectedChallenge, (sets.get(expectedChallenge) ?? 0) + 1);
+				}
+				return [...sets.values()];
+			};
+			const { challengeKeep } = webauthnGetOptions();
+			for (let i = 0; i < challengeKeep + 2; i++) {
+				await webauthnCreateChallenge(sub);
+			}
+			// pruning runs before the new one is written, so `challengeKeep` stay
+			// beside it, and every one of them can still be answered by any key
+			deepEqual(await challengesBySet(), Array(challengeKeep + 1).fill(3));
+		});
 		it("Will evict the oldest challenge, not whichever comes back last", async () => {
 			await registered();
 			for (let i = 0; i < 4; i++) await webauthnCreateChallenge(sub);
@@ -716,6 +750,115 @@ const tests = (config) => {
 		}
 	});
 
+	describe("`supportedAlgorithmIDs`", () => {
+		// Leaves the key out to restore the default, an explicit undefined would override it
+		const configure = (opt = {}) =>
+			webauthn({
+				name: webauthnName,
+				origin: webauthnOrigin,
+				log: (...args) => mocks.log(...args),
+				...opt,
+			});
+		const register = async (type) => {
+			const credential = makeCredential(type);
+			await webauthnCreate(sub);
+			const [token] = await store.selectList(authnGetOptions().table, {
+				sub,
+				type: "WebAuthn-token",
+			});
+			await overrideCreateChallenge(sub, token);
+			return { credential, token };
+		};
+		const authenticate = async (credential) => {
+			await webauthnCreateChallenge(sub);
+			const [challenge] = await store.selectList(authnGetOptions().table, {
+				sub,
+				type: "WebAuthn-challenge",
+			});
+			await overrideGetChallenge(sub, challenge);
+			return await webauthnAuthenticate(
+				username,
+				credential.authenticationResponse,
+			);
+		};
+
+		it("Ships ML-DSA-44, EdDSA and ES256 by default, no RS256", async () => {
+			deepEqual(webauthnGetOptions().supportedAlgorithmIDs, [-48, -8, -7]);
+			const { secret } = await webauthnCreate(sub);
+			deepEqual(
+				secret.pubKeyCredParams.map(({ alg }) => alg),
+				[-48, -8, -7],
+			);
+		});
+
+		it("Can offer only the configured algorithms", async () => {
+			configure({ supportedAlgorithmIDs: [-7] });
+			try {
+				const { secret } = await webauthnCreate(sub);
+				deepEqual(
+					secret.pubKeyCredParams.map(({ alg }) => alg),
+					[-7],
+				);
+			} finally {
+				configure();
+			}
+		});
+
+		it("Will refuse an RS256 registration by default", async () => {
+			const { credential, token } = await register("rsa");
+			await rejects(
+				() =>
+					webauthnVerify(sub, credential.registrationResponse, {
+						name: "PassKey",
+					}),
+				{ message: "401 Unauthorized" },
+			);
+			// authn.verify reports 401, so ask the token config for the reason
+			const stored = await store.select(authnGetOptions().table, {
+				sub,
+				id: token.id,
+			});
+			const value = JSON.parse(
+				symmetricDecrypt(stored.value, {
+					sub,
+					encryptedKey: stored.encryptionKey,
+				}),
+			);
+			await rejects(
+				() => webauthnToken().verify(credential.registrationResponse, value),
+				/Unexpected public key alg "-257"/,
+			);
+		});
+
+		it("Can register and authenticate an ML-DSA-44 credential by default", async () => {
+			const { credential } = await register("ml-dsa-44");
+			await webauthnVerify(
+				sub,
+				credential.registrationResponse,
+				{ name: "PassKey" },
+				false,
+			);
+			equal(await authenticate(credential), sub);
+		});
+
+		it("Can authenticate an RS256 credential registered while RS256 was opted into", async () => {
+			configure({ supportedAlgorithmIDs: [-48, -8, -7, -257] });
+			let credential;
+			try {
+				({ credential } = await register("rsa"));
+				await webauthnVerify(
+					sub,
+					credential.registrationResponse,
+					{ name: "PassKey" },
+					false,
+				);
+			} finally {
+				configure();
+			}
+			equal(await authenticate(credential), sub);
+		});
+	});
+
 	it("Can create WebAuthn on an account without a username", async () => {
 		const subWithoutUsername = await accountCreate();
 
@@ -1005,11 +1148,14 @@ const tests = (config) => {
 		const [token] = await store.selectList(authnGetOptions().table, { sub });
 		await overrideCreateChallenge(sub, token);
 		await webauthnVerify(sub, registrationResponse, { name: "PassKey" });
+		// the token was spent by verify; the credential is what there is to remove
+		const [credential] = await store.selectList(authnGetOptions().table, {
+			sub,
+			type: "WebAuthn-secret",
+		});
 
-		await webauthnRemove(sub, token.id);
-		let authnDB = await store.selectList(authnGetOptions().table, { sub });
-		equal(authnDB.length, 1);
-		authnDB = authnDB.filter((item) => !!item.expire);
+		await webauthnRemove(sub, credential.id);
+		const authnDB = await store.selectList(authnGetOptions().table, { sub });
 		equal(authnDB.length, 0);
 
 		// notify
@@ -1153,11 +1299,15 @@ const tests = (config) => {
 		await overrideCreateChallenge(sub, token);
 		await webauthnVerify(sub, registrationResponse, { name: "PassKey" }, false);
 
+		const notified = mocks.notifyClient.mock.calls.length;
 		await webauthnRemove("sub_1111111", secret.id);
+		await webauthnExpire("sub_1111111", secret.id);
 		const authnDB = await store.selectList(authnGetOptions().table, { sub });
 
 		ok(authnDB);
 		equal(authnDB.length, 1);
+		// nothing changed, so nobody is told it did
+		equal(mocks.notifyClient.mock.calls.length, notified);
 	});
 
 	describe("with custom options", () => {
@@ -1679,14 +1829,31 @@ const tests = (config) => {
 				asked("selectList", ["expire"], (filters) => !!filters.digest),
 				"duplicate check",
 			);
-			ok(asked("selectList", ["encryptionKey", "value"]), "excludeCredentials");
-			ok(asked("selectList", ["id", "create"]), "stale challenges");
+			// authn.list adds `expire` to filter out revoked credentials
 			ok(
-				asked("selectList", ["id", "encryptionKey", "value"]),
+				asked("selectList", ["encryptionKey", "value", "expire"]),
+				"excludeCredentials",
+			);
+			ok(
+				asked("selectList", [
+					"id",
+					"create",
+					"encryptionKey",
+					"value",
+					"expire",
+				]),
+				"stale challenges",
+			);
+			ok(
+				asked("selectList", ["id", "encryptionKey", "value", "expire"]),
 				"allowCredentials",
 			);
 			ok(
-				asked("selectList", ["id"], (filters) => filters.sourceId === id),
+				asked(
+					"selectList",
+					["id", "expire"],
+					(filters) => filters.sourceId === id,
+				),
 				"challenges of a removed credential",
 			);
 			ok(
@@ -1927,6 +2094,124 @@ const registrationResponseSecurityKey = {
 		transports: ["usb"],
 	},
 	authenticatorAttachment: "cross-platform",
+};
+
+// `fmt: none` credentials: RS256 is the shape a TPM-backed Windows Hello key registers with
+const credentialKeys = {
+	rsa: () => {
+		const { publicKey, privateKey } = generateKeyPairSync("rsa", {
+			modulusLength: 2048,
+		});
+		const { n, e } = publicKey.export({ format: "jwk" });
+		return {
+			privateKey,
+			hashAlgorithm: "sha256",
+			coseKey: new Map([
+				[1, 3],
+				[3, -257],
+				[-1, new Uint8Array(Buffer.from(n, "base64url"))],
+				[-2, new Uint8Array(Buffer.from(e, "base64url"))],
+			]),
+		};
+	},
+	// ML-DSA-44 public key is the last 1312 bytes of its SPKI
+	"ml-dsa-44": () => {
+		const { publicKey, privateKey } = generateKeyPairSync("ml-dsa-44");
+		const pub = publicKey
+			.export({ format: "der", type: "spki" })
+			.subarray(-1312);
+		return {
+			privateKey,
+			hashAlgorithm: null,
+			coseKey: new Map([
+				[1, 7],
+				[3, -48],
+				[-1, new Uint8Array(pub)],
+			]),
+		};
+	},
+};
+const makeCredential = (type) => {
+	const { privateKey, hashAlgorithm, coseKey } = credentialKeys[type]();
+	const id = Buffer.alloc(16, 9);
+	const rpIdHash = createHash("sha256").update("localhost").digest();
+	const counter = (value) => {
+		const buffer = Buffer.alloc(4);
+		buffer.writeUInt32BE(value);
+		return buffer;
+	};
+	const idLength = Buffer.alloc(2);
+	idLength.writeUInt16BE(id.length);
+	// flags UP | UV | AT
+	const authData = Buffer.concat([
+		rpIdHash,
+		Buffer.from([0x45]),
+		counter(0),
+		Buffer.alloc(16),
+		idLength,
+		id,
+		Buffer.from(isoCBOR.encode(coseKey)),
+	]);
+	const clientData = (type, challenge) =>
+		Buffer.from(
+			JSON.stringify({ type, challenge, origin: webauthnOrigin }),
+		).toString("base64url");
+	const registrationResponse = {
+		id: id.toString("base64url"),
+		rawId: id.toString("base64url"),
+		response: {
+			attestationObject: isoBase64URL.fromBuffer(
+				isoCBOR.encode(
+					new Map([
+						["fmt", "none"],
+						["attStmt", new Map()],
+						["authData", new Uint8Array(authData)],
+					]),
+				),
+			),
+			clientDataJSON: clientData(
+				"webauthn.create",
+				registrationOptionsOverride.challenge,
+			),
+			transports: ["internal"],
+		},
+		type: "public-key",
+		clientExtensionResults: {},
+		authenticatorAttachment: "platform",
+	};
+	// flags UP | UV
+	const assertionData = Buffer.concat([
+		rpIdHash,
+		Buffer.from([0x05]),
+		counter(1),
+	]);
+	const clientDataJSON = clientData(
+		"webauthn.get",
+		authenticationOptionsOverride.challenge,
+	);
+	const signature = asymmetricSign(
+		hashAlgorithm,
+		Buffer.concat([
+			assertionData,
+			createHash("sha256")
+				.update(Buffer.from(clientDataJSON, "base64url"))
+				.digest(),
+		]),
+		privateKey,
+	);
+	const authenticationResponse = {
+		id: id.toString("base64url"),
+		rawId: id.toString("base64url"),
+		response: {
+			authenticatorData: assertionData.toString("base64url"),
+			clientDataJSON,
+			signature: signature.toString("base64url"),
+		},
+		type: "public-key",
+		clientExtensionResults: {},
+		authenticatorAttachment: "platform",
+	};
+	return { registrationResponse, authenticationResponse };
 };
 
 const authenticationOptionsOverride = {

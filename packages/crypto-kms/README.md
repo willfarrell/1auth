@@ -87,7 +87,7 @@ kms1:AQIDAHh...   wrapped by KMS, this package
 GdT7...           written before providers existed, read as `1`
 ```
 
-Nothing has to migrate. Rows written under the old provider keep decrypting, and each row moves to the new one the next time it is written.
+Nothing has to migrate. `decryptEncryptionKey` unwraps a `1:` row in process, without a KMS call, so rows written under the old provider keep decrypting and each row moves to the new one the next time it is written. An unprefixed row is the one case it cannot tell apart: it is sent to KMS, because a pepper wrapped with `aws kms encrypt` carries no prefix either. Read unprefixed in-process rows with `symmetricDecryptKey`.
 
 Calling this package's configure function registers `kms1` with `@1auth/crypto`. It cannot serve the synchronous path, so it registers a pair of functions that throw and name the async entry point. That is the point of registering: without it a `kms1:` row would fall through to `1` and fail as `Signature incorrect`, which reads like data corruption instead of a missing `await`.
 

@@ -135,12 +135,13 @@ export const create = async (sub, values = {}) => {
 	return { id, username, secret };
 };
 
+// Only a token that was there is worth telling the account about
 export const expire = async (sub, id) => {
-	await authnExpire(options.secret, sub, id);
+	if (!(await authnExpire(options.secret, sub, id))) return;
 	await options.notify.trigger(`${options.notifyId}-expire`, sub);
 };
 
 export const remove = async (sub, id) => {
-	await authnRemove(options.secret, sub, id);
+	if (!(await authnRemove(options.secret, sub, id))) return;
 	await options.notify.trigger(`${options.notifyId}-remove`, sub);
 };

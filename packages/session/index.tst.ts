@@ -24,6 +24,7 @@ import configure, {
 	select,
 	selectBinding,
 	sign,
+	touch,
 	verify,
 } from "@1auth/session";
 import * as dynamodbTable from "@1auth/session/table/dynamodb.js";
@@ -80,6 +81,11 @@ describe("session", () => {
 		expect(lookup("sid_1", { os: "macOS" })).type.toBe<
 			Promise<Row | undefined>
 		>();
+		expect(lookup("sid_1", { os: "macOS" }, { touch: false })).type.toBe<
+			Promise<Row | undefined>
+		>();
+		expect(lookup).type.not.toBeCallableWith("sid_1", {}, { touch: "no" });
+		expect(touch({ sub: "sub_1", id: "session_1" })).type.toBe<Promise<Row>>();
 		expect(select("sub_1", "session_1")).type.toBe<Promise<Row | undefined>>();
 		expect(selectBinding("session_1")).type.toBe<Promise<Row | undefined>>();
 		expect(list("sub_1")).type.toBe<Promise<Row[]>>();

@@ -74,8 +74,9 @@ Almost everything 1auth does is symmetric, so almost everything is already post-
 | Argon2id | Password and secret hashing | ✅ Safe (memory-hard, not quantum-relevant) |
 | CSPRNG tokens and identifiers | Session ids, OTPs, recovery codes | ✅ Safe |
 | EC P-384 (`makeAsymmetricKeys`) | Exported helper, unused by other 1auth packages | ❌ Shor-vulnerable — planned move to ML-DSA-65 (FIPS 204) |
-| ES256 / RS256 (DBSC) | Device-bound session proofs | ❌ Shor-vulnerable — algorithms fixed by the browser DBSC spec |
-| ES256 / RS256 (WebAuthn) | Passkey and security-key assertions | ❌ Shor-vulnerable — algorithms fixed by authenticator hardware |
+| ES256, RS256 opt-in (DBSC) | Device-bound session proofs | ❌ Shor-vulnerable, algorithms fixed by the browser DBSC spec |
+| ML-DSA-44 (WebAuthn) | Passkey and security-key assertions, offered first by default | ✅ Safe (FIPS 204) |
+| EdDSA / ES256, RS256 opt-in (WebAuthn) | Passkey and security-key assertions | ❌ Shor-vulnerable, which one an authenticator supports is fixed by its hardware |
 
 ### Harvest now, decrypt later
 

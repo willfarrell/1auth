@@ -57,7 +57,7 @@ Insert several records.
 
 Update the record matching every filter. If nothing matches, nothing changes and no record is created.
 
-**Returns:** `undefined`
+**Returns:** `true` when a record matched and was written, `false` otherwise. Filtering on the value just read turns this into a compare-and-swap, which is how `@1auth/authn` counts one-time code attempts atomically.
 
 ### `remove(table, filters)`
 
@@ -78,6 +78,7 @@ Filters are never silently dropped, so a mistake can't widen a query to more row
 - A value of `undefined` throws.
 - An empty array throws.
 - `update` and `remove` throw when `filters` is empty.
+- A value of `null` matches a column with no value, on every store.
 
 The SQL stores also throw on any column name that isn't a plain identifier (`^[A-Za-z_][A-Za-z0-9_]*$`).
 

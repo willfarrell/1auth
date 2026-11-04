@@ -348,6 +348,49 @@ describe("@1auth/authn", () => {
 			equal(list[0].name, "two");
 			equal(list[0].value, "b");
 		});
+		it("Will not list an expired credential when fields omit expire", async () => {
+			const { id } = await authnCreate(plain(), sub, { value: "a" });
+			await authnCreate(plain(), sub, { value: "b" });
+			await authnExpire(plain(), sub, id);
+			const fields = ["id", "value", "encryptionKey"];
+			const list = await authnList(plain(), sub, {}, fields);
+			deepEqual(
+				list.map(({ value }) => value),
+				["b"],
+			);
+			// `expire` was read to filter, not handed back
+			equal("expire" in list[0], false);
+			// and the caller's array is left as it was passed
+			deepEqual(fields, ["id", "value", "encryptionKey"]);
+		});
+		it("Will add only `expire` to the projection it sends the store", async () => {
+			const calls = [];
+			configure({
+				store: {
+					...storeSQLite,
+					selectList: async (t, filters, fields) => {
+						calls.push(fields);
+						return await storeSQLite.selectList(t, filters, fields);
+					},
+				},
+			});
+			try {
+				await authnCreate(plain(), sub, { value: "a", name: "one" });
+				const [item] = await authnList(plain(), sub, {}, ["id", "name"]);
+				deepEqual(calls.at(-1), ["id", "name", "expire"]);
+				// only what was asked for comes back
+				deepEqual(Object.keys(item).sort(), ["encryptionKey", "id", "name"]);
+				// a projection that already names `expire` goes as is, and keeps it
+				const [withExpire] = await authnList(plain(), sub, {}, [
+					"id",
+					"expire",
+				]);
+				deepEqual(calls.at(-1), ["id", "expire"]);
+				ok("expire" in withExpire);
+			} finally {
+				configure();
+			}
+		});
 		it("Will list a credential expiring exactly now", async (t) => {
 			const { id } = await authnCreate(plain(), sub, { value: "a" });
 			const now = nowInSeconds();
@@ -509,6 +552,18 @@ describe("@1auth/authn", () => {
 			});
 			await authnVerifySecret(plain(), sub, id);
 			equal((await authnSelect(plain(), subOther, unverified)).verify, null);
+		});
+		it("Will not verify a credential of another type", async () => {
+			const { id } = await authnCreate(plain({ type: "other" }), sub, {
+				value: "a",
+			});
+			await authnVerifySecret(plain(), sub, id);
+			equal(
+				(await authnSelect(plain({ type: "other" }), sub, id)).verify,
+				null,
+			);
+			await authnVerifySecret(plain({ type: "other" }), sub, id);
+			ok((await authnSelect(plain({ type: "other" }), sub, id)).verify);
 		});
 		it("Will throw without a sub or an id", async () => {
 			await rejects(() => authnVerifySecret(plain(), undefined, "authn_1"), {
@@ -921,6 +976,80 @@ describe("@1auth/authn", () => {
 			await rejects(() => authnVerify(config, sub, "wrong"));
 			equal((await authnSelect(config, sub, id)).attempts, 1);
 		});
+		it("Will not let parallel guesses get past the attempt limit", async () => {
+			const config = plain({ otp: true });
+			await authnCreate(config, sub, { value: "a" });
+			let checked = 0;
+			const counting = plain({
+				otp: true,
+				verify: (input, value) => {
+					checked += 1;
+					return input === value;
+				},
+			});
+			// every request reads the row before any of them writes it back
+			const guesses = Array.from({ length: 30 }, (_, i) => `wrong${i}`);
+			guesses.push("a");
+			await Promise.allSettled(
+				guesses.map((guess) => authnVerify(counting, sub, guess)),
+			);
+			ok(
+				checked <= authnGetOptions().otpMaxAttempts,
+				`checked ${checked} guesses`,
+			);
+			ok(checked >= 1);
+		});
+		it("Will not check a guess against a row it lost the claim on", async () => {
+			const config = plain({ otp: true });
+			const { id } = await authnCreate(config, sub, { value: "a" });
+			// another request moved `attempts` on after this one read the row
+			configure({
+				store: {
+					...storeSQLite,
+					selectList: async (...args) => {
+						const rows = await storeSQLite.selectList(...args);
+						await storeSQLite.update(table, { sub, id }, { attempts: 3 });
+						return rows;
+					},
+				},
+			});
+			let checked = 0;
+			const counting = plain({
+				otp: true,
+				verify: (input, value) => {
+					checked += 1;
+					return input === value;
+				},
+			});
+			try {
+				await rejects(() => authnVerify(counting, sub, "a"), {
+					cause: { type: "invalid" },
+				});
+			} finally {
+				configure();
+			}
+			equal(checked, 0);
+			// the winner's count stands, it is not written back over
+			equal((await authnSelect(config, sub, id)).attempts, 3);
+		});
+		it("Will refuse a row already at the attempt limit without checking it", async () => {
+			const config = plain({ otp: true });
+			const { id } = await authnCreate(config, sub, { value: "a" });
+			await storeSQLite.update(table, { sub, id }, { attempts: 5 });
+			let checked = 0;
+			const counting = plain({
+				otp: true,
+				verify: (input, value) => {
+					checked += 1;
+					return input === value;
+				},
+			});
+			await rejects(() => authnVerify(counting, sub, "a"), {
+				cause: { type: "invalid" },
+			});
+			equal(checked, 0);
+			equal(await authnSelect(config, sub, id), undefined);
+		});
 		it("Will not count failed attempts on a reusable credential", async () => {
 			const { id } = await authnCreate(plain(), sub, { value: "a" });
 			for (let i = 0; i < 6; i++) {
@@ -1034,6 +1163,29 @@ describe("@1auth/authn", () => {
 			equal(await authnCount(plain(), subOther), 1);
 			const [other] = await authnList(plain(), subOther);
 			equal(other.expire, null);
+		});
+		it("Will report whether expire touched a credential", async () => {
+			const { id } = await authnCreate(plain(), sub, { value: "a" });
+			equal(await authnExpire(plain(), sub, id), true);
+			equal(await authnExpire(plain(), subOther, id), false);
+			equal(await authnExpire(plain({ type: "other" }), sub, id), false);
+			equal(await authnExpire(plain(), sub, "authn_missing"), false);
+		});
+		it("Will not expire a credential of another type", async () => {
+			const { id } = await authnCreate(plain({ type: "other" }), sub, {
+				value: "a",
+				verify: 1,
+			});
+			// the fixture already holds one of this type
+			const before = await authnCount(plain({ type: "other" }), sub);
+			await authnExpire(plain(), sub, id);
+			equal(await authnCount(plain({ type: "other" }), sub), before);
+			equal(
+				(await authnSelect(plain({ type: "other" }), sub, id)).expire,
+				null,
+			);
+			await authnExpire(plain({ type: "other" }), sub, id);
+			equal(await authnCount(plain({ type: "other" }), sub), before - 1);
 		});
 		it("Can expire with extra values", async () => {
 			const { id } = await authnCreate(plain(), sub, { value: "a" });

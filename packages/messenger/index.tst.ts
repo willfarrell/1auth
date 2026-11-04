@@ -57,7 +57,7 @@ describe("messenger", () => {
 	test("create needs a digest", () => {
 		expect(
 			create("emailAddress", "sub_1", { value: "a@example.com", digest: "d" }),
-		).type.toBe<Promise<string | undefined>>();
+		).type.toBe<Promise<string>>();
 		expect(create).type.not.toBeCallableWith("emailAddress", "sub_1", {
 			value: "a@example.com",
 		});

@@ -318,6 +318,20 @@ const tests = (config) => {
 		authnDB = await store.selectList(authnGetOptions().table, { sub });
 		equal(authnDB.length, 5);
 	});
+	it("Can update recovery codes on an account that has none", async () => {
+		const secrets = await recoveryCodesUpdate(sub);
+		equal(secrets.length, 5);
+
+		deepEqual(mocks.notifyClient.mock.calls[0].arguments[0], {
+			id: "authn-recovery-codes-update",
+			sub,
+			data: {},
+			options: {},
+		});
+		const authnDB = await store.selectList(authnGetOptions().table, { sub });
+		equal(authnDB.length, 5);
+		await recoveryCodesAuthenticate(username, secrets[0].value);
+	});
 	it("Can remove recovery codes on an account", async () => {
 		const secrets = await recoveryCodesCreate(sub);
 		await recoveryCodesRemove(sub);
@@ -360,6 +374,15 @@ const tests = (config) => {
 		} catch (e) {
 			equal(e.message, "401 Unauthorized");
 		}
+	});
+	it("Will NOT notify when removing a code that is not there", async () => {
+		await recoveryCodesCreate(sub);
+		await recoveryCodesRemove(sub, "authn_missing");
+		deepEqual(
+			mocks.notifyClient.mock.calls.map((call) => call.arguments[0].id),
+			["authn-recovery-codes-create"],
+		);
+		equal((await store.selectList(authnGetOptions().table, { sub })).length, 5);
 	});
 	it("Can NOT remove recovery codes from someone elses account", async () => {
 		const secrets = await recoveryCodesCreate(sub);

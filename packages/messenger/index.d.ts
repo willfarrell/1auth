@@ -50,13 +50,13 @@ export function select(
 	sub: string,
 	id: string,
 ): Promise<Row | undefined>;
-/** Resolves the messenger `id`, or `undefined` when another account already verified the value. */
+/** Resolves the messenger `id`. A value another account verified gets no code, its owner is notified. */
 export function create(
 	type: string,
 	sub: string,
 	values: Row & { digest: string },
-): Promise<string | undefined>;
-/** Replaces any previous token and sends the new one, resolves its `id`. */
+): Promise<string>;
+/** Replaces any previous token and sends the new one, resolves its `id`. Sends nothing while another account holds the value verified. Throws `404 Not Found` for an id this `sub` does not hold. */
 export function createToken(
 	type: string,
 	sub: string,

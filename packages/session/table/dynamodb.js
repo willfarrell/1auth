@@ -134,6 +134,7 @@ export const create = async (client, table = name, { dbsc = true } = {}) => {
 								"metadata", // optional, used in tests
 								"publicKey",
 								"create",
+								"update",
 								"expire",
 							],
 						},

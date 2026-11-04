@@ -71,7 +71,27 @@ export const getOptions = () => options;
 
 const idleUpdateInterval = 60;
 
-export const lookup = async (sid, value = {}) => {
+// Slides the idle timeout forward, writing at most once a minute
+export const touch = async (session) => {
+	const now = nowInSeconds();
+	if (session.update + idleUpdateInterval <= now) {
+		session.update = now;
+		await options.store.update(
+			options.table,
+			{ sub: session.sub, id: session.id },
+			{ update: now },
+		);
+	}
+	return session;
+};
+
+// `touch: false` leaves the idle timeout where it is, for a caller with checks
+// of its own to `touch` once the request has passed them
+export const lookup = async (
+	sid,
+	value = {},
+	{ touch: touchIdle = true } = {},
+) => {
 	if (!sid || typeof sid !== "string") {
 		throw new Error("401 Unauthorized", { cause: { sid } });
 	}
@@ -91,13 +111,8 @@ export const lookup = async (sid, value = {}) => {
 			encryptedKey: session.encryptionKey,
 		});
 		if (options.checkMetadata(decryptedValue, encodedValue)) {
-			if (session.update + idleUpdateInterval <= now) {
-				session.update = now;
-				await options.store.update(
-					options.table,
-					{ sub: session.sub, id: session.id },
-					{ update: now },
-				);
+			if (touchIdle) {
+				await touch(session);
 			}
 			return session;
 		}
@@ -186,12 +201,21 @@ const enforceLimit = async (sub, now) => {
 	const sessions = await options.store.selectList(options.table, { sub }, [
 		"id",
 		"create",
+		"update",
 		"expire",
 	]);
-	// `selectList` hands back expired rows too, and the same second counts as
-	// live in `lookup`, so this has to agree with it or the cap would evict a
-	// session that is still usable.
-	const live = sessions.filter((session) => now <= session.expire);
+	// `selectList` hands back expired and idle rows too, and the same second
+	// counts as live in `lookup`, so this has to agree with it or the cap would
+	// evict a session that is still usable and keep one that is dead. A DynamoDB
+	// `sub` index made before `update` was projected leaves it off, so such a row
+	// is judged on `expire` alone, as it was before.
+	const live = sessions.filter(
+		(session) =>
+			now <= session.expire &&
+			(!options.idleExpire ||
+				session.update === undefined ||
+				now <= session.update + options.idleExpire),
+	);
 	// One more session is about to land, so leave at most `limit - 1` behind. A
 	// lowered `limit` can leave an account well over the cap, so this is a count,
 	// not a single eviction.
@@ -200,9 +224,9 @@ const enforceLimit = async (sub, now) => {
 	// No store promises an order, and DynamoDB does not return one that matches
 	// `create`, so the oldest has to be picked here.
 	live.sort((a, b) => a.create - b.create);
-	for (let i = 0; i < evictions; i++) {
-		await expire(sub, live[i].id);
-	}
+	await Promise.all(
+		live.slice(0, evictions).map((session) => expire(sub, session.id)),
+	);
 };
 
 /**

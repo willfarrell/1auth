@@ -35,6 +35,7 @@ import crypto, {
 	symmetricEncryptionAlgorithmOf,
 	symmetricGenerateEncryptionKey,
 	symmetricRotation,
+	symmetricSignatureHashAlgorithmOf,
 	symmetricSignatureSign,
 	symmetricSignatureVerify,
 	verifyArgon2,
@@ -136,6 +137,9 @@ describe("symmetric", () => {
 			}),
 		).type.toBe<string>();
 		expect(symmetricEncryptionAlgorithmOf("packet")).type.toBe<
+			string | undefined
+		>();
+		expect(symmetricSignatureHashAlgorithmOf("packet")).type.toBe<
 			string | undefined
 		>();
 	});

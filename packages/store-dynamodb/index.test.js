@@ -566,6 +566,97 @@ console.log(JSON.stringify(sent));`,
 				);
 			});
 
+			it("Should read a null filter as a missing or NULL attribute", async () => {
+				await store.insert(table, row);
+				sent.length = 0;
+				equal(
+					await store.update(
+						table,
+						{ sub: row.sub, id: row.id, name: null },
+						{ name: "n" },
+					),
+					true,
+				);
+				const { input } = lastSent();
+				equal(
+					input.ConditionExpression,
+					"attribute_exists(#sub) and attribute_exists(#id) and (attribute_not_exists(#name) or attribute_type(#name, :if_name))",
+				);
+				deepEqual(input.ExpressionAttributeValues[":if_name"], { S: "NULL" });
+				// an attribute stored as NULL is as empty as one never written
+				await store.insert(table, { ...row, id: 2, name: null });
+				equal(
+					await store.update(
+						table,
+						{ sub: row.sub, id: 2, name: null },
+						{ value: "b" },
+					),
+					true,
+				);
+				// the GetItem path checks the item it gets back the same way
+				equal(
+					await store.select(table, { sub: row.sub, id: 1, name: null }),
+					undefined,
+				);
+				equal(
+					(await store.select(table, { sub: row.sub, id: 2, name: null })).id,
+					2,
+				);
+				equal(
+					(await store.select(table, { sub: row.sub, id: 1, name: "n" })).id,
+					1,
+				);
+				// a null filter can never be a key condition, even on a key attribute
+				configure({
+					client: {
+						send: async (command) => {
+							sent.push(command);
+							return { Items: [] };
+						},
+					},
+				});
+				try {
+					await store.selectList(table, { sub: row.sub, type: null });
+				} finally {
+					configure();
+				}
+				equal(lastSent().input.KeyConditionExpression, "#sub = :sub");
+				equal(
+					lastSent().input.FilterExpression,
+					"(attribute_not_exists(#type) or attribute_type(#type, :type))",
+				);
+			});
+
+			it("Should delete matched rows concurrently, not one by one", async () => {
+				await store.insertList(table, [
+					{ ...row, digest: "d" },
+					{ id: 2, sub: row.sub, value: "b", digest: "d" },
+					{ id: 3, sub: row.sub, value: "c", digest: "d" },
+				]);
+				let inFlight = 0;
+				let maxInFlight = 0;
+				configure({
+					client: {
+						send: async (command) => {
+							const isDelete = command.constructor.name === "DeleteItemCommand";
+							if (isDelete) maxInFlight = Math.max(maxInFlight, ++inFlight);
+							try {
+								return await mocks.storeClient.send(command);
+							} finally {
+								if (isDelete) inFlight--;
+							}
+						},
+					},
+				});
+				try {
+					equal(await store.remove(table, { digest: "d" }), true);
+				} finally {
+					configure();
+				}
+				equal(maxInFlight, 3);
+				deepEqual(await store.selectList(table, { sub: row.sub }), []);
+			});
+
 			it("Should key an update on sub alone for a sub-keyed table", async () => {
 				await rejects(() =>
 					store.update(table, { sub: row.sub }, { value: "b" }),
@@ -885,10 +976,12 @@ console.log(JSON.stringify(sent));`,
 			});
 
 			it("Should throw when items stay unprocessed", async () => {
+				const sentAt = [];
 				configure({
 					client: {
 						send: async (command) => {
 							sent.push(command);
+							sentAt.push(performance.now());
 							return { UnprocessedItems: command.input.RequestItems };
 						},
 					},
@@ -904,6 +997,12 @@ console.log(JSON.stringify(sent));`,
 						},
 					);
 					deepEqual(batchSizes(), [2, 2, 2, 2, 2, 2]);
+					// Only a lower bound, so a slow runner can't fail it. The 2ms is
+					// slack for timers firing marginally early.
+					[25, 50, 100, 200, 400].forEach((delay, retry) => {
+						const waited = sentAt[retry + 1] - sentAt[retry];
+						ok(waited >= delay - 2, `retry ${retry} waited ${waited}ms`);
+					});
 				} finally {
 					configure();
 				}
@@ -1162,7 +1261,10 @@ console.log(JSON.stringify(sent));`,
 				try {
 					await rejects(
 						() => store.insert(table, { sub: "sub_000", value: "a" }),
-						{ message: /needs an `id`/ },
+						{
+							message:
+								"@1auth/store-dynamodb insert() needs an `id`, or a `randomId` to make one",
+						},
 					);
 				} finally {
 					configure();
@@ -1175,6 +1277,36 @@ console.log(JSON.stringify(sent));`,
 				ok(typeof id === "number");
 				const result = await store.select(table, { sub: "sub_000", id });
 				equal(result.value, "a");
+			});
+
+			it("Should assign randomId per row in insertList, as insert does", async () => {
+				const rows = [
+					{ sub: "sub_000", value: "a" },
+					{ id: 7, sub: "sub_000", value: "b" },
+				];
+				const ids = await store.insertList(table, rows);
+				equal(typeof ids[0], "number");
+				equal(ids[1], 7);
+				equal(
+					(await store.select(table, { sub: "sub_000", id: ids[0] })).value,
+					"a",
+				);
+				// the caller's rows are left as they were passed
+				equal("id" in rows[0], false);
+			});
+			it("Should throw from insertList when no id and no randomId are available", async () => {
+				configure({ randomId: undefined });
+				try {
+					await rejects(
+						() => store.insertList(table, [{ sub: "sub_000", value: "a" }]),
+						{
+							message:
+								"@1auth/store-dynamodb insertList() needs an `id`, or a `randomId` to make one",
+						},
+					);
+				} finally {
+					configure();
+				}
 			});
 
 			it("Should not mutate the input values object on update", async () => {

@@ -27,6 +27,7 @@ export const createSqlStore = ({
 		makeSqlPartsFor(options.placeholder, filters, values, fields, idxStart);
 
 	const exists = async (table, filters) => {
+		assertTable(table);
 		log(options, "exists", table, filters);
 		const { select, where, parameters } = makeSqlParts(filters, {}, ["sub"]);
 		const sql = `SELECT ${select} FROM ${table} ${where} LIMIT 1`;
@@ -35,6 +36,7 @@ export const createSqlStore = ({
 	};
 
 	const select = async (table, filters = {}, fields = []) => {
+		assertTable(table);
 		log(options, "select", table, filters, fields);
 		const { select, where, parameters } = makeSqlParts(filters, {}, fields);
 		const sql = `SELECT ${select} FROM ${table} ${where} LIMIT 1`;
@@ -45,6 +47,7 @@ export const createSqlStore = ({
 	};
 
 	const selectList = async (table, filters = {}, fields = []) => {
+		assertTable(table);
 		log(options, "selectList", table, filters, fields);
 		const { select, where, parameters } = makeSqlParts(filters, {}, fields);
 		const sql = `SELECT ${select} FROM ${table} ${where}`;
@@ -56,6 +59,7 @@ export const createSqlStore = ({
 	};
 
 	const insert = async (table, inputValues = {}) => {
+		assertTable(table);
 		const values = makeValues(inputValues, options);
 		log(options, "insert", table, values);
 		const { insert, parameters } = makeSqlParts({}, values);
@@ -65,6 +69,7 @@ export const createSqlStore = ({
 	};
 
 	const insertList = async (table, rows = []) => {
+		assertTable(table);
 		log(options, "insertList", table, rows);
 		if (!rows.length) return [];
 		const { insert, parameters } = makeInsertList(
@@ -76,15 +81,18 @@ export const createSqlStore = ({
 	};
 
 	const update = async (table, filters = {}, inputValues = {}) => {
+		assertTable(table);
 		const values = makeValues(inputValues, options);
 		log(options, "update", table, filters, values);
 		const { update, where, parameters } = makeSqlParts(filters, values);
 		assertWhere(table, where);
-		const sql = `UPDATE ${table} SET ${update} ${where}`;
-		await run(sql, parameters);
+		const sql = `UPDATE ${table} SET ${update} ${where} RETURNING id`;
+		const res = await run(sql, parameters);
+		return !!res?.[0]?.id;
 	};
 
 	const remove = async (table, filters = {}) => {
+		assertTable(table);
 		log(options, "remove", table, filters);
 		const { where, parameters } = makeSqlParts(filters);
 		assertWhere(table, where);
@@ -137,6 +145,19 @@ const quote = (key) => {
 		throw new Error("@1auth/store-sql invalid identifier", { cause: { key } });
 	}
 	return `"${key}"`;
+};
+
+// Table names come from configuration, but are written into the statement
+// unquoted, so they get the same allow-list as every column. Validated rather
+// than quoted, so existing case-folded names keep resolving.
+const tablePattern = /^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)?$/;
+const assertTable = (table) => {
+	// `test` would coerce undefined to the string "undefined", which passes
+	if (typeof table !== "string" || !tablePattern.test(table)) {
+		throw new Error("@1auth/store-sql invalid table name", {
+			cause: { table },
+		});
+	}
 };
 
 const assertWhere = (table, where) => {
@@ -194,6 +215,10 @@ export const makeSqlPartsFor = (
 					.join(",");
 				parameters = parameters.concat(value);
 				return `${quote(key)} IN (${sql})`;
+			}
+			// `= NULL` is never true, so null has to read as "has no value"
+			if (value === null) {
+				return `${quote(key)} IS NULL`;
 			}
 			const sql = `${quote(key)} = ${getPlaceholderFor(placeholder, idx++)}`;
 			parameters.push(value);

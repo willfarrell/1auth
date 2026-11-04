@@ -50,7 +50,6 @@ const defaults = {
 	defaultEncoding: "base64",
 	defaultHashAlgorithm: "sha3-384",
 };
-const symmetricEncryptionEncodingLengths = {};
 const options = {};
 export default (opt = {}) => {
 	Object.assign(options, defaults, opt);
@@ -64,9 +63,28 @@ export default (opt = {}) => {
 	options.symmetricEncryptionKey = makeOptionsBuffer(
 		options.symmetricEncryptionKey,
 	);
+	// Both supported ciphers take exactly 256 bits; anything else would pass
+	// here and fail on the first encrypt instead.
+	if (options.symmetricEncryptionKey.length !== 32) {
+		throw new RangeError(
+			`@1auth/crypto symmetricEncryptionKey must be 32 bytes, received ${options.symmetricEncryptionKey.length}. Use symmetricRandomEncryptionKey().`,
+			{ cause: { length: options.symmetricEncryptionKey.length } },
+		);
+	}
 	options.symmetricEncryptionEncoding ??= options.defaultEncoding;
+	if (!symmetricEncryptionEncodings.has(options.symmetricEncryptionEncoding)) {
+		throw new RangeError(
+			"@1auth/crypto symmetricEncryptionEncoding must be base64, base64url or hex",
+			{
+				cause: {
+					symmetricEncryptionEncoding: options.symmetricEncryptionEncoding,
+				},
+			},
+		);
+	}
 	symmetricEncryptionAlgorithmId(options.symmetricEncryptionAlgorithm);
 	options.symmetricSignatureHashAlgorithm ??= options.defaultHashAlgorithm;
+	symmetricSignatureHashAlgorithmId(options.symmetricSignatureHashAlgorithm);
 	if (!options.symmetricSignatureSecret) {
 		throw new Error(
 			"@1auth/crypto symmetricSignatureSecret is empty, use a stored secret made from randomBytes(32) Signature disabled.",
@@ -75,6 +93,14 @@ export default (opt = {}) => {
 	options.symmetricSignatureSecret = makeOptionsBuffer(
 		options.symmetricSignatureSecret,
 	);
+	// The Encrypt-then-MAC key; shorter than the 256 bits every other secret
+	// takes weakens every packet's signature.
+	if (options.symmetricSignatureSecret.length < 32) {
+		throw new RangeError(
+			`@1auth/crypto symmetricSignatureSecret must be at least 32 bytes, received ${options.symmetricSignatureSecret.length}. Use symmetricRandomSignatureSecret().`,
+			{ cause: { length: options.symmetricSignatureSecret.length } },
+		);
+	}
 	options.symmetricSignatureEncoding ??= options.defaultEncoding;
 	options.asymmetricSignatureHashAlgorithm ??= options.defaultHashAlgorithm;
 	options.asymmetricSignatureEncoding ??= options.defaultEncoding;
@@ -104,14 +130,6 @@ export default (opt = {}) => {
 	}
 	options.digestChecksumHashAlgorithm ??= options.defaultHashAlgorithm;
 	options.digestChecksumEncoding ??= options.defaultEncoding;
-
-	// Encoded lengths for parsing ciphertext packets (IV = 12 bytes, authTag = 16 bytes)
-	const encodedLength = (byteLength) =>
-		Buffer.alloc(byteLength).toString(options.symmetricEncryptionEncoding)
-			.length;
-	symmetricEncryptionEncodingLengths.iv = encodedLength(ivLength);
-	symmetricEncryptionEncodingLengths.ivAndAuthTag =
-		symmetricEncryptionEncodingLengths.iv + encodedLength(authTagLength);
 };
 
 export const makeOptionsBuffer = (
@@ -293,6 +311,17 @@ export const assertMemoryCost = (memoryCost) => {
 	}
 };
 
+// node's argon2 has no version parameter: every hash it makes is v=19 (0x13)
+const argon2Version = 19;
+const assertVersion = (version) => {
+	if (version !== argon2Version) {
+		throw new RangeError(
+			`argon2 version must be ${argon2Version}, received ${version}`,
+			{ cause: { version } },
+		);
+	}
+};
+
 // NOTE: the PHC string spec defines `m=` as memory in KiB, but we write the
 // exponent. Every stored hash encodes it this way, so correcting it is a format
 // migration (decode both forms, rehash on next verify), not an edit.
@@ -359,6 +388,7 @@ export const createArgon2 = async (
 	parallelism ??= options.secretArgon2Parallelism;
 	nonceLength ??= options.secretArgon2NonceLength;
 	hashLength ??= options.secretArgon2HashLength;
+	assertVersion(version);
 	assertMemoryCost(memoryCost);
 
 	const nonce = randomBytes(nonceLength);
@@ -412,7 +442,37 @@ const authTagLength = 16;
 const ivLength = 12;
 // The subject is bound into the ciphertext as associated data. Buffer.from
 // decodes utf8 by default, which is what every stored packet was written with.
-const associatedData = (sub) => Buffer.from(sub);
+const associatedData = (sub) => {
+	if (sub == null) {
+		throw new TypeError(
+			"@1auth/crypto sub is required, it is bound as associated data",
+		);
+	}
+	return Buffer.from(sub);
+};
+
+// The packet is split on `:` and `.`, and the IV and auth tag are cut by
+// length, so only encodings that carry arbitrary bytes in neither are safe.
+const symmetricEncryptionEncodings = new Set(["base64", "base64url", "hex"]);
+// Encoded widths of the IV and auth tag, per encoding a packet is read in
+const symmetricEncryptionEncodingLengths = Object.create(null);
+for (const encoding of symmetricEncryptionEncodings) {
+	const iv = Buffer.alloc(ivLength).toString(encoding).length;
+	symmetricEncryptionEncodingLengths[encoding] = {
+		iv,
+		ivAndAuthTag: iv + Buffer.alloc(authTagLength).toString(encoding).length,
+	};
+}
+const encodingLengths = (encoding) => {
+	const lengths = symmetricEncryptionEncodingLengths[encoding];
+	if (!lengths) {
+		throw new RangeError(
+			"@1auth/crypto decoding must be base64, base64url or hex",
+			{ cause: { decoding: encoding } },
+		);
+	}
+	return lengths;
+};
 
 export const symmetricRandomEncryptionKey = () => {
 	return randomBytes(32); // 256 bits
@@ -447,6 +507,49 @@ const symmetricEncryptionAlgorithmId = (encryptionAlgorithm) => {
 		});
 	}
 	return id;
+};
+
+// HMAC ids: JOSE names (RFC 7518 3.2), the same shape for SHA-3. sha3-384 writes none, so its packets stay the shape rc.10 reads.
+const symmetricSignatureHashAlgorithmIds = Object.assign(Object.create(null), {
+	sha256: "HS256",
+	sha384: "HS384",
+	sha512: "HS512",
+	"sha3-256": "HS3-256",
+	"sha3-384": "HS3-384",
+	"sha3-512": "HS3-512",
+});
+const symmetricSignatureHashAlgorithmUnnamed = "sha3-384";
+const symmetricSignatureHashAlgorithmNames = Object.assign(
+	Object.create(null),
+	Object.fromEntries(
+		Object.entries(symmetricSignatureHashAlgorithmIds).map(([name, id]) => [
+			id,
+			name,
+		]),
+	),
+);
+
+// Returns the id to write, undefined for sha3-384
+const symmetricSignatureHashAlgorithmId = (hashAlgorithm) => {
+	const name = String(hashAlgorithm).toLowerCase();
+	const id = symmetricSignatureHashAlgorithmIds[name];
+	if (!id) {
+		throw new Error("Unsupported symmetricSignatureHashAlgorithm", {
+			cause: { hashAlgorithm },
+		});
+	}
+	return name === symmetricSignatureHashAlgorithmUnnamed ? undefined : id;
+};
+
+// Read before the signature is checked, which is safe because the id is inside the signed data
+const parseHashAlgorithmPacket = (data, hashAlgorithm) => {
+	const separatorIndex = data.indexOf(symmetricEncryptionAlgorithmSeparator);
+	const name =
+		symmetricSignatureHashAlgorithmNames[data.substring(0, separatorIndex)];
+	if (!name) {
+		return { hashAlgorithm, packet: data };
+	}
+	return { hashAlgorithm: name, packet: data.substring(separatorIndex + 1) };
 };
 
 const parseEncryptedDataPacket = (encryptedDataPacket, encryptionAlgorithm) => {
@@ -542,19 +645,30 @@ registerEncryptionKeyProvider(encryptionKeyProviderDefault, {
 	},
 });
 
-export const symmetricEncryptionAlgorithmOf = (signedEncryptedDataPacket) => {
+// Unverified, for a sweep deciding which rows still need work
+const unsignedPacketOf = (signedEncryptedDataPacket) => {
 	if (typeof signedEncryptedDataPacket !== "string") return undefined;
-	let data = signedEncryptedDataPacket.substring(
+	const data = signedEncryptedDataPacket.substring(
 		0,
 		signedEncryptedDataPacket.lastIndexOf("."),
 	);
 	const providerPrefix = `${encryptionKeyProviderDefault}${encryptionKeyProviderSeparator}`;
-	if (data.startsWith(providerPrefix)) {
-		data = data.substring(providerPrefix.length);
-	}
-	const { encryptionAlgorithm } = parseEncryptedDataPacket(data);
-	return encryptionAlgorithm;
+	return parseHashAlgorithmPacket(
+		data.startsWith(providerPrefix)
+			? data.substring(providerPrefix.length)
+			: data,
+	);
 };
+
+export const symmetricEncryptionAlgorithmOf = (signedEncryptedDataPacket) => {
+	const parsed = unsignedPacketOf(signedEncryptedDataPacket);
+	if (!parsed) return undefined;
+	return parseEncryptedDataPacket(parsed.packet).encryptionAlgorithm;
+};
+
+// undefined for sha3-384 as well as for a packet older than hash ids
+export const symmetricSignatureHashAlgorithmOf = (signedEncryptedDataPacket) =>
+	unsignedPacketOf(signedEncryptedDataPacket)?.hashAlgorithm;
 
 export const symmetricGenerateEncryptionKey = (sub, providerOptions = {}) => {
 	const name =
@@ -588,11 +702,11 @@ export const symmetricEncryptFields = (
 	},
 	fields,
 ) => {
+	// Not the write cipher or hash: the row key was wrapped under its own
 	if (encryptedKey) {
 		encryptionKey ??= symmetricDecryptKey(encryptedKey, {
 			signatureSecret,
 			sub,
-			hashAlgorithm,
 		});
 	}
 	if (!fields?.length) return values;
@@ -626,11 +740,11 @@ export const symmetricEncrypt = (
 		hashAlgorithm,
 	},
 ) => {
+	// Not the write cipher or hash: the row key was wrapped under its own
 	if (encryptedKey) {
 		encryptionKey ??= symmetricDecryptKey(encryptedKey, {
 			signatureSecret,
 			sub,
-			hashAlgorithm,
 		});
 	}
 	if (!data) return data;
@@ -641,6 +755,8 @@ export const symmetricEncrypt = (
 	encryptionAlgorithm ??= options.symmetricEncryptionAlgorithm;
 	const encryptionAlgorithmId =
 		symmetricEncryptionAlgorithmId(encryptionAlgorithm);
+	hashAlgorithm ??= options.symmetricSignatureHashAlgorithm;
+	const hashAlgorithmId = symmetricSignatureHashAlgorithmId(hashAlgorithm);
 	iv ??= randomIV();
 	const cipher = createCipheriv(encryptionAlgorithm, encryptionKey, iv);
 	cipher.setAAD(associatedData(sub));
@@ -649,6 +765,9 @@ export const symmetricEncrypt = (
 	const authTag = cipher.getAuthTag();
 
 	const encryptedDataPacket =
+		(hashAlgorithmId
+			? hashAlgorithmId + symmetricEncryptionAlgorithmSeparator
+			: "") +
 		encryptionAlgorithmId +
 		symmetricEncryptionAlgorithmSeparator +
 		iv.toString(encoding) +
@@ -741,10 +860,16 @@ export const symmetricDecrypt = (
 		return signedEncryptedDataPacket;
 	decoding ??= options.symmetricEncryptionEncoding;
 
+	// A named hash wins over the passed one, as a named cipher does
+	const { hashAlgorithm: packetHashAlgorithm } = parseHashAlgorithmPacket(
+		signedEncryptedDataPacket,
+		hashAlgorithm,
+	);
+
 	// remove signature when successful
 	const signedData = symmetricSignatureVerify(signedEncryptedDataPacket, {
 		signatureSecret,
-		hashAlgorithm,
+		hashAlgorithm: packetHashAlgorithm,
 	});
 
 	if (signedData === false) {
@@ -756,24 +881,20 @@ export const symmetricDecrypt = (
 		encryptionAlgorithm: packetEncryptionAlgorithm,
 		packet: encryptedDataPacket,
 	} = parseEncryptedDataPacket(
-		signedData,
+		parseHashAlgorithmPacket(signedData).packet,
 		encryptionAlgorithm ?? options.symmetricEncryptionAlgorithm,
 	);
+	const lengths = encodingLengths(decoding);
 	const iv = Buffer.from(
-		encryptedDataPacket.substring(0, symmetricEncryptionEncodingLengths.iv),
+		encryptedDataPacket.substring(0, lengths.iv),
 		decoding,
 	);
 	const authTag = Buffer.from(
-		encryptedDataPacket.substring(
-			symmetricEncryptionEncodingLengths.iv,
-			symmetricEncryptionEncodingLengths.ivAndAuthTag,
-		),
+		encryptedDataPacket.substring(lengths.iv, lengths.ivAndAuthTag),
 		decoding,
 	);
 	const encryptedData = Buffer.from(
-		encryptedDataPacket.substring(
-			symmetricEncryptionEncodingLengths.ivAndAuthTag,
-		),
+		encryptedDataPacket.substring(lengths.ivAndAuthTag),
 		decoding,
 	);
 

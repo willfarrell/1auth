@@ -44,6 +44,8 @@ export interface WebAuthnOptions extends AuthnOptions {
 	preferredAuthenticatorType: AuthenticatorType | undefined;
 	/** What registrations are accepted, independent of the browser hint. */
 	credentialDeviceType: CredentialDeviceType | undefined;
+	/** COSE algorithm ids offered and accepted at registration, default `[-48, -8, -7]`, `undefined` falls back to the @simplewebauthn default. */
+	supportedAlgorithmIDs: number[] | undefined;
 	/** Display name shown in the authenticator prompt. */
 	userName: (account: Row) => string;
 	secret: CredentialOptions;

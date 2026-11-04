@@ -50,9 +50,7 @@ describe("email address", () => {
 	});
 
 	test("writes", () => {
-		expect(create("sub_1", "a@example.com")).type.toBe<
-			Promise<string | undefined>
-		>();
+		expect(create("sub_1", "a@example.com")).type.toBe<Promise<string>>();
 		expect(createToken("sub_1", "messenger_1")).type.toBe<Promise<string>>();
 		expect(verifyToken("sub_1", "123456", "messenger_1")).type.toBe<
 			Promise<void>

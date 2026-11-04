@@ -140,6 +140,30 @@ describe("@1auth/notify-sqs", () => {
 		);
 	});
 
+	it("should NOT log a messenger value, it is the decrypted address", async () => {
+		const mockSend = mock.fn(async () => ({}));
+		const mockLog = mock.fn();
+		const queueUrl = "https://sqs.us-east-1.amazonaws.com/123/test-queue";
+		notifySqs({ client: { send: mockSend }, queueUrl, log: mockLog });
+
+		const notifyOptions = {
+			messengers: [{ type: "emailAddress", value: "user@example.com" }],
+			locale: "en",
+		};
+		await trigger("template-1", "user-123", undefined, notifyOptions);
+
+		deepEqual(mockLog.mock.calls[0].arguments[1].options, {
+			messengers: [{ type: "emailAddress" }],
+			locale: "en",
+		});
+		// the queue still gets the address, and the caller's object is untouched
+		deepEqual(
+			JSON.parse(mockSend.mock.calls[0].arguments[0].input.MessageBody).options,
+			notifyOptions,
+		);
+		equal(notifyOptions.messengers[0].value, "user@example.com");
+	});
+
 	it("should use default empty data and options", async () => {
 		const mockSend = mock.fn(async () => ({}));
 		const mockClient = { send: mockSend };

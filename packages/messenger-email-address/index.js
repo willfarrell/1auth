@@ -30,13 +30,10 @@ const defaults = {
 	token: token(),
 
 	// sanitize
-	optionalDotDomains: [
-		"gmail.com",
-		"google.com",
-		"googlemail.com",
-		"yahoodns.net",
-	],
+	optionalDotDomains: ["gmail.com", "google.com", "yahoodns.net"],
 	aliasDomains: {
+		// the same mailbox as gmail.com, so it has to digest the same
+		"googlemail.com": "gmail.com",
 		"protonmail.ch": "protonmail.com",
 		"pm.me": "protonmail.com",
 		"proton.me": "protonmail.com",
@@ -110,13 +107,20 @@ export const sanitize = (value) => {
 
 	// punycode/IDNA only applies to domains (RFC 5891), not local part (RFC 6531)
 	username = username.trimStart().split("+")[0].toLowerCase();
-	domain = toASCII(domain).trimEnd().toLowerCase();
+	// toASCII hands back null for a domain IDNA refuses
+	domain = toASCII(domain);
+	if (domain === null) {
+		throw new Error("400 Bad Request", { cause: { value } });
+	}
+	domain = domain.trimEnd().toLowerCase();
 
+	// alias first: the mailbox it lands in decides whether its dots count
+	// own keys only: `constructor`, `toString` and the like are inherited
+	if (Object.hasOwn(options.aliasDomains, domain)) {
+		domain = options.aliasDomains[domain];
+	}
 	if (optionalDotDomainsSet.has(domain)) {
 		username = username.replaceAll(".", "");
-	}
-	if (options.aliasDomains[domain]) {
-		domain = options.aliasDomains[domain];
 	}
 
 	return `${username}@${domain}`;

@@ -32,6 +32,7 @@ webauthn({
 | `residentKey` | `string` | `'discouraged'` | Resident key requirement |
 | `userVerification` | `string` | `'preferred'` | User verification level |
 | `preferredAuthenticatorType` | `string` | — | `'securityKey'`, `'localDevice'`, or `'remoteDevice'` |
+| `supportedAlgorithmIDs` | `number[]` | `[-48, -8, -7]` | COSE algorithm ids offered and accepted at registration: ML-DSA-44, EdDSA, ES256. RS256 (`-257`) is left out for ASVS 5.0 Level 3 (11.2.3, 11.6.1); add it explicitly to accept RSA authenticators. Credentials registered earlier still authenticate |
 | `userName` | `function` | `(account) => account.value ?? 'username'` | Display name shown in the authenticator prompt, resolved from the account row |
 | `notifyId` | `string` | `'authn-webauthn'` | Prefix for the notify template ids: `{notifyId}-create`, `{notifyId}-expire`, `{notifyId}-remove` |
 
@@ -247,4 +248,4 @@ Delete a WebAuthn credential, and remove its outstanding challenges.
 
 ## Post-quantum
 
-Assertions are signed by the authenticator with ES256 or RS256, which a quantum computer breaks via Shor's algorithm — but the algorithms are fixed by authenticator hardware, not by 1auth. COSE identifiers for ML-DSA (−48/−49/−50) already exist; support lands when authenticators and `@simplewebauthn/server` ship it. Signatures are not retroactively forgeable, so recorded assertions carry no harvest-now-decrypt-later risk. See the full assessment in [Post-quantum](/docs/security/algorithms#post-quantum).
+Registration offers ML-DSA-44 (`-48`) first, then EdDSA and ES256, so an authenticator that can make a post-quantum key does. Most still sign with EdDSA or ES256, which a quantum computer breaks via Shor's algorithm, and which algorithm an authenticator supports is up to its hardware, not 1auth. `@simplewebauthn/server` verifies ML-DSA-44 through WebCrypto, which needs Node.js 24.7 or later. Signatures are not retroactively forgeable, so recorded assertions carry no harvest-now-decrypt-later risk. See the full assessment in [Post-quantum](/docs/security/algorithms#post-quantum).

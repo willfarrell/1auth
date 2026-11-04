@@ -7,6 +7,8 @@ export interface DbscOptions {
 	log: ((...args: unknown[]) => void) | false;
 	/** Unbound sessions only live as long as the registration challenge. */
 	require: boolean;
+	/** Offered and accepted at registration, a subset of `ES256` and `RS256`, default `["ES256"]`. */
+	algorithms: ("ES256" | "RS256")[];
 	/** Seconds a challenge stays valid. */
 	challengeExpire: number;
 	challengeTable: string;
@@ -30,8 +32,8 @@ export interface DbscSessionConfig {
 }
 
 export interface DbscProofOptions {
-	/** URL the proof was sent to. */
-	aud?: string;
+	/** URL the proof was sent to. Required: a proof without one is always refused. */
+	aud: string;
 	/** Sec-Secure-Session-Id header, absent on registration. */
 	sessionId?: string;
 	/** Stored JWK, required when `sessionId` is set. */
@@ -39,8 +41,8 @@ export interface DbscProofOptions {
 }
 
 export interface DbscRequestOptions {
-	/** URL the proof was sent to. */
-	aud?: string;
+	/** URL the proof was sent to. Required: a proof without one is always refused. */
+	aud: string;
 	/** Device metadata, compared as `@1auth/session` does. */
 	value?: unknown;
 	values?: Row;
@@ -74,7 +76,7 @@ export function terminate(sessionId: string): {
 /** Throws `401 Unauthorized` or `403 Forbidden` when the proof does not verify. */
 export function verifyProof(
 	proof: unknown,
-	options?: DbscProofOptions,
+	options: DbscProofOptions,
 ): Promise<{ publicKey: string; payload: Record<string, any> }>;
 
 /**
@@ -92,7 +94,7 @@ export function list(sub: string): Promise<Row[]>;
 export function register(
 	sid: string,
 	proof: string,
-	options?: DbscRequestOptions,
+	options: DbscRequestOptions,
 ): Promise<{
 	id: string;
 	session: RotatedSession;
@@ -103,7 +105,7 @@ export function register(
 export function refresh(
 	sessionId: string,
 	proof: string,
-	options?: DbscRequestOptions,
+	options: DbscRequestOptions,
 ): Promise<{ id: string; bound: string; config: DbscSessionConfig }>;
 export function expire(sub: string, id: string): Promise<void>;
 export function remove(sub: string, id: string): Promise<void>;

@@ -20,7 +20,8 @@ export interface Store {
 	): Promise<Row[]>;
 	insert(table: string, values?: Row): Promise<unknown>;
 	insertList(table: string, rows?: Row[]): Promise<unknown>;
-	update(table: string, filters?: Filters, values?: Row): Promise<void>;
+	/** Resolves whether a row matched every filter. */
+	update(table: string, filters?: Filters, values?: Row): Promise<boolean>;
 	remove(table: string, filters?: Filters): Promise<boolean>;
 	removeList(table: string, filters?: Filters): Promise<unknown>;
 }

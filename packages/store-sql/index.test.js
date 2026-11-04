@@ -148,6 +148,81 @@ describe("@1auth/store-sql", () => {
 			]);
 		});
 	});
+	describe("update result", () => {
+		it("Should report whether update matched a row", async () => {
+			const { seen, returned } = await withClient([{ id: 1 }], () =>
+				store.update("test", { id: 1 }, { value: "a" }),
+			);
+			equal(
+				seen[0].sql,
+				'UPDATE test SET "value" = ? WHERE "id" = ? RETURNING id',
+			);
+			strictEqual(returned, true);
+			strictEqual(
+				(
+					await withClient([], () =>
+						store.update("test", { id: 1 }, { value: "a" }),
+					)
+				).returned,
+				false,
+			);
+			strictEqual(
+				(
+					await withClient([{}], () =>
+						store.update("test", { id: 1 }, { value: "a" }),
+					)
+				).returned,
+				false,
+			);
+			strictEqual(
+				(
+					await withClient(undefined, () =>
+						store.update("test", { id: 1 }, { value: "a" }),
+					)
+				).returned,
+				false,
+			);
+		});
+	});
+	describe("table names", () => {
+		it("Should refuse an unsafe table name before querying", async () => {
+			for (const table of [
+				"test; DROP TABLE accounts",
+				"test--",
+				'"test"',
+				"1test",
+				"",
+				"a.b.c",
+				undefined,
+			]) {
+				const { seen } = await withClient([], async () => {
+					for (const call of [
+						() => store.exists(table, { id: 1 }),
+						() => store.select(table, { id: 1 }),
+						() => store.selectList(table, { id: 1 }),
+						() => store.insert(table, { id: 1 }),
+						() => store.insertList(table, [{ id: 1 }]),
+						() => store.update(table, { id: 1 }, { value: "a" }),
+						() => store.remove(table, { id: 1 }),
+						() => store.removeList(table, { id: [1] }),
+					]) {
+						const e = await rejectsError(call);
+						equal(e.message, "@1auth/store-sql invalid table name");
+						deepStrictEqual(e.cause, { table });
+					}
+				});
+				deepStrictEqual(seen, []);
+			}
+		});
+		it("Should accept a plain or schema qualified table name", async () => {
+			for (const table of ["test", "_Test_1", "public.test"]) {
+				const { seen } = await withClient([], () =>
+					store.select(table, { id: 1 }),
+				);
+				equal(seen[0].sql, `SELECT * FROM ${table} WHERE "id" = ? LIMIT 1`);
+			}
+		});
+	});
 	describe("identifiers", () => {
 		const malicious = `name" = 'x', "encryptionKey`;
 		it("Should reject an unsafe key in values, filters and fields", async () => {
@@ -337,6 +412,16 @@ describe("@1auth/store-sql", () => {
 			});
 			equal(where, 'WHERE "a" = $1 AND "bc" IN ($2,$3) AND "d" = $4');
 			deepStrictEqual(parameters, ["a", "b", "c", "d"]);
+		});
+		it("Should format {where} for a null filter as IS NULL", async () => {
+			// `= NULL` is never true in SQL, so a null filter matched nothing
+			const { where, parameters } = makeSqlPartsFor(
+				"$",
+				{ a: "a", b: null, c: "c" },
+				{ v: 1 },
+			);
+			equal(where, 'WHERE "a" = $2 AND "b" IS NULL AND "c" = $3');
+			deepStrictEqual(parameters, [1, "a", "c"]);
 		});
 		it("Should return an empty {where} without filters", async () => {
 			const { where, parameters } = makeSqlPartsFor("?", {});

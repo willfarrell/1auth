@@ -574,13 +574,35 @@ const tests = (config) => {
 		equal(emailAddressSanitize("user.name@gmail.com"), "username@gmail.com");
 	});
 	it("Can sanitize: optional dots for every default domain", () => {
-		for (const domain of [
-			"gmail.com",
-			"google.com",
-			"googlemail.com",
-			"yahoodns.net",
-		]) {
+		for (const domain of ["gmail.com", "google.com", "yahoodns.net"]) {
 			equal(emailAddressSanitize(`user.name@${domain}`), `username@${domain}`);
+		}
+	});
+	it("Can sanitize: googlemail.com to the gmail.com mailbox it is", () => {
+		// one inbox, so one digest: otherwise it can hold two accounts
+		equal(
+			emailAddressSanitize("User.Name+tag@googlemail.com"),
+			"username@gmail.com",
+		);
+		equal(emailAddressSanitize("username@gmail.com"), "username@gmail.com");
+	});
+	it("Can sanitize: an alias before deciding whether its dots count", () => {
+		emailAddress({
+			aliasDomains: { "example.org": "example.com" },
+			optionalDotDomains: ["example.com"],
+		});
+		try {
+			equal(
+				emailAddressSanitize("user.name@example.org"),
+				"username@example.com",
+			);
+			// the alias, not the domain it was written as, decides
+			equal(
+				emailAddressSanitize("user.name@example.com"),
+				"username@example.com",
+			);
+		} finally {
+			emailAddress();
 		}
 	});
 	it("Can sanitize: optional dots for an overridden list longer than the default", () => {
@@ -613,6 +635,12 @@ const tests = (config) => {
 			equal(emailAddressSanitize(`user@${domain}`), "user@protonmail.com");
 		}
 	});
+	it("Can sanitize: a domain named like an Object builtin, as itself", () => {
+		// a plain object lookup finds an inherited function for these
+		for (const domain of ["constructor", "tostring", "__proto__"]) {
+			equal(emailAddressSanitize(`user@${domain}`), `user@${domain}`);
+		}
+	});
 	it("Can sanitize: IDN domain to ASCII", () => {
 		equal(emailAddressSanitize("user@münchen.de"), "user@xn--mnchen-3ya.de");
 	});
@@ -626,6 +654,13 @@ const tests = (config) => {
 		throws(() => emailAddressSanitize(123), {
 			message: "400 Bad Request",
 			cause: { value: 123 },
+		});
+	});
+	it("Can NOT sanitize: a domain IDNA refuses", () => {
+		// toASCII hands back null rather than throwing, which was a 500
+		throws(() => emailAddressSanitize("user@xn--zz"), {
+			message: "400 Bad Request",
+			cause: { value: "user@xn--zz" },
 		});
 	});
 	it("Can sanitize: no domain returns as-is", () => {
@@ -690,15 +725,19 @@ const tests = (config) => {
 		const exists = emailAddressExists("username@protonmail.com");
 		ok(exists);
 	});
-	it("Can NOT create a messenger on an account when already connected to anther account", async () => {
+	it("Can NOT claim a messenger on an account when already connected to anther account", async () => {
 		const subOther = "sub_111111";
 		const messengerIdOther = await emailAddressCreate(subOther, messengerValue);
 		const { token } = mocks.notifyClient.mock.calls[0].arguments[0].data;
 		await emailAddressVerifyToken(subOther, token, messengerIdOther);
 
+		// an unverified row and an id like a free address, but no code is mailed
 		const messengerIdNew = await emailAddressCreate(sub, messengerValue);
 
-		equal(messengerIdNew, undefined);
+		ok(messengerIdNew);
+		equal(mocks.notifyClient.mock.calls.length, 2);
+		equal(await emailAddressCount(sub), 0);
+		equal(await emailAddressExists(messengerValue), subOther);
 		const notify = mocks.notifyClient.mock.calls[1].arguments[0];
 		deepEqual(notify, {
 			data: {},

@@ -256,6 +256,19 @@ const tests = (config) => {
 		mocks.storeClient.after?.();
 	});
 
+	// RS256 is opt-in, so a caller widens `algorithms` explicitly
+	const withRs256 = async (fn) => {
+		dbsc({
+			algorithms: ["ES256", "RS256"],
+			log: (...args) => mocks.log(...args),
+		});
+		try {
+			return await fn();
+		} finally {
+			dbsc({ log: (...args) => mocks.log(...args) });
+		}
+	};
+
 	const register = async (proof, options = {}) => {
 		const { sid } = await session.create(sub, options.value ?? {});
 		return await dbscRegister(sid, proof, options);
@@ -270,6 +283,7 @@ const tests = (config) => {
 			equal(options.challengeExpire, 1 * 60);
 			equal(options.challengeTable, "dbsc_challenges");
 			equal(options.require, false);
+			deepEqual(options.algorithms, ["ES256"]);
 			equal(options.registerPath, "/dbsc/register");
 			equal(options.refreshPath, "/dbsc/refresh");
 			equal(options.sidCookieName, "__Host-Http-sid");
@@ -296,6 +310,18 @@ const tests = (config) => {
 				cookieAttributes: "Path=/; HttpOnly",
 			});
 			dbsc({});
+		});
+		it("Will refuse an `algorithms` list it cannot verify", () => {
+			for (const algorithms of [
+				[],
+				"ES256",
+				["none"],
+				["toString"],
+				["ES256", "PS256"],
+			]) {
+				throwsConfig(() => dbsc({ algorithms }), { algorithms });
+			}
+			dbsc({ log: (...args) => mocks.log(...args) });
 		});
 		it("Names both lifetimes when the bound cookie outlives the session", () => {
 			const expire = session.getOptions().expire;
@@ -330,9 +356,14 @@ const tests = (config) => {
 	});
 
 	describe("`registrationHeader`", () => {
-		it("Can offer both spec algorithms with a challenge", () => {
+		it("Can offer ES256 alone by default, with a challenge", () => {
 			const header = dbscRegistrationHeader();
-			match(header, /^\(ES256 RS256\);path="[^"]+";challenge="[^"]+"$/);
+			match(header, /^\(ES256\);path="[^"]+";challenge="[^"]+"$/);
+		});
+		it("Can offer both spec algorithms once RS256 is opted into", async () => {
+			await withRs256(() =>
+				match(dbscRegistrationHeader(), /^\(ES256 RS256\);path="/),
+			);
 		});
 		it("Can name the configured register path", () => {
 			match(
@@ -1002,12 +1033,21 @@ const tests = (config) => {
 			equal(binding.publicKey, JSON.stringify({ kty, crv, x, y }));
 		});
 
-		it("Can bind an RS256 device key", async () => {
+		it("Can bind an RS256 device key once RS256 is opted into", async () => {
 			const device = makeDevice("rsa");
-			const { id } = await register(makeProof(device, { alg: "RS256" }), {
-				aud: registerUrl,
-			});
+			const { id } = await withRs256(() =>
+				register(makeProof(device, { alg: "RS256" }), { aud: registerUrl }),
+			);
 			ok(id);
+		});
+
+		it("Will throw on an RS256 key by default", async () => {
+			await rejects(() =>
+				register(makeProof(makeDevice("rsa"), { alg: "RS256" }), {
+					aud: registerUrl,
+				}),
+			);
+			ok((await register(makeProof(makeDevice()), { aud: registerUrl })).id);
 		});
 
 		it("Will NOT store private key members sent in the proof", async () => {
@@ -1104,12 +1144,14 @@ const tests = (config) => {
 			);
 		});
 
-		it("Will throw with a weak RSA key", async () => {
+		it("Will throw with a weak RSA key, even with RS256 opted into", async () => {
 			const device = generateKeyPairSync("rsa", { modulusLength: 1024 });
-			await rejects(() =>
-				register(makeProof(device, { alg: "RS256" }), {
-					aud: registerUrl,
-				}),
+			await withRs256(() =>
+				rejects(() =>
+					register(makeProof(device, { alg: "RS256" }), {
+						aud: registerUrl,
+					}),
+				),
 			);
 		});
 
@@ -1145,6 +1187,19 @@ const tests = (config) => {
 			);
 			equal(refreshed.id, id);
 			ok(refreshed.bound);
+		});
+
+		it("Can refresh an RS256 binding made before `algorithms` dropped it", async () => {
+			const device = makeDevice("rsa");
+			const { id } = await withRs256(() =>
+				register(makeProof(device, { alg: "RS256" }), { aud: registerUrl }),
+			);
+			const { bound } = await dbscRefresh(
+				id,
+				makeProof(device, { alg: "RS256", aud: refreshUrl, sub: id }),
+				{ aud: refreshUrl },
+			);
+			ok(dbscBoundTokenVerify(bound, id));
 		});
 
 		it("Will throw with an invalid session identifier", async () => {
@@ -1611,6 +1666,26 @@ const tests = (config) => {
 		it("Will return nothing for an unknown sid", async () => {
 			equal(await dbscLookup("sid_doesnotexist", "tok"), undefined);
 		});
+		it("Will NOT keep a bound session alive for a request it refuses", async (t) => {
+			// a stolen `sid` without the bound cookie must not hold the victim's
+			// session open by polling: the idle timeout only slides for a request
+			// that gets through
+			const { session: opened, bound } = await register(
+				makeProof(makeDevice()),
+				{ aud: registerUrl },
+			);
+			const { update } = await session.selectBinding(opened.id);
+			t.mock.timers.enable({ apis: ["Date"], now: (update + 120) * 1000 });
+			try {
+				equal(await dbscLookup(opened.sid, undefined), undefined);
+				equal(await dbscLookup(opened.sid, "not-a-token"), undefined);
+				equal((await session.selectBinding(opened.id)).update, update);
+				ok(await dbscLookup(opened.sid, bound));
+				equal((await session.selectBinding(opened.id)).update, update + 120);
+			} finally {
+				t.mock.timers.reset();
+			}
+		});
 		it("Will return nothing for a bound session without a valid bound cookie", async () => {
 			const device = makeDevice();
 			const { session: opened } = await register(makeProof(device), {
@@ -1631,11 +1706,18 @@ const tests = (config) => {
 			equal(binding.id, id);
 			ok(!binding.publicKey);
 		});
-		it("Can resolve an unbound session from `sid` alone", async () => {
+		it("Can resolve an unbound session from `sid` alone", async (t) => {
 			// no publicKey on the row: either registration has not happened yet, or
 			// the browser does not do DBSC. Either way `sid` is the whole credential.
-			const { sid } = await session.create(sub, {});
-			ok(await dbscLookup(sid, undefined));
+			const { id, sid, create } = await session.create(sub, {});
+			t.mock.timers.enable({ apis: ["Date"], now: (create + 120) * 1000 });
+			try {
+				ok(await dbscLookup(sid, undefined));
+				// an accepted request keeps it alive, as `@1auth/session` would
+				equal((await session.selectBinding(id)).update, create + 120);
+			} finally {
+				t.mock.timers.reset();
+			}
 		});
 		it("Can leave another unbound session untouched by a registration", async () => {
 			const currentDevice = { os: "MacOS" };
@@ -1651,12 +1733,14 @@ const tests = (config) => {
 			const dbscOptions = dbscGetOptions();
 			dbscOptions.require = true;
 			try {
-				const { sid, create } = await session.create(sub, {});
+				const { id, sid, create } = await session.create(sub, {});
 				t.mock.timers.enable({
 					apis: ["Date"],
 					now: (create + dbscOptions.challengeExpire) * 1000,
 				});
 				equal(await dbscLookup(sid, undefined), undefined);
+				// and refusing it does not keep it alive
+				equal((await session.selectBinding(id)).update, create);
 			} finally {
 				t.mock.timers.reset();
 				dbscOptions.require = false;

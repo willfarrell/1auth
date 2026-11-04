@@ -60,4 +60,4 @@ encryption keys.
 
 ## Post-quantum
 
-A configuration preset over [`@1auth/authn-webauthn`](/docs/packages/authn-webauthn) and inherits its post-quantum status: authenticator-signed ES256/RS256 assertions, migrating as the WebAuthn ecosystem does. See the full assessment in [Post-quantum](/docs/security/algorithms#post-quantum).
+A configuration preset over [`@1auth/authn-webauthn`](/docs/packages/authn-webauthn) and inherits its post-quantum status: authenticator-signed ML-DSA-44, EdDSA or ES256 assertions (RS256 only when enabled), migrating as the WebAuthn ecosystem does. See the full assessment in [Post-quantum](/docs/security/algorithms#post-quantum).

@@ -63,10 +63,14 @@ const nonKeyFilters = (filters) =>
 	Object.fromEntries(
 		Object.entries(filters).filter(([key]) => !isKeyAttribute(key)),
 	);
+// A null filter is "has no value": never written, or written as NULL
+const matchesOne = (itemValue, value) => {
+	if (Array.isArray(value)) return value.includes(itemValue);
+	if (value === null) return itemValue === null || itemValue === undefined;
+	return itemValue === value;
+};
 const matches = (item, filters) =>
-	Object.entries(filters).every(([key, value]) =>
-		Array.isArray(value) ? value.includes(item[key]) : item[key] === value,
-	);
+	Object.entries(filters).every(([key, value]) => matchesOne(item[key], value));
 
 export const exists = async (table, filters) => {
 	if (options.log) {
@@ -161,6 +165,14 @@ const makeExpressions = (filters, prefix = "", taken = new Set()) => {
 			continue;
 		}
 		const placeholder = placeholderFor(taken, `${prefix}${key}`);
+		if (value === null) {
+			expressionAttributeValues[placeholder] = marshall("NULL");
+			conditions.set(
+				key,
+				`(attribute_not_exists(#${key}) or attribute_type(#${key}, ${placeholder}))`,
+			);
+			continue;
+		}
 		expressionAttributeValues[placeholder] = marshall(value, marshallOptions);
 		conditions.set(key, `#${key} = ${placeholder}`);
 	}
@@ -194,8 +206,12 @@ const buildQueryCommand = (table, filters = {}) => {
 	const keyConditions = [];
 	const filterConditions = [];
 	for (const [key, condition] of conditions) {
-		// a key condition can't take IN
-		if (keyAttributeSet.has(key) && !Array.isArray(filters[key])) {
+		// a key condition can't take IN, or a function
+		if (
+			keyAttributeSet.has(key) &&
+			!Array.isArray(filters[key]) &&
+			filters[key] !== null
+		) {
 			keyConditions.push(condition);
 		} else {
 			filterConditions.push(condition);
@@ -267,20 +283,25 @@ const makePut = (table, values) => ({
 	ExpressionAttributeNames: { "#sub": "sub", "#id": "id" },
 });
 
+const withId = (values, call) => {
+	if (values.id == null) {
+		if (typeof options.randomId !== "function") {
+			throw new Error(
+				`@1auth/store-dynamodb ${call}() needs an \`id\`, or a \`randomId\` to make one`,
+			);
+		}
+		values.id = options.randomId();
+	}
+	return values;
+};
+
 export const insert = async (table, inputValues = {}) => {
 	const values = structuredClone(inputValues);
 	if (options.log) {
 		options.log(`@1auth/store-${options.id} insert(`, table, values, ")");
 	}
 	withTimeToLive(values);
-	if (values.id == null) {
-		if (typeof options.randomId !== "function") {
-			throw new Error(
-				"@1auth/store-dynamodb insert() needs an `id`, or a `randomId` to make one",
-			);
-		}
-		values.id = options.randomId();
-	}
+	withId(values, "insert");
 	await options.client.send(new PutItemCommand(makePut(table, values)));
 	return values.id;
 };
@@ -322,13 +343,15 @@ export const insertList = async (table, rows = []) => {
 		});
 	}
 	if (!rows.length) return [];
-	const puts = rows.map((row) => ({
-		Put: makePut(table, withTimeToLive(structuredClone(row))),
-	}));
-	await options.client.send(
-		new TransactWriteItemsCommand({ TransactItems: puts }),
+	const values = rows.map((row) =>
+		withId(withTimeToLive(structuredClone(row)), "insertList"),
 	);
-	return rows.map((row) => row.id);
+	await options.client.send(
+		new TransactWriteItemsCommand({
+			TransactItems: values.map((row) => ({ Put: makePut(table, row) })),
+		}),
+	);
+	return values.map((row) => row.id);
 };
 
 const makeKeyedParams = (filters, taken) => {
@@ -408,25 +431,28 @@ export const update = async (table, filters = {}, inputValues = {}) => {
 	};
 	try {
 		await options.client.send(new UpdateItemCommand(commandParams));
+		return true;
 	} catch (e) {
 		if (!isConditionFailure(e)) throw e;
+		return false;
 	}
 };
 
 const removeMatching = async (table, filters) => {
 	const items = await queryCommand(table, filters);
-	let deleted = false;
-	for (const item of items) {
-		const res = await options.client.send(
-			new DeleteItemCommand({
-				TableName: table,
-				Key: marshall({ sub: item.sub, id: item.id }, marshallOptions),
-				ReturnValues: "ALL_OLD",
-			}),
-		);
-		if (res.Attributes) deleted = true;
-	}
-	return deleted;
+	// the rows are already matched, so the deletes carry no condition and can go together
+	const results = await Promise.all(
+		items.map((item) =>
+			options.client.send(
+				new DeleteItemCommand({
+					TableName: table,
+					Key: marshall({ sub: item.sub, id: item.id }, marshallOptions),
+					ReturnValues: "ALL_OLD",
+				}),
+			),
+		),
+	);
+	return results.some((res) => !!res.Attributes);
 };
 
 export const remove = async (table, filters = {}) => {

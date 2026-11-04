@@ -395,6 +395,19 @@ const tests = (config) => {
 			);
 		}
 	});
+	it("Will NOT notify when expiring or removing a token that is not there", async () => {
+		const { id } = await accessTokenCreate(subOther);
+		await accessTokenExpire(sub, id);
+		await accessTokenRemove(sub, id);
+		await accessTokenExpire(sub, "authn_missing");
+		await accessTokenRemove(sub, "authn_missing");
+		// only the create, for the other account
+		deepEqual(
+			mocks.notifyClient.mock.calls.map((call) => call.arguments[0].id),
+			["authn-access-token-create"],
+		);
+		ok(await accessTokenSelect(subOther, id));
+	});
 	it("Will NOT resolve an expired token to its account", async () => {
 		const { id, username } = await accessTokenCreate(sub);
 		equal(await accessTokenExists(username), sub);

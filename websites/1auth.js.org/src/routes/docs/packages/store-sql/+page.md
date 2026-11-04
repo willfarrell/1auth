@@ -55,7 +55,9 @@ Filters are never silently dropped:
 - An empty array throws. `{ sub: [] }` would otherwise produce no condition at all.
 - `update` and `remove` throw when the filter is empty, instead of touching every row.
 - `insert` throws when the primary key already exists (the database's constraint error).
-- `update` on a row that doesn't exist changes nothing and resolves `undefined`.
+- `update` on a row that doesn't exist changes nothing and resolves `false`. A matched row resolves `true` (`UPDATE … RETURNING id`).
+- A `null` filter becomes `IS NULL`, since `= NULL` matches nothing.
+- The table name must be a plain or schema-qualified identifier (`accounts`, `public.accounts`). It is validated rather than quoted, so existing names keep resolving.
 
 Beyond the store interface, the statement builders are exported so a backend for a different client shape can reuse them:
 
