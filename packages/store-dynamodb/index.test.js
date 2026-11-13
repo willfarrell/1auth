@@ -975,6 +975,24 @@ console.log(JSON.stringify(sent));`,
 				}
 			});
 
+			it("Should finish when a response omits UnprocessedItems", async () => {
+				configure({
+					client: {
+						send: async (command) => {
+							sent.push(command);
+							return {};
+						},
+					},
+				});
+				try {
+					sent.length = 0;
+					await store.removeList(table, { sub: "sub_000", id: [1, 2] });
+					deepEqual(batchSizes(), [2]);
+				} finally {
+					configure();
+				}
+			});
+
 			it("Should throw when items stay unprocessed", async () => {
 				const sentAt = [];
 				configure({

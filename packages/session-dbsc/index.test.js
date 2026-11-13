@@ -431,6 +431,15 @@ const tests = (config) => {
 			deepEqual(dbscGetOptions().scope, { include_site: true });
 			dbsc({});
 		});
+		it("Can scope to the site with a bound cookie with no prefix", () => {
+			dbsc({
+				dbscCookieName: "dbsc",
+				dbscCookieAttributes: "Path=/",
+				scope: { include_site: true },
+			});
+			deepEqual(dbscGetOptions().scope, { include_site: true });
+			dbsc({});
+		});
 	});
 
 	describe("lifetime ordering", () => {

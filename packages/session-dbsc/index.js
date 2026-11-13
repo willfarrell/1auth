@@ -61,7 +61,7 @@ const cookiePrefixes = [
 // `__Host-Http-` counts too and there is one place that says what a prefix means
 const hostOnlyCookie = (cookieName) =>
 	cookiePrefixes.find(([prefix]) => cookieName.startsWith(prefix))?.[1]
-		?.hostOnly === true;
+		.hostOnly === true;
 
 // Whole-attribute match, not a substring: `Path=/foo` does not satisfy `Path=/`,
 // and `Domain=secure.example.com` does not satisfy `Secure`. Those are the two
@@ -237,11 +237,7 @@ export const terminate = (sessionId) => ({
 // Drops private members (`d`, ...) and fixes member order, so the string
 // stored at registration compares byte for byte on every refresh
 const publicJwk = (jwk, members) =>
-	Object.fromEntries(
-		members
-			.filter((member) => jwk[member] !== undefined)
-			.map((member) => [member, jwk[member]]),
-	);
+	Object.fromEntries(members.map((member) => [member, jwk[member]]));
 
 export const verifyProof = async (
 	proof,
